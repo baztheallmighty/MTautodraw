@@ -30,7 +30,9 @@ MTAutodraw automatically draws physical, logical and routing diagrams based on o
 
 **4.1 Data Collection**
 
-You will need to collect the output of the following show commands into files as listed below. This data collection is not preformed by the script. You will need to do. It is recommed to do this via a script. LLDP and CDP need to be enabled on devices to get physical diagrams. 
+You will need to collect the output of the following show commands into files as listed below. This data collection is not preformed by the script. You will need to do. It is recommed to do this via a script. A sample script/process can be found in AuditWithPlink.txt. This is a very simple and somewhat manual way of doing data collection.
+
+
 
 **Cisco routers and switches:**
 
@@ -157,6 +159,7 @@ If you get the error “File doesnt exist:” or “No show run files found. Ple
     No spanning tree for Junos yet
     Only RVSTP has been tested
     Cisco & cisco ASA show ip arp with VRF’s is not implemented
+    LLDP and CDP need to be enabled on devices to get physical diagrams
     
 
 ## **6. Good practices**
