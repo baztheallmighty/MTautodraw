@@ -5,7 +5,17 @@
 
 MTAutodraw automatically draws physical, logical and routing diagrams based on output from switches, routers and firewalls show commands. The output is a Visio file with multiple tabs. Several csv files are also produced that contain a list of CDP neighbors, a list of LLDP neighbors, all vlans and all CIDR's(Layer 3 interfaces).
 
-## **2. Supported devices:**
+
+## **2. What is MTAutodraw good for:**
+
+- Audits
+- network discovery
+- general understand of a network 
+- The start of network documentation
+- Difference before and after a network change
+
+
+## **3. Supported devices:**
 
     Cisco Nexus
     Cisco IOS, XE-IOS
@@ -14,19 +24,13 @@ MTAutodraw automatically draws physical, logical and routing diagrams based on o
     Juniper switches
     Cisco XR may work if the config text format is the same. 
 
-## **3. What is MTAutodraw good for:**
 
-- Audits
-- network discovery
-- general understand of a network 
-- The start of network documentation
-- Difference before and after a network change
 
 ## **4. How to use MTAutodraw:**
 
 **4.1 Data Collection**
 
-Collect the output of the following commands into files as listed below. More information means more detailed diagrams. 
+You will need to collect the output of the following show commands into files as listed below. This data collection is not preformed by the script. You will need to do. It is recommed to do this via a script. LLDP and CDP need to be enabled on devices to get physical diagrams. 
 
 **Cisco routers and switches:**
 
