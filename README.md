@@ -25,6 +25,7 @@ MTAutodraw automatically draws physical, logical and routing diagrams based on o
 ## **4. How to use MTAutodraw:**
 
 **4.1 Data Collection**
+
 Collect the output of the following commands into files as listed below. More information means more detailed diagrams. 
 
 **Cisco routers and switches:**
@@ -132,11 +133,13 @@ GOutPutDirectory: This is where you want to output your visio files.
 ## **5. Unknown issues / Common problems:**
 
 **5.1	There are TextFSM Errors in the log file:**
+
 This normally occurs because the format of the input file e.g show ip arp contains extra unexpected text. 
 Banners, command prompt text e.g "SwitchHostname#show run" or "-more-" , etc.
 This extra text needs to be removed. 
 
 **5.2	File names**
+
 If you get the error “File doesnt exist:” or “No show run files found. Please check the name of your files. e.g HostID.show run.txt” this means there is something wrong with the naming convention of your files. Check the names of your files. 
 
 **5.3 Limitations**
