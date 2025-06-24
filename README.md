@@ -59,6 +59,7 @@ Before running the script, ensure your environment meets the following requireme
 1.  **PowerShell**: Version 7 or later.
 2.  **Python**: Python 3.x must be installed.
 3.  **Python `textfsm` Library**: This is a critical dependency. Install it using pip:
+
     ```bash
     pip install textfsm
     ```
