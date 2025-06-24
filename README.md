@@ -91,6 +91,14 @@ MTAudotDraw/
 # --- Python Dependency ---
 ├── TextFSM.py
 
+# --- TextFSM Templates Dependency ---
+├── Templates
+    └──...
+
+# --- GETIPV4Subnet Dependency ---
+├── GETIPV4Subnet
+    └──GETIPV4Subnet.psm1
+
 # --- Optional Python Environment ---
 └── python/
     └── python.exe
@@ -215,6 +223,7 @@ The script will generate the following files in your output directory:
 
 #### Known Limitations
 
+  * **"The script output a lot of errors at the moment. Most of these can be ignored. "**
   * The script can be slow when processing a large number of devices.
   * Duplicate hostnames are not supported and will cause the script to stop with an error.
   * Junos LLDP neighbor matching may rely on interface descriptions, which could be inaccurate if not standardized.
