@@ -1,179 +1,235 @@
+# MTAudotDraw
 
-# MTautodraw
+MTAudotDraw is a powerful PowerShell-based tool designed to automate the creation of detailed network diagrams by parsing configuration files from various network devices. It intelligently processes device configs, discovers network topology using protocols like CDP and LLDP, and generates professional-grade diagrams in the **.drawio (diagrams.net)** format.
 
-## **1. What is MTAutodraw:**
 
-MTAutodraw automatically draws physical, logical and routing diagrams based on output from switches, routers and firewalls show commands. The output is a Visio file with multiple tabs. Several csv files are also produced that contain a list of CDP neighbors, a list of LLDP neighbors, all vlans and all CIDR's(Layer 3 interfaces).
+-----
 
+## ✨ Key Features
 
-## **2. What is MTAutodraw good for:**
+  * **Automated Diagram Generation**: Automatically creates multi-page `.drawio` files from your device configuration backups.
+  * **Multi-Vendor Support**: Parses configurations from a variety of vendors.
+  * **Multiple Diagram Types**: Generates several types of diagrams to visualize different aspects of your network:
+      * Physical L2 Topology (from CDP/LLDP)
+      * Logical L3 Topology (SVIs, Routed Ports)
+      * Focused Routed Link and High-Level Routes-Only views
+      * Individual diagrams for each device's configuration.
+  * **Data Export**: Exports discovered network data into structured `CSV` and `JSON` formats for further analysis.
+  * **Highly Configurable**: Uses simple toggles in the `configurationVariables.ps1` file to control which diagrams are generated and what information is included.
+  * **Intelligent Neighbor Discovery**: Discovers and links devices via CDP, LLDP, and ARP data, providing a more complete picture of your network.
 
-- Audits
-- network discovery
-- general understand of a network 
-- The start of network documentation
-- Difference before and after a network change
+## ✅ Use Cases
 
+This tool is incredibly useful for a variety of tasks:
 
-## **3. Supported devices:**
+  * **Network Audits & Discovery**: Quickly get a visual inventory of a new or undocumented network.
+  * **Documentation**: Create a solid baseline for your network documentation with minimal effort.
+  * **Change Validation**: Generate "before" and "after" diagrams to visually confirm the impact of network changes.
+  * **Operational Insight**: Gain a better general understanding of network topology and routing.
 
-    Cisco Nexus
-    Cisco IOS, XE-IOS
-    Cisco ASA
-    Checkpoint Firewalls
-    Juniper switches
-    Cisco XR may work if the config text format is the same. 
+## ⚙️ How It Works
 
+The script operates in a series of logical steps:
 
+1.  **File Discovery**: It scans the specified input directory for configuration files, identifying unique devices based on a `hostname.show version.txt` file.
+2.  **Parsing with TextFSM**: It leverages **Python** and the **TextFSM** library to parse the raw text from configuration files (`show run`, `show ip interface`, etc.) into structured data. A cache of parsed data is created in a `.json` subfolder to speed up subsequent runs.
+3.  **Building the Data Model**: The script constructs a rich PowerShell object model of the network, creating objects for each device, interface, VLAN, and route. It links these objects together to build a comprehensive map of the network topology.
+4.  **Generating Draw.io XML**: Based on the data model and user configuration, the script programmatically generates the raw XML required to build a `.drawio` file, defining every shape, connector, and style.
+5.  **Saving Output**: The final `.drawio` file, along with any exported data and a log file, is saved to the specified output directory.
 
-## **4. How to use MTAutodraw:**
+## 🖥️ Supported Platforms
 
-**4.1 Data Collection**
+MTAudotDraw has explicit support for parsing configurations from the following platforms:
 
-You will need to collect the output of the following show commands into files as listed below. This data collection is not preformed by the script. You will need to do. It is recommed to do this via a script. A sample script/process can be found in AuditWithPlink.txt. This is a very simple and somewhat manual way of doing data collection.
+  * **Cisco Systems**
+      * Cisco NX-OS (Nexus)
+      * Cisco IOS and IOS-XE
+      * Cisco ASA
+  * **Check Point**
+      * Check Point Gaia
+  * **Juniper Networks**
+      * Junos (in XML format)
 
+> **Note:** Cisco IOS-XR may work if its command output format is similar to Cisco IOS, but it has not been formally tested.
 
+## 🔧 Prerequisites
 
-**Cisco routers and switches:**
+Before running the script, ensure your environment meets the following requirements:
 
-    show version (required)
-    show run (required)
-    show interface ( BETA )
-    show interface status up
-    show ip interface brief
-    show cdp neighbors details
-    show lldp neighbors detail
-    show lldp neighbors
-    show spanning-tree
-    show mac address-table
-    show ip arp
-    show ip route
-    show ip route vrf *
-    File must be named in the following format “identifier. Show ip route vrf star.txt” this is due to windows not supporting the * character in file paths. 
-    
-**Cisco ASA:**
+1.  **PowerShell**: Version 7 or later.
+2.  **Python**: Python 3.x must be installed.
+3.  **Python `textfsm` Library**: This is a critical dependency. Install it using pip:
+    ```bash
+    pip install textfsm
+    ```
 
-    show route
-    show config
-    show version
-    show interface
+## 🚀 How to Use
 
-**CheckPoint:**
+### 1\. Project File Structure
 
-    show config
-    show route
-    show version
-    show interface
+Place all the script files (`.ps1`, `.py`) and the `Templates` directory together. The script relies on this structure to find its modules and templates.
 
-**Junos (XML format required) BETA :**
+```
+MTAudotDraw/
+├── MTAudotDraw.ps1
 
-    show configuration | display xml | no-more
-    show interface | display xml | no-more
-    show spanning-tree bridge | display xml | no-more
-    show spanning-tree interface detail | display xml | no-more
-    show lldp neighbors | display xml | no-more
-    show route all | display xml | no-more
-    show version  | display xml | no-more
+# --- Configuration ---
+├── configurationVariables.ps1
 
+# --- Core Logic & Function Libraries ---
+├── StartProcessingConfig.ps1
+├── ObjectFunctions.ps1
+├── HelperFunctions.ps1
+├── DrawLogic_drawio.ps1
 
-NOTE: show lldp neighbors and show lldp neighbors detail are both requires because ironically some information is not in show lldp neighbors detail for some devices. 
+# --- Vendor-Specific Parsing Logic ---
+├── CiscoConfigProcessingFunctions.ps1
+├── CiscoASAConfigProcessingFunctions.ps1
+├── CheckPointConfigProcessingFunctions.ps1
+├── JunosConfigProcessingFunctions.ps1
 
+# --- Python Dependency ---
+├── TextFSM.py
 
-Files names must be in the format. This is used to group the show output per device. 
+# --- Optional Python Environment ---
+└── python/
+    └── python.exe
+```
 
-    identifier.[command].txt
-    or
-    Hostname.[command].txt
-    or
-    IPAddress.[command].txt
+### 2\. Prepare Configuration Files
 
-Examples:
+**The script does not collect data itself.** You must run the required commands on your devices and save the complete, raw output to individual text files.
 
-    switch01.show run.txt
-    switch01.show ip interface brief.txt
-    switch01.show cdp neighbors detailsorip address.txt
+#### Required Commands
 
-or
+  * **Cisco IOS / IOS-XE / NX-OS:**
 
-    switchB.show run.txt
-    switchB.show ip interface brief.txt
-    switchB.show cdp neighbors detailsorip address.txt
+      * `show version` **(Required)**
+      * `show run` **(Required)**
+      * `show interface` or `show ip interface brief`
+      * `show interface status`
+      * `show cdp neighbors detail`
+      * `show lldp neighbors detail`
+      * `show spanning-tree`
+      * `show mac address-table`
+      * `show ip arp`
+      * `show ip route`
+      * `show ip route vrf *` (see file naming note below)
 
-or
+  * **Cisco ASA:**
 
-    172.24.30.36.show run.txt
-    172.24.30.36.show cdp neighbors detail.txt
-    172.24.30.36.show interface status up.txt
+      * `show version`
+      * `show run` (or `show config`)
+      * `show route`
+      * `show interface`
 
-NOTE: Ensure that your files don't have banner lines within them. It must be just the result of the command and no extra text. You can use a multiline replace tool if you need to. Notepad++ has a plugin called Toolbucket that works really well for this. 
+  * **Check Point Gaia:**
 
+      * `show version`
+      * `show configuration` (or `show config`)
+      * `show route all`
+      * `show interfaces all`
 
-**4.2 File storage**
+  * **Juniper Junos (XML format is required):**
 
-Put all the files into a folder on your local computer.  
+      * `show configuration | display xml`
+      * `show version | display xml`
+      * `show interfaces detail | display xml`
+      * `show lldp neighbors | display xml`
+      * `show route all | display xml`
+      * `show spanning-tree bridge | display xml`
+      * `show spanning-tree interface | display xml`
 
-**4.3 Prerequisites**
+#### File Naming Convention
 
-- Python with TextFSM module installed. 
-- Powershell Visio module installed. This can be done with the command "Install-Module visio"
+This is the most important step. All files must follow the format: **`Identifier.Command-Name.txt`**
 
+  * The `Identifier` is a unique name or IP for a device and must be consistent for all files from that device.
+  * The `Command-Name` is the command that was run.
 
-**4.4 Setup Environment** 
+**Examples:**
 
-Open configurationVariables.ps1 with your preferred text editor and set the location of your python installed. $GPathToPythonExe=
-Note: Other values can be edited in this file to change what is drawn, how it's drawn and to skip drawing things like telephones on physical diagrams. 
+```
+# For a switch named "core-switch-01"
+core-switch-01.show version.txt
+core-switch-01.show run.txt
+core-switch-01.show cdp neighbors detail.txt
 
+# For a router identified by IP
+10.1.1.254.show version.txt
+10.1.1.254.show ip route.txt
+```
 
-**4.5 Run the script**
+> **Special Case:** Since `*` is not a valid character in Windows filenames, save the output of `show ip route vrf *` as:
+> `Identifier.show ip route vrf star.txt`
 
-Run the script and point it at that folder.
-.\AutoDraw.ps1 -GDirectory c:\ShowCommandsFolder -GPathToScript c:\autodraw\ -GOutPutDirectory c:\OutputFolder
+> **File Cleanliness:** Ensure your output files contain **only** the command output. Remove any login banners, command prompts (`switch#`), or `--more--` lines, as they will cause parsing errors.
 
-GDirectory: This is the directory where all of your show commands are stored
+### 3\. Configure the Script (Optional)
 
-GPathToScript: This is the path to the script. It is used to reference templates,etc
+Open `configurationVariables.ps1` in a text editor to customize the script's behavior. You can enable or disable diagrams, exclude certain devices like phones, and toggle data exports.
 
-GOutPutDirectory: This is where you want to output your visio files.
+### 4\. Run the Script
 
+Open a PowerShell terminal, navigate to the script's folder, and run it with the following parameters:
 
-## **5. Unknown issues / Common problems:**
+```powershell
+.\MTAudotDraw.ps1 -GDirectory "C:\path\to\configs" -GOutPutDirectory "C:\path\to\output" -GPathToScript "C:\mtautodraw\"
+```
 
-**5.1	There are TextFSM Errors in the log file:**
+  * **`-GDirectory`**: The full path to the folder containing your collected `.txt` files.
+  * **`-GOutPutDirectory`**: The folder where the `.drawio` files and other outputs will be saved.
+  * **`-GPathToScript`**: (Optional) The path to the script folder. Defaults to the current directory.
 
-This normally occurs because the format of the input file e.g show ip arp contains extra unexpected text. 
-Banners, command prompt text e.g "SwitchHostname#show run" or "-more-" , etc.
-This extra text needs to be removed. 
+-----
 
-**5.2	File names**
+## 🖼️ Output
 
-If you get the error “File doesnt exist:” or “No show run files found. Please check the name of your files. e.g HostID.show run.txt” this means there is something wrong with the naming convention of your files. Check the names of your files. 
+The script will generate the following files in your output directory:
 
-**5.3 Limitations**
+  * **`MTAudotDraw-MultiDevice-YYYYMMDD-HHMM.drawio`**: The main diagram file with multi-device physical and logical views.
+  * **`MTAudotDraw-Singles-YYYYMMDD-HHMM.drawio`**: A diagram where each page is dedicated to a single device's L3 layout.
+  * **`LogYYYYMMDDHHMMSS.txt`**: A transcript of the script's execution, useful for debugging.
+  * **(If `$GExportData` is `$true`)**: `vlans.csv`, `cidr.csv`, `CDPNeighbors.csv`, `LLDPNeighbors.csv`, and `Objects.json`.
 
-    The script is slow
-    The scale and text size is wrong
-    This script has only very limited testing
-    Duplicate hostnames result in the script throwing an error ( Requires manual rename)
-    Junos has had very minimal testing
-    Junos LLDP interface matching uses port descriptions, this can result in inaccurate diagrams.
-    No spanning tree for Junos yet
-    Only RVSTP has been tested
-    Cisco & cisco ASA show ip arp with VRF’s is not implemented
-    LLDP and CDP need to be enabled on devices to get physical diagrams
-    
+-----
 
-## **6. Good practices**
+## 💡 Troubleshooting & Limitations
 
-    Text files should use UTF-8 encoding
-    Break the work load up into useful units e.g buildings, racks, core / edge devices, etc
-    More than 25 devices per diagram generally results in a very messy diagram
+#### Common Issues
 
+  * **TextFSM Errors**: If the log shows errors related to TextFSM, it is almost always because of extra text in your output files (banners, prompts, etc.). Ensure the files are clean.
+  * **"File doesn't exist" or "No show version files found"**: This error means there is a problem with your file naming. Double-check that every device has a `Identifier.show version.txt` file and that the identifier is consistent.
 
-## **6. Acknowledgements**
-I would like to say thank you to the following people for there libraries and hard work:
+#### Known Limitations
 
-Brians worth GetIPv4Subnet.psm1
+  * The script can be slow when processing a large number of devices.
+  * Duplicate hostnames are not supported and will cause the script to stop with an error.
+  * Junos LLDP neighbor matching may rely on interface descriptions, which could be inaccurate if not standardized.
+  * Parsing `show ip arp` from devices with VRFs is not fully implemented.
 
-Jason Edelman Netcode Templates for Textfsm  
+-----
 
-Saveen Reddy Visio Automation 
+## 👍 Best Practices
+
+  * **File Encoding**: The script attempts to clean files, but starting with **acsi** encoding is recommended.
+  * **Break Up the Work**: For large networks, process devices in logical groups (e.g., by building or function) to keep diagrams clean. A diagram with more than 25-30 devices can become very cluttered.
+
+-----
+
+## 🙏 Acknowledgements
+
+This tool stands on the shoulders of giants. Thank you to the following for their libraries and hard work:
+
+  * **Brians worth** for the `GetIPv4Subnet.psm1` module.
+  * **The Network to Code (NTC) community and Jason Edelman** for the extensive `ntc-templates` for TextFSM, which do the heavy lifting of configuration parsing.
+
+-----
+
+## 📜 Copyright and License
+
+Copyright (C) 2022 Myles Treadwell
+
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version**.
+
+This program is distributed in the hope that it will be useful, but **WITHOUT ANY WARRANTY**; without even the implied warranty of **MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE**. See the GNU General Public License for more details.
