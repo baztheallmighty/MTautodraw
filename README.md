@@ -182,7 +182,19 @@ Open a PowerShell terminal, navigate to the script's folder, and run it with the
   * **`-GPathToScript`**: (Optional) The path to the script folder. Defaults to the current directory.
 
 -----
+## 🔒 Outbound Network Connections
+🔒 Outbound Network Connections
+For security and operational transparency, it's important to know what network connections a script makes. MTAudotDraw is designed to work primarily on local files and does not require an active internet connection to perform its main functions, provided one file is present.
 
+The script makes only one specific, conditional outbound connection:
+
+MAC Address to Vendor Mapping
+* **`Purpose:`** To provide more useful information in diagrams and data exports, the script maps MAC addresses to their respective hardware vendors (e.g., Cisco, Juniper, Dell). To do this, it needs a list of Organizationally Unique Identifiers (OUIs).
+* **` Trigger:`** This connection is only attempted if the file MacAddressToVendorsMapping.csv is not present in the script's root directory.
+* **` Process:`** On its first run (or if the file is deleted), the script will attempt to download the OUI list from devtools360.com. Once downloaded, it saves the data locally as MacAddressToVendorsMapping.csv.
+
+
+-----
 ## 🖼️ Output
 
 The script will generate the following files in your output directory:
