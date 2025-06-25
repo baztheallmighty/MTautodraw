@@ -192,6 +192,10 @@ Open a PowerShell terminal, navigate to the script's folder, and run it with the
   * **`-GOutPutDirectory`**: The folder where the `.drawio` files and other outputs will be saved.
   * **`-GPathToScript`**: (Optional) The path to the script folder. Defaults to the current directory.
 
+### 5\. Arrange the diagram
+
+The diagrams come out pretty flat and need to be arranged and quite often resized to be of us. This is a manual task at this stage. 
+
 -----
 ## 🔒 Outbound Network Connections
 🔒 Outbound Network Connections
@@ -233,6 +237,7 @@ The script will generate the following files in your output directory:
   * show mac address throws errors when there are multiple interfaces attached to a single mac address
   * Logging is very noisy
   * Collection of configuration files/data is not done by the script
+  * Diagrams have to be manually arranged
 
 -----
 
