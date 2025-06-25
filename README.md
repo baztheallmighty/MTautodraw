@@ -31,7 +31,7 @@ This tool is incredibly useful for a variety of tasks:
 
 The script operates in a series of logical steps:
 
-0.  **Configuration data collection**: **This is not done by MTAUTODRAW** You collect all of your configuration data from your switches, routers, firewalls. 
+0.  **Configuration data collection**: **This is not done by MTAUTODRAW** You must collect all of your configuration data from your switches, routers, firewalls.  
 1.  **File Discovery**: It scans the specified input directory for configuration files, identifying unique devices based on a `hostname.show version.txt` file.
 2.  **Parsing with TextFSM**: It leverages **Python** and the **TextFSM** library to parse the raw text from configuration files (`show run`, `show ip interface`, etc.) into structured data. A cache of parsed data is created in a `.json` subfolder to speed up subsequent runs.
 3.  **Building the Data Model**: The script constructs a rich PowerShell object model of the network, creating objects for each device, interface, VLAN, and route. It links these objects together to build a comprehensive map of the network topology.
@@ -220,6 +220,7 @@ The script will generate the following files in your output directory:
 
   * **TextFSM Errors**: If the log shows errors related to TextFSM, it is almost always because of extra text in your output files (banners, prompts, etc.). Ensure the files are clean.
   * **"File doesn't exist" or "No show version files found"**: This error means there is a problem with your file naming. Double-check that every device has a `Identifier.show version.txt` file and that the identifier is consistent.
+  * **Duplicate hostnames**: All hostname must be unquie. 
 
 #### Known Limitations
 
@@ -228,12 +229,15 @@ The script will generate the following files in your output directory:
   * Duplicate hostnames are not supported and will cause the script to stop with an error.
   * Junos LLDP neighbor matching may rely on interface descriptions, which could be inaccurate if not standardized.
   * Parsing `show ip arp` from devices with VRFs is not fully implemented.
+  * show mac address throws errors when there are multiple interfaces attached to a single mac address
+  * Logging is very noisy
+  * Collection of configuration files/data is not done by the script
 
 -----
 
 ## 👍 Best Practices
 
-  * **File Encoding**: The script attempts to clean files, but starting with **acsi** encoding is recommended.
+  * **File Encoding**: The script attempts to clean files, but starting with **acsii** encoding is recommended.
   * **Break Up the Work**: For large networks, process devices in logical groups (e.g., by building or function) to keep diagrams clean. A diagram with more than 25-30 devices can become very cluttered.
 
 -----
