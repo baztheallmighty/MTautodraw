@@ -31,6 +31,7 @@ This tool is incredibly useful for a variety of tasks:
 
 The script operates in a series of logical steps:
 
+0.  **Configuration data collection**: **This is not done by MTAUTODRAW** You collect all of your configuration data from your switches, routers, firewalls. 
 1.  **File Discovery**: It scans the specified input directory for configuration files, identifying unique devices based on a `hostname.show version.txt` file.
 2.  **Parsing with TextFSM**: It leverages **Python** and the **TextFSM** library to parse the raw text from configuration files (`show run`, `show ip interface`, etc.) into structured data. A cache of parsed data is created in a `.json` subfolder to speed up subsequent runs.
 3.  **Building the Data Model**: The script constructs a rich PowerShell object model of the network, creating objects for each device, interface, VLAN, and route. It links these objects together to build a comprehensive map of the network topology.
