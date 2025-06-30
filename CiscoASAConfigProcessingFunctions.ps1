@@ -26,43 +26,50 @@ function Process-CiscoASAHostFiles{
 		$hostid,
         $ArrayOfObjects
     )
-        write-HostDebugText "Processing Cisco ASA show config"
-        $Device=$null
+        # First, create the device object from the config file.
         if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
             $config = Get-Content -Path $hostid.showrun -raw
             $Device=Get-CiscoASAShowRunFromText -Lconfig $config
             $Device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
         }else{
-            write-HostDebugText "File doesn't exist: $($hostid.showrun)" -BackgroundColor red
+            # We can't create an object to log to, so this warning will appear in the main thread's error stream.
+            Write-host "File doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun)"
             return $null
         }
+    
+        # Now that $Device is a valid object, we can log to it.
+        Add-HostDebugText -HostObject $Device "Processing Cisco ASA Host: $($Device.hostname)"
+    
         if($null -eq $Device.hostname ){
-            write-HostDebugText "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
+            Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
             return $null
         }
         foreach ($ExistingDevice in $ArrayOfObjects){
             if($ExistingDevice.hostname -eq $Device.hostname){
-                write-HostDebugText "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
-                write-HostDebugText "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
-                write-HostDebugText "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
-                write-HostDebugText "$($ArrayOfObjects|ft hostname)"
+                Add-HostDebugText -HostObject $Device "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
+                Add-HostDebugText -HostObject $Device "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
+                Add-HostDebugText -HostObject $Device "Existing: $($ExistingDevice.hostname) $($ExistingDevice.DeviceIdentifier) " -BackgroundColor red
+                Add-HostDebugText -HostObject $Device "Duplicate one: $($Device.hostname) $($Device.DeviceIdentifier) " -BackgroundColor red
+                Add-HostDebugText -HostObject $Device "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
+                Add-HostDebugText -HostObject $Device "$($ArrayOfObjects|ft hostname,DeviceIdentifier| out-string)"
                 if(!($SkipHostnameErrorCheck)){
-                    Write-host 'Exiting please manually fix this error.' -BackgroundColor red
+                    Add-HostDebugText -HostObject $Device 'Exiting please manually fix this error.'  -BackgroundColor red
                     Start-CleanupAndExit
+                    
                 }
             }
         }
         if($hostid.ShowInterface){
-            write-HostDebugText "Processing Cisco ASA show interface:$($hostid.ShowInterface)"
+            Add-HostDebugText -HostObject $Device "Processing Cisco ASA show interface:$($hostid.ShowInterface)"
             $Device=Get-CiscoASAShowInterfaceFromText -CiscoASAInterfaceFile $hostid.ShowInterface -Device $Device
         }
         if($hostid.CiscoASAShowRoute){
-            write-HostDebugText "Processing Cisco ASA show show route:$($hostid.CiscoASAShowRoute)"
+            Add-HostDebugText -HostObject $Device "Processing Cisco ASA show show route:$($hostid.CiscoASAShowRoute)"
             $device=Get-CiscoASAShowRouteFromText -device $device -ShowRouteFile $hostid.CiscoASAShowRoute
         }
         
         if($hostid.ShowIPBGPSummary){
-            write-HostDebugText "Processing Cisco ASA show bgp summary:$($hostid.ShowIPBGPSummary)"
+            Add-HostDebugText -HostObject $Device "Processing Cisco ASA show bgp summary:$($hostid.ShowIPBGPSummary)"
             $Device=Get-BGPSummaryFromText -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
         }
         
@@ -84,7 +91,7 @@ function Get-CiscoASAShowRunFromText{
     $hostname = (($Lconfig| Select-String -Pattern "(hostname ).+").Matches.Value -replace "hostname ",'').trim()
     if($null -eq $hostname  -or $hostname -eq "" ){
         $hostname = "NoHostNameFoundCheckForConfigProblems"
-        write-host "No hostname found in Cisco ASA config"  -BackgroundColor red
+        Add-HostDebugText -HostObject $HostObject "No hostname found in Cisco ASA config" -BackgroundColor red
     }
     $HostObject.hostname = $hostname
     return $HostObject
@@ -131,14 +138,14 @@ function Get-CiscoASAShowInterfaceFromText(){
     #Read the file into one big string
     $CiscoASAInterfaceText = Get-Content -raw $CiscoASAInterfaceFile
     if(($CiscoASAInterfaceText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
-        write-HostDebugText "$($CiscoASAInterfaceText)" -BackgroundColor Magenta
-        write-HostDebugText "contains invalid data or is empty"  -BackgroundColor red
+        Add-HostDebugText -HostObject $Device "$($CiscoASAInterfaceText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
 
-    $ProcessOutputObjects=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowInterfaceTemplate -ShowFile $CiscoASAInterfaceFile -ReturnArray $true
+    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowInterfaceTemplate -ShowFile $CiscoASAInterfaceFile -ReturnArray $true -HostObject $Device
     if($ProcessOutputObjects -eq "ERROR"){
-        write-HostDebugText "Error with Show Interface on Cisco ASA file:$($CiscoASAInterfaceFile)"
+        Add-HostDebugText -HostObject $Device "Error with Show Interface on Cisco ASA file:$($CiscoASAInterfaceFile)"
         return $device
     }
     foreach ($int in $ProcessOutputObjects){
@@ -211,16 +218,16 @@ function Get-CiscoASAShowRouteFromText(){
     $ShowRouteText = Get-Content -raw $ShowRouteFile
     $AllRouteObjects=@() #Array of routes(Create-RouteObject) that will be passed back to the host object.
     if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
-        write-HostDebugText "$($ShowRouteText)" -BackgroundColor Magenta
-        write-HostDebugText "contains invalid data or is empty"  -BackgroundColor red
+        Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
 
-    #write-HostDebugText "Starting Python Processing with TextFSM"
+    #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
-    $ProcessOutputObjects=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true
+    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
     if($ProcessOutputObjects -eq "ERROR"){
-        write-HostDebugText "Error with show route on Cisco ASA routing." -BackgroundColor red
+        Add-HostDebugText -HostObject $Device "Error with show route on Cisco ASA routing." -BackgroundColor red
         return $device
     }
 
@@ -241,7 +248,7 @@ function Get-CiscoASAShowRouteFromText(){
             }
         }
         if($null -eq $RouteObject.RouteProtocol){
-            write-HostDebugText "No route protocol this shouldnt happen. Skipping: $($int)" -BackgroundColor red
+            Add-HostDebugText -HostObject $Device "No route protocol this shouldnt happen. Skipping: $($int)" -BackgroundColor red
             continue
         }
         if($Route[1] -ne "" -and $null -ne $Route[1]){

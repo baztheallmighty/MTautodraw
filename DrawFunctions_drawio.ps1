@@ -213,6 +213,7 @@ function Add-DrawioPhysicalInterface {
         $crossStyle = "shape=mxgraph.basic.cross;strokeColor=#D32F2F;strokeWidth=3;rotation=20;"
         $global:drawioXml += "        <mxCell id=`"$crossId`" value=`"`" style=`"$crossStyle`" vertex=`"1`" parent=`"$interfaceId`">`n             <mxGeometry x=`"0.25`" y=`"0.25`" width=`"0.5`" height=`"0.5`" relative=`"1`" as=`"geometry`" />`n        </mxCell>`n"
     }
+	return $interfaceId
 }
 
 # Creates the XML for a host and all its physical interfaces.
@@ -244,8 +245,7 @@ function Add-DrawioHostPhysical {
         })
     }
     $allInterfaces = ($neighborAndStpInterfaces + $macInterfacesToDraw) | Sort-Object Interface
-    $interfaceCount = $allInterfaces.Count
-    $hostWidth = ($interfaceCount * $GDrawioPhysicalInterfaceWidth) + (($interfaceCount + 1) * $GDrawioEthernetSpacingPhysical)
+    $hostWidth = ($allInterfaces.Count * $GDrawioPhysicalInterfaceWidth) + (($allInterfaces.Count + 1) * $GDrawioEthernetSpacingPhysical)
     $hostWidth = [System.Math]::Max($hostWidth, 300)
 
     # --- Section 2: Construct Host Text with Smart Formatting ---
@@ -309,7 +309,7 @@ function Add-DrawioHostPhysical {
 
     foreach ($interface in $allInterfaces) {
         $interfaceLocation = [PSCustomObject]@{ X = $currentX; Y = $interfaceY }
-        Add-DrawioPhysicalInterface -Interface $interface -Location $interfaceLocation -ParentId $hostGroupId -DrawType "neighbors"
+        $null = Add-DrawioPhysicalInterface -Interface $interface -Location $interfaceLocation -ParentId $hostGroupId -DrawType "neighbors"
 
         if ($macInterfacesToDraw.Interface -contains $interface.Interface) {
             $bubbleLocation = [PSCustomObject]@{ X = $currentX - 50; Y = $interfaceY + $GDrawioPhysicalInterfaceHeight + 10 }

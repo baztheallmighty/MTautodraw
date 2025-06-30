@@ -143,12 +143,10 @@ function Get-Encoding{
 # MODIFIED: This function now caches the output in a .json sub-folder. If a cached file exists, it loads it instead of re-processing.
 function Execute-PythonTextFSM() {
     param (
-        [parameter(Mandatory = $true)]
         $TextFSTETemplate,
-        [parameter(Mandatory = $true)]
         $ShowFile,
-        [parameter(Mandatory = $false)]
-        $ReturnArray = $false
+        $ReturnArray,
+        $HostObject
     )
 
     #region --- Define Cache Paths ---
@@ -162,16 +160,16 @@ function Execute-PythonTextFSM() {
     # Check if the JSON file already exists.
     if (Test-Path -Path $JsonCacheFile) {
         # If it exists, load the content from the file instead of re-processing.
-        Write-Host "Cache hit. Loading from: $JsonCacheFile"
+        Add-HostDebugText -HostObject $HostObject   "Cache hit. Loading from: $JsonCacheFile"
         $Objects = Get-Content -Path $JsonCacheFile -Raw | ConvertFrom-Json -Depth 10
     }
     else {
         # If it does not exist, run the original processing logic.
-        Write-Host "Cache miss. Processing file: $($ShowFile)"
+        Add-HostDebugText -HostObject $HostObject   "Cache miss. Processing file: $($ShowFile)"
 
         # Python doesn't like UTF-8, UTF16 or UTF16LE. Convert it to ASCII file.
         if ((Get-Encoding $ShowFile).encoding.EncodingName -ne "US-ASCII") {
-            write-HostDebugText "Converting $($ShowFile) to Ascii"
+            Add-HostDebugText -HostObject $HostObject   "Converting $($ShowFile) to Ascii"
             $TempFile = Get-Content $ShowFile | Where-Object { $_ -cmatch '[\x20-\x7F]' } #Trim out non-ascii Char's
             Set-Content -Value $TempFile -Encoding Ascii -Path $ShowFile #rewrite the file as Ascii.
         }
@@ -181,8 +179,8 @@ function Execute-PythonTextFSM() {
 
         # Error handling for the script output.
         if (($ProcessOutput -like "Traceback*") -or ($ProcessOutput -like "An exception occurred*") -or ($ProcessOutput -eq "`[`]") -or ([string]::IsNullOrEmpty($ProcessOutput))) {
-            write-HostDebugText "Error with TextFSM Processing $($ProcessOutput)."
-            return "ERROR"
+            Add-HostDebugText -HostObject $HostObject   "Error with TextFSM Processing $($ProcessOutput)."
+            return "ERROR",$HostObject
         }
 
         # Convert the JSON output from the script into PowerShell objects.
@@ -191,35 +189,37 @@ function Execute-PythonTextFSM() {
         #region --- Save to Cache ---
         # Ensure the .json directory exists before saving the file.
         if (-not (Test-Path -Path $JsonCacheFolder)) {
-            Write-Host "Creating cache directory: $JsonCacheFolder"
+            Add-HostDebugText -HostObject $HostObject   "Creating cache directory: $JsonCacheFolder"
             New-Item -Path $JsonCacheFolder -ItemType Directory -Force | Out-Null
         }
 
         # Convert the PowerShell object back to a formatted JSON string and write it to the cache file.
         # Using -Depth 10 to handle potentially nested objects.
         $Objects | ConvertTo-Json -Depth 10 | Out-File -FilePath $JsonCacheFile -Encoding utf8
-        Write-Host "Saved new cache file to: $JsonCacheFile"
+        Add-HostDebugText -HostObject $HostObject   "Saved new cache file to: $JsonCacheFile"
         #endregion
     }
-
+	return $Objects,$HostObject
     #region --- Return Logic ---
     # This logic ensures the function returns the object in the desired format (single object or array).
-    if ($ReturnArray) {
-        # If an array is requested and the result is not already a collection, wrap it in an ArrayList.
-        if ($Objects -isnot [System.Collections.ICollection]) {
-            $myarray = [System.Collections.ArrayList]::new()
-            [void]$myArray.Add($Objects)
-            return $myarray
-        }
-        else {
-            # If it's already a collection, return it as is.
-            return $Objects
-        }
-    }
-    else {
-        # Return the single object or array as is.
-        return $Objects
-    }
+    #if ($ReturnArray) {
+    #    # If an array is requested and the result is not already a collection, wrap it in an ArrayList.
+    #    if ($Objects -isnot [System.Collections.ICollection] -or $Objects[0] -is "string") {
+    #        # It's a single object, so we create a new collection and add our single object to it.
+	#		write-host "single object converting to array"
+    #        $myarray = [System.Collections.ArrayList]::new()
+    #        [void]$myarray.Add($Objects)
+    #        return ,$myarray
+    #    }
+    #    else {
+    #        # It's already null, empty, or a collection. Return it as is.
+    #        return $Objects
+    #    }
+    #}
+    #else {
+    #    # Return the single object or array as is.
+    #    return $Objects
+    #}
     #endregion
 }
 

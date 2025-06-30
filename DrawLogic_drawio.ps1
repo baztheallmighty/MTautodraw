@@ -22,6 +22,7 @@ function Draw-AllNeighborsDrawio {
     # 2. Draw all hosts.
     $currentX = 100
     foreach ($device in ($ArrayOfObjects | Sort-Object HostName)) {
+		$hostWidth = $null
         $hostWidth = Add-DrawioHostPhysical -Device $device -Location ([PSCustomObject]@{X=$currentX; Y=100})
         $currentX += 950 + $hostWidth
     }

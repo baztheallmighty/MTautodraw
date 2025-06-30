@@ -26,61 +26,62 @@ function Process-JunosHostFiles{
 		$hostid,
         $ArrayOfObjects
     )
-        write-HostDebugText "Processing Junos show config"
+        Add-HostDebugText -HostObject $Device "Processing Junos show config"
         $Device=$null
         if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
             try{
                 $config=[xml] (Get-Content -Path $hostid.showrun -raw)
             }
             catch {
-                write-HostDebugText "Invalid XML file: $($hostid.showrun) exiting" -BackgroundColor red
+                write-host "Invalid XML file: $($hostid.showrun) exiting" -BackgroundColor red
                 return $null
             }
             $Device=Get-JunosShowRunFromXML -Lconfig $config
             $Device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
         }else{
-            write-HostDebugText "File doesn't exist: $($hostid.showrun)" -BackgroundColor red
+            write-host "File doesn't exist: $($hostid.showrun)" -BackgroundColor red
             return $null
         }
+        
         if($null -eq $Device.hostname ){
-            write-HostDebugText "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
+            Write-host "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
             return $null
         }
         foreach ($ExistingDevice in $ArrayOfObjects){
             if($ExistingDevice.hostname -eq $Device.hostname){
-                write-HostDebugText "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
-                write-HostDebugText "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
-                write-HostDebugText "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
-                write-HostDebugText "$($ArrayOfObjects|ft hostname)"
+                Add-HostDebugText -HostObject $Device "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
+                Add-HostDebugText -HostObject $Device "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
+                Add-HostDebugText -HostObject $Device "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
+                Add-HostDebugText -HostObject $Device "$($ArrayOfObjects|ft hostname,DeviceIdentifier| out-string)"
                 if(!($SkipHostnameErrorCheck)){
-                    Write-host 'Exiting please manually fix this error.'  -BackgroundColor red
+                    Add-HostDebugText -HostObject $Device 'Exiting please manually fix this error.'  -BackgroundColor red
                     Start-CleanupAndExit
                 }
             }
         }
                
         if($hostid.ShowVersion){
-            write-HostDebugText "Processing Junos show version: $($hostid.ShowVersion)"
+            Add-HostDebugText -HostObject $Device "Processing Junos show version: $($hostid.ShowVersion)"
             $Device=Get-JunosShowVersionFromXML -JunosShowVersionFile $hostid.ShowVersion -Device $Device
         }        
         if($hostid.ShowInterfaceDetail){
-            write-HostDebugText "Processing Junos show interface:$($hostid.ShowInterfaceDetail)"
+            Add-HostDebugText -HostObject $Device "Processing Junos show interface:$($hostid.ShowInterfaceDetail)"
             $Device=Get-JunosShowInterfaceFromXML -JunosInterfaceFile $hostid.ShowInterfaceDetail -Device $Device
         }
         if($hostid.ShowLLDPNeighbors){#CDP must be processed before LLDP.
-            write-HostDebugText "Processing show LLDP Details:$($hostid.ShowLLDPNeighbors)"
+            Add-HostDebugText -HostObject $Device "Processing show LLDP Details:$($hostid.ShowLLDPNeighbors)"
             $Device=Get-JunosShowLLDPNeighbors -JunosShowLLDPNeighborsFile $hostid.ShowLLDPNeighbors -Device $Device 
         }        
         if($hostid.ShowRouteAll){
-            write-HostDebugText "Processing Junos show route all:$($hostid.ShowRouteAll)"
+            Add-HostDebugText -HostObject $Device "Processing Junos show route all:$($hostid.ShowRouteAll)"
             $device=Get-JunosShowRouteAllFromXML -device $device -JunosShowRouteAllFile $hostid.ShowRouteAll
         }
         if($hostid.ShowSpanningTreeInterface){
-            write-HostDebugText "Processing Junos Show Spanning Tree Interface:$($hostid.ShowSpanningTreeInterface)"
+            Add-HostDebugText -HostObject $Device "Processing Junos Show Spanning Tree Interface:$($hostid.ShowSpanningTreeInterface)"
             $device=Get-JunosShowSpanningTreeInterfaceFromXML -device $device -ShowSpanningTreeInterfaceFile $hostid.ShowSpanningTreeInterface
         }
         if($hostid.JunosShowSpanningTreeBridgeFromXML){
-            write-HostDebugText "Processing Junos Show Spanning Tree Bridge :$($hostid.JunosShowSpanningTreeBridgeFromXML)"
+            Add-HostDebugText -HostObject $Device "Processing Junos Show Spanning Tree Bridge :$($hostid.JunosShowSpanningTreeBridgeFromXML)"
             $device=Get-JunosShowSpanningTreeBridgeFromXML -device $device -JunosShowSpanningTreeBridgeFile $hostid.JunosShowSpanningTreeBridgeFromXML
         }        
 
@@ -278,14 +279,15 @@ function Get-JunosVlanFromVLANArray{
     param (
 		[parameter(Mandatory=$true)]
 		$VlanArray,
-        $VlanName
+        $VlanName,
+        $Device
     )
     foreach($vlan in $VlanArray){
         if($VlanName -eq $vlan.name){
             return $vlan.number
         }
     }
-    write-HostDebugText "Cant find vlan name in list. $($VlanName) in $($VlanArray)" -ForegroundColor red
+    Add-HostDebugText -HostObject $Device "Cant find vlan name in list. $($VlanName) in $($VlanArray)" -ForegroundColor red
     return $null
 }
     
@@ -305,7 +307,7 @@ function Get-JunosShowRunFromXML{
     $hostname = $Lconfig.'rpc-reply'.configuration.system.'host-name'
     if($null -eq $hostname  -or $hostname -eq "" ){
         $hostname = "NoHostNameFoundCheckForConfigProblems"
-        write-host "No hostname found in Junos config"  -BackgroundColor red
+        Add-HostDebugText -HostObject $Device "No hostname found in Junos config"  -BackgroundColor red
     }
     $Device.hostname = $hostname
     #Process vlans
@@ -349,18 +351,18 @@ function Get-JunosShowRunFromXML{
             if($interface.unit.family.'ethernet-switching'.'port-mode'){
                 $interfaceObject.SwitchportMode = $interface.unit.family.'ethernet-switching'.'port-mode'
                 if($interfaceObject.SwitchportMode -eq "access"){
-                    $interfaceObject.SwitchportAccessVlan = Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $interface.unit.family.'ethernet-switching'.vlan.members
+                    $interfaceObject.SwitchportAccessVlan = Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $interface.unit.family.'ethernet-switching'.vlan.members -Device $Device
                 }else{
                     foreach ($vlan in $interface.unit.family.'ethernet-switching'.vlan.members){
                         if($interfaceObject.SwitchportTrunkVlan){
-                            $interfaceObject.SwitchportTrunkVlan += ",$(Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $vlan )"
+                            $interfaceObject.SwitchportTrunkVlan += ",$(Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $vlan -Device $Device )"
                         }else{
-                            $interfaceObject.SwitchportTrunkVlan += "$(Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $vlan )"
+                            $interfaceObject.SwitchportTrunkVlan += "$(Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $vlan -Device $Device )"
                         }
                     }
                     if($interface.unit.family.'ethernet-switching'.'native-vlan-id'){
-                        $interfaceObject.SwitchportTrunkVlan += ",$(Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $interface.unit.family.'ethernet-switching'.'native-vlan-id')"
-                        $interfaceObject.NativeVlan = Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $interface.unit.family.'ethernet-switching'.'native-vlan-id'
+                        $interfaceObject.SwitchportTrunkVlan += ",$(Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $interface.unit.family.'ethernet-switching'.'native-vlan-id' -Device $Device)"
+                        $interfaceObject.NativeVlan = Get-JunosVlanFromVLANArray -VlanArray $vlans -VlanName $interface.unit.family.'ethernet-switching'.'native-vlan-id' -Device $Device
                     }
                     
                 }
@@ -405,7 +407,7 @@ function Get-JunosShowRunFromXML{
                     [array]$FoundInterface.SwitchportTrunkVlan += [int]$vlan.'vlan-id'
                 }
             }else{
-                write-HostDebugText "Couldnt find $($int.name) - $($int.name -replace "\.0",'') in $($interfaces|ft | out-string)"
+                Add-HostDebugText -HostObject $Device "Couldnt find $($int.name) - $($int.name -replace "\.0",'') in $($interfaces|ft | out-string)"
             }
         }
     }

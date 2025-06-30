@@ -169,35 +169,151 @@ function Start-ProcessingFiles(){
 
     $ArrayOfHostIDs = Create-FileHostObjects -files $files
 
-    foreach ( $hostid in $ArrayOfHostIDs){
-        write-HostDebugText "$($hostid.HOSTID):" -ForegroundColor "green"
+
+    # Determine a sensible throttle limit based on available processor cores
+    $throttleLimit = [System.Environment]::ProcessorCount
+    write-HostDebugText "Starting parallel processing with a throttle limit of $throttleLimit..." -ForegroundColor "Cyan"
+
+    # 1. PROCESS ALL DEVICES IN PARALLEL
+    # The output of the parallel loop (all the processed $Device objects) is collected into $processedDevices.
+    $processedDevices = $ArrayOfHostIDs | ForEach-Object -Parallel {
+        # Inside the script block, we use the '$using:' scope to access variables from the main script.
+        # This is crucial for passing paths, templates, and other settings to each thread.
+        
+        $hostid = $_ # The current item from the pipeline
+
+        # We must explicitly import modules needed by this thread.
+        # This ensures all functions are available in the parallel runspace.
+        # Runtime-modified variables:
+        $GMacAddressToVendorMapping  = $using:GMacAddressToVendorMapping
+
+        # Path variables (determined by params or runtime location):
+        $GPathToScript               = $using:GPathToScript
+        $GPathToPythonExe            = $using:GPathToPythonExe
+        $GPathToPythonTextFSMScript  = $using:GPathToPythonTextFSMScript
+        
+        # "Constant" variables (loaded from configurationVariables.ps1 in the main script):
+        $GTemplate                   = $using:GTemplate
+        $GSkipCDPLLDPPhones          = $using:GSkipCDPLLDPPhones
+        $GDrawPortsWithMacs          = $using:GDrawPortsWithMacs
+        $GDrawAprEntries             = $using:GDrawAprEntries
+        $SkipHostnameErrorCheck      = $using:SkipHostnameErrorCheck
+        $GDebugingEnabled            = $using:GDebugingEnabled # For write-HostDebugText
+        $GLastExecutionTime          = $using:GLastExecutionTime # For write-HostDebugText
+        # --- END OF THREAD INITIALIZATION ---
+
+        $hostid = $_ 
+
+        # Import function definitions.
+        # DO NOT import configurationVariables.ps1 here; its values are already captured above.
+        Import-Module "$($GPathToScript)ObjectFunctions.ps1" -Force
+        Import-Module "$($GPathToScript)HelperFunctions.ps1" -Force
+        Import-Module "$($GPathToScript)CiscoConfigProcessingFunctions.ps1" -Force
+        Import-Module "$($GPathToScript)CheckPointConfigProcessingFunctions.ps1" -Force
+        Import-Module "$($GPathToScript)CiscoASAConfigProcessingFunctions.ps1" -Force
+        Import-Module "$($GPathToScript)JunosConfigProcessingFunctions.ps1" -Force
+        Import-Module -Name "$($GPathToScript)GETIPV4Subnet\GetIPv4Subnet.psm1" -Force
+
+        function Add-HostDebugText(){
+                param (
+                [parameter(Mandatory=$true)]
+                $HostObject, # The host object to which the debug log will be added
+                [parameter(Mandatory=$true)]
+                $text,
+                $BackgroundColor,
+                $ForegroundColor
+            )
+            
+            # Set default foreground color if not provided
+            if(-not($ForegroundColor)){
+                $ForegroundColor="white"
+            }            
+            # Set default BackgroundColor color if not provided
+            if(-not($BackgroundColor)){
+                $BackgroundColor="Black"
+            }
+
+            # Create a log entry object to store all relevant information
+            $logEntry = [PSCustomObject]@{
+                Timestamp       = Get-Date
+                Text            = $text
+                BackgroundColor = $BackgroundColor
+                ForegroundColor = $ForegroundColor
+            }
+
+            # Add the log entry to the host object's debug log array
+            $HostObject.DebugLog += $logEntry
+            
+        }
         $Device = $null # Reset device for each loop
+        
+        # NOTE: We pass $null for ArrayOfObjects because we cannot safely check for duplicates in parallel.
+        # We will perform the duplicate check *after* all jobs are complete.
         switch($hostid.DeviceType){
             "Cisco"{
-                $Device=Process-CiscoHostFiles -hostid $hostid -ArrayOfObjects $ArrayOfObjects
-                $Device.DeviceType="Cisco"
+                $Device=Process-CiscoHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="Cisco" }
             }
             "CiscoASA"{
-                $Device=Process-CiscoASAHostFiles -hostid $hostid -ArrayOfObjects $ArrayOfObjects
-                $Device.DeviceType="CiscoASA"
+                $Device=Process-CiscoASAHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="CiscoASA" }
             }
             "CheckPoint"{
-                $Device=Process-CheckPointHostFiles -hostid $hostid -ArrayOfObjects $ArrayOfObjects
-                $Device.DeviceType="CheckPoint"
+                $Device=Process-CheckPointHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="CheckPoint" }
             }
             "Junos"{
-                $Device=Process-JunosHostFiles -hostid $hostid -ArrayOfObjects $ArrayOfObjects
-                $Device.DeviceType="Junos"
+                $Device=Process-JunosHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="Junos" }
             }
             default{
-                write-host "We dont have a device type skipping. This should never happen. Either you broke the universe or i made a programming error. $($hostid)" -BackgroundColor red
+                # This write will appear in the console from the thread
+                Write-Warning "Device type for $($hostid.HOSTID) is unknown or unsupported. Skipping."
             }
         }
-        if ($Device) { #Only add non-null devices to the main array.
-            $ArrayOfObjects+=,$Device
-            $ArrayOfNetworks+=$Device.ArrayOfNetworks
+        
+        # Return the processed device object. It will be collected by ForEach-Object.
+        return $Device
+
+    } -ThrottleLimit $throttleLimit
+
+    write-HostDebugText "Parallel processing complete. Aggregating results..." -ForegroundColor "Cyan"
+    
+	# --- Display all collected debug logs ---
+	write-HostDebugText "Displaying all collected debug/error logs..." -ForegroundColor Yellow
+	
+	# Iterate through the main array of successfully processed devices.
+	foreach ($device in $processedDevices) {
+	    # Check if this device has any log entries.
+	    if ($device.DebugLog.Count -gt 0) {
+	        # Print a clear header for the device's logs.
+	        Write-Host "`n--- Debug Logs for: $($device.hostname) ---" -BackgroundColor DarkCyan -ForegroundColor White
+	        
+	        # Loop through each log entry for the current device.
+	        foreach ($log in $device.DebugLog) {
+	            $logMessage = "$($log.Timestamp) - $($log.Text)"
+	            # Write the log to the console, applying the original colors.
+	            Write-Host $logMessage -ForegroundColor $log.ForegroundColor -BackgroundColor $log.BackgroundColor
+	        }
+	    }
+	}
+    # 2. AGGREGATE RESULTS AND CHECK FOR DUPLICATES SEQUENTIALLY
+    # This part runs after all parallel jobs are finished.
+    $hostnameMap = @{} # Used for the duplicate check
+    
+    foreach ($device in ($processedDevices | Where-Object { $_ -ne $null })) {
+        # Duplicate hostname check (now done safely in the main thread)
+        if ($hostnameMap.ContainsKey($device.hostname)) {
+            write-HostDebugText "DUPLICATE HOSTNAME DETECTED: '$($device.hostname)'. Skipping this device. Fix your config files to ensure unique hostnames." -BackgroundColor Red
+            continue # Skip to the next device
         }
+        $hostnameMap[$device.hostname] = $true
+
+        # Add the processed data to the main arrays
+        $ArrayOfObjects += $device
+        $ArrayOfNetworks += $device.ArrayOfNetworks
     }
+	
     write-HostDebugText "Processing Arp Entries" -ForegroundColor green
     #Create an array of ip ARP entries. This will be used when drawing layer 3 diagrams.
     $ArrayOfIPApr=$ArrayOfObjects | % {$_.IPArpEntries } | sort -Unique mac,ipaddress,interface

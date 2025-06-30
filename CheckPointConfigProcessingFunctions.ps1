@@ -26,39 +26,45 @@ function Process-CheckPointHostFiles{
 		$hostid,
         $ArrayOfObjects
     )
-        write-HostDebugText "Processing checkpoint show config"
-        $Device=$null
-        if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
-            $config = Get-Content -Path $hostid.showrun -raw
-            $Device=Get-CheckPointShowRunFromText -Lconfig $config
-            $Device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
-        }else{
-            write-HostDebugText "File doesn't exist: $($hostid.showrun)" -BackgroundColor red
-            return $null
-        }
+     # First, create the device object from the config file.
+     if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
+         $config = Get-Content -Path $hostid.showrun -raw
+         # The Get-CheckPointShowRunFromText function now creates and returns the initial $Device object.
+         $Device=Get-CheckPointShowRunFromText -Lconfig $config
+         $Device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
+     }else{
+         # We can't create a device object to log to, so we can't use Add-HostDebugText here.
+         # This will be visible in the main thread's error stream.
+         Write-host "File doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun)"
+         return $null
+     }
+ 
+     # Now that $Device is a valid object, we can log to it.
+     Add-HostDebugText -HostObject $Device "Processing CheckPoint Host: $($Device.hostname)"
+ 
         if($null -eq $Device.hostname ){
-            write-HostDebugText "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
+            Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
             return $null
         }
         foreach ($ExistingDevice in $ArrayOfObjects){
             if($ExistingDevice.hostname -eq $Device.hostname){
-                write-HostDebugText "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
-                write-HostDebugText "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
-                write-HostDebugText "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
-                write-HostDebugText "$($ArrayOfObjects|ft hostname)"
+                Add-HostDebugText -HostObject $Device  "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
+                Add-HostDebugText -HostObject $Device  "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
+                Add-HostDebugText -HostObject $Device  "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
+                Add-HostDebugText -HostObject $Device  "$($ArrayOfObjects|ft hostname)"
                 if(!($SkipHostnameErrorCheck)){
-                    Write-host 'Exiting please manually fix this error.'  -BackgroundColor red
+                    Add-HostDebugText -HostObject $Device  'Exiting please manually fix this error.'  -BackgroundColor red
                     Start-CleanupAndExit
                     
                 }
             }
         }
         if($hostid.ShowInterface){#
-            write-HostDebugText "Processing checkpoint show interface:$($hostid.ShowInterface)"
+            Add-HostDebugText -HostObject $Device  "Processing checkpoint show interface:$($hostid.ShowInterface)"
             $Device=Get-CheckPointShowInterfaceFromText -CheckPointInterfaceFile $hostid.ShowInterface -Device $Device
         }
         if($hostid.ShowRouteAll){
-            write-HostDebugText "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
+            Add-HostDebugText -HostObject $Device  "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
             $device=Get-CheckpointShowRouteFromText -device $device -ShowRouteFile $hostid.ShowRouteAll
         }
         return $device
@@ -79,7 +85,7 @@ function Get-CheckPointShowRunFromText{
     $hostname = (($Lconfig| Select-String -Pattern "(set hostname ).+").Matches.Value -replace "set hostname ",'').trim()
     if($null -eq $hostname  -or $hostname -eq "" ){
         $hostname = "NoHostNameFoundCheckForConfigProblems"
-        write-host "No hostname found in checkpoint config" -BackgroundColor red
+        Add-HostDebugText -HostObject $HostObject "No hostname found in checkpoint config" -BackgroundColor red
     }
     $HostObject.hostname = $hostname
     return $HostObject
@@ -100,14 +106,14 @@ function Get-CheckPointShowInterfaceFromText(){
     #Read the file into one big string
     $CheckPointInterfaceText = Get-Content -raw $CheckPointInterfaceFile
     if(($CheckPointInterfaceText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
-        write-HostDebugText "$($CheckPointInterfaceText)" -BackgroundColor Magenta
-        write-HostDebugText "contains invalid data or is empty"  -BackgroundColor red
+        Add-HostDebugText -HostObject $Device  "$($CheckPointInterfaceText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device  "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
 
-    $ProcessOutputObjects=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true
+    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $Device
     if($ProcessOutputObjects -eq "ERROR"){
-        write-HostDebugText "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
+        Add-HostDebugText -HostObject $Device  "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
         return $device
     }
     foreach ($int in $ProcessOutputObjects){
@@ -180,16 +186,16 @@ function Get-CheckpointShowRouteFromText(){
     $ShowRouteText = Get-Content -raw $ShowRouteFile
     $AllRouteObjects=@() #Array of routes(Create-RouteObject) that will be passed back to the host object.
     if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
-        write-HostDebugText "$($ShowRouteText)" -BackgroundColor Magenta
-        write-HostDebugText "contains invalid data or is empty"  -BackgroundColor red
+        Add-HostDebugText -HostObject $Device  "$($ShowRouteText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device  "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
 
-    #write-HostDebugText "Starting Python Processing with TextFSM"
+    #Add-HostDebugText -HostObject $Device  "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
-    $ProcessOutputObjects=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true
+    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
     if($ProcessOutputObjects -eq "ERROR"){
-        write-HostDebugText "Error with show route on Checkpoint routing." -BackgroundColor red
+        Add-HostDebugText -HostObject $Device  "Error with show route on Checkpoint routing." -BackgroundColor red
         return $device
     }
 
@@ -209,7 +215,7 @@ function Get-CheckpointShowRouteFromText(){
             }
         }
         if($null -eq $RouteObject.RouteProtocol){ #something went wrong, we have a route without a routing protocol
-            write-HostDebugText "Error No routing protocol:$($Route)" -BackgroundColor red
+            Add-HostDebugText -HostObject $Device  "Error No routing protocol:$($Route)" -BackgroundColor red
             continue
         }
 
