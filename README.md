@@ -1,6 +1,6 @@
 # MTAudotDraw
 
-MTAudotDraw is a powerful PowerShell-based tool designed to automate the creation of detailed network diagrams by parsing configuration files from various network devices. It intelligently processes device configs, discovers network topology using protocols like CDP and LLDP, and generates professional-grade diagrams in the **.drawio (diagrams.net)** format.
+MTAudotDraw is a powerful PowerShell-based tool designed to automate the creation of detailed network diagrams by parsing configuration files from various network devices. It intelligently processes device configs, discovers network topology using protocols like CDP and LLDP, and generates  diagrams in the **.drawio (diagrams.net)** format.
 
 
 -----
@@ -230,7 +230,6 @@ The script will generate the following files in your output directory:
 #### Known Limitations
 
   * **"The script output a lot of errors at the moment. Most of these can be ignored. "**
-  * The script can be slow when processing a large number of devices.
   * Duplicate hostnames are not supported and will cause the script to stop with an error.
   * Junos LLDP neighbor matching may rely on interface descriptions, which could be inaccurate if not standardized.
   * Parsing `show ip arp` from devices with VRFs is not fully implemented.
