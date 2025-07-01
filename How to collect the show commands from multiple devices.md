@@ -1,5 +1,7 @@
 # Overview
-Here is a very basic way of collecting the show commands from multiple switches,routers,firewalls,etc. There are much better ways of doing this however this one is very easy to do.
+Here is a very basic way of collecting the show commands from multiple switches,routers,firewalls,etc. This process allows you to run one or serval commands on a device and collect the output. 
+
+There are much better ways of doing this however this one is very easy to do.
 It could also be modified to run any command you wish via ssh. 
 
 
