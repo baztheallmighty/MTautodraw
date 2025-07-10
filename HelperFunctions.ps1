@@ -19,6 +19,8 @@
 
 #This function is used to exit the script cleanly.
 function Start-CleanupAndExit {
+	write-host "Press CTRL - C to exit. "
+	read-host
     Stop-Transcript
 }
 

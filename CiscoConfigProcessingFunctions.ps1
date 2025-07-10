@@ -142,7 +142,7 @@ function Get-ShowInterfaceFromText(){
     }
     if($Device.version.type -eq "NXOS"){
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device,$ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowInterfaceTemplate -ShowFile $ShowInterfaceFile   -ReturnArray $true -HostObject $Device
+        $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowInterfaceTemplate -ShowFile $ShowInterfaceFile   -ReturnArray $true -HostObject $Device
         if($ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
             return $device
