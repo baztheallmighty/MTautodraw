@@ -40,13 +40,15 @@ function Draw-AllNeighborsDrawio {
     # Initializes a new Draw.io diagram page with a specific name for the physical layout.
     Start-DrawioDiagram -Name "CDP-LLDP Physical"
     # Adds a pre-defined interface legend to the diagram at a specified X/Y coordinate.
-    Add-DrawioInterfaceLegend -Location ([PSCustomObject]@{X = 50; Y = 1400})
+    Add-DrawioInterfaceLegend -Location ([PSCustomObject]@{X = -500; Y = 1400})
 
     # 2. Draw all hosts.
     # Set the initial X coordinate for the first host.
     $currentX = 100
     # Iterate through each configured device, sorted by hostname, to draw it on the diagram.
     foreach ($device in ($ArrayOfObjects | Sort-Object HostName)) {
+
+
         $hostWidth = $null
         # Calls a helper function to draw the host's physical chassis and interfaces.
         # The function returns the width of the drawn host, which is used for horizontal positioning.
@@ -59,7 +61,7 @@ function Draw-AllNeighborsDrawio {
     $currentX = 100
     $currentY = 700
     # Iterate through each device discovered via CDP.
-    foreach ($cdpDevice in ($ArrayOfCDPDeviceIDs | Sort-Object HostName)) {
+    foreach ($cdpDevice in ($ArrayOfCDPDeviceIDs | Sort-Object ParentObject)) {
         # Calls a helper function to draw a simplified representation of a discovered neighbor.
         Add-DrawioNeighborHost -Device $cdpDevice -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "CDPNeighbor"
         # Increment the X coordinate for the next discovered device.
@@ -70,7 +72,7 @@ function Draw-AllNeighborsDrawio {
     $currentX = 100
     $currentY = 1300
     # Iterate through each device discovered via LLDP.
-    foreach ($lldpDevice in ($ArrayOfLLDPDeviceIDs | Sort-Object HostName)) {
+    foreach ($lldpDevice in ($ArrayOfLLDPDeviceIDs | Sort-Object ParentObject)) {
         # Draw the discovered LLDP neighbor.
         Add-DrawioNeighborHost -Device $lldpDevice -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "LLDPNeighbor"
         # Increment the X coordinate.
@@ -171,8 +173,6 @@ function Draw-AllNeighborsDrawio {
     # Finalizes and saves the XML for the current Draw.io diagram page.
     End-DrawioDiagram
 }
-
-
 
 
 function Draw-AllLayer3Drawio {

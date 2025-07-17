@@ -69,7 +69,7 @@ function Replace-InterfaceShortName {
     param (
         $String
     )
-    
+
     # This code will now ONLY run if the .Trim() method in the 'try' block succeeds.
     $String = $String.Trim() -replace "vl(\d+.*)", 'Vlan$1' `
         -replace "Se(\d+.*)", 'Serial$1' `
@@ -82,7 +82,7 @@ function Replace-InterfaceShortName {
         -replace "Fo(\d+.*)", 'FortyGigabitEthernet$1' `
         -replace "Ap(\d+.*)", 'AppGigabitEthernet$1' `
         -replace "Lo(\d+.*)", 'Loopback$1'
-    
+
     return $String
 }
 
@@ -94,7 +94,7 @@ function Replace-InterfaceLongName{
     (
         $String
     )
-  
+
     $String=$String -replace "Vlan",'vl'`
                     -replace "Serial",'Se'`
                     -replace 'Port-channel','Po'`
@@ -313,20 +313,20 @@ function Get-OrSet-PortChannelStyle {
 
     # Check the global cache to see if we've already created a style for this channel.
     if (-not $global:runtimePortChannelStyles.ContainsKey($channelNumber)) {
-        
+
         # If not, generate a new random style object.
         $r = Get-Random -Minimum 30 -Maximum 200 # Avoid very bright/dark colors
         $g = Get-Random -Minimum 30 -Maximum 200
         $b = Get-Random -Minimum 30 -Maximum 200
         $hexColor = Convert-RgbToHex -RgbString "rgb($r,$g,$b)"
-        
+
         # Store the style object (color and width) in the global cache.
         $global:runtimePortChannelStyles[$channelNumber] = @{
             strokeColor = $hexColor
             strokeWidth = "5" # Use a consistent thick stroke for all Port-Channels
         }
     }
-    
+
     # Return the style object from the cache.
     return $global:runtimePortChannelStyles[$channelNumber]
 }
@@ -343,7 +343,7 @@ function Get-ConnectorStyle {
         $channelNumber = $fromInterface.ChannelGroup -replace '\D',''
         # Get the cached style object for this channel.
         $styleObject = Get-OrSet-PortChannelStyle -channelNumber $channelNumber
-        
+
         # Format the style object into a full Draw.io style string for the connector.
         return "endArrow=none;html=1;strokeWidth=$($styleObject.strokeWidth);strokeColor=$($styleObject.strokeColor);"
     } else {
@@ -396,7 +396,7 @@ function Get-ConnectorStyle {
 #        $BGPSummaryObject.STATE_PFX = $BGPSummaryEntry[9]
 #        $AllBGPSummaryObjects += $BGPSummaryObject
 #    }
-#    
+#
 #    $device.BGPSummary = $AllBGPSummaryObjects
 #    return $device
 #}

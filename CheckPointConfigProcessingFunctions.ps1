@@ -116,6 +116,11 @@ function Get-CheckPointShowInterfaceFromText(){
         Add-HostDebugText -HostObject $Device  "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
         return $device
     }
+    if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+        $tempArray = @()
+        $tempArray += ,$Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }    
     foreach ($int in $Device.ProcessOutputObjects){
         $interfaceObject = Create-InterfaceObject
         $interfaceObject.Interface=$int[0]
@@ -199,7 +204,11 @@ function Get-CheckpointShowRouteFromText(){
         return $device
     }
 
-
+    if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+        $tempArray = @()
+        $tempArray += ,$Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
     foreach ($Route in $Device.ProcessOutputObjects){
         $RouteObject=Create-RouteObject
         switch ($Route[0]){

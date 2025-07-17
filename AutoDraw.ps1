@@ -194,7 +194,7 @@ if($GExportData){
         $t
     } | select DeviceIdentifier,cidr,routedvlan,networkname,partentobject,DeviceInVlan | export-csv "$($GOutPutDirectory)cidr.csv" -NoTypeInformation
 
-    $GArrayOfObjects | ConvertTo-Json | Out-File "$($GOutPutDirectory)Objects.json" -Encoding utf8
+    $GArrayOfObjects | ConvertTo-Json -Depth 10 | Out-File "$($GOutPutDirectory)Objects.json" -Encoding utf8
 }
 
 

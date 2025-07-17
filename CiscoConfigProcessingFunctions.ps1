@@ -147,6 +147,11 @@ function Get-ShowInterfaceFromText(){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         $UpdateOnly=$false #This is used to ensure we don't add duplicate interfaces due to naming differences between show run and show interface.
         foreach ($int in $Device.ProcessOutputObjects){
             $Interface = $Device.interfaces | where { $_.interface -eq $int[0] }
@@ -260,6 +265,11 @@ function Get-ShowInterfaceFromText(){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         $UpdateOnly=$false #This is used to ensure we don't add duplicate interfaces due to naming differences between show run and show interface.
         foreach ($int in $Device.ProcessOutputObjects){
 
@@ -435,6 +445,11 @@ function Get-ShowIPArpText(){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         foreach ($IPArpEntry in $Device.ProcessOutputObjects){
             $IPArpObject=Create-ShowIPArpObject
             $IPArpObject.ipaddress    =$IPArpEntry[0].trim()
@@ -478,6 +493,11 @@ function Get-ShowIPArpText(){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         foreach ($IPArpEntry in $Device.ProcessOutputObjects){
             $IPArpObject=Create-ShowIPArpObject
             $IPArpObject.PROTOCOL= $IPArpEntry[0].trim()
@@ -532,6 +552,12 @@ function Get-ShowLLDPNeighborsText(){
             Add-HostDebugText -HostObject $Device "Error with show lldp neighbors on IOS.$($Device.ProcessOutputObjects)"
             return $device
         }
+        # Fix for single neighbor results
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         foreach ($LLDPNeighbor in $Device.ProcessOutputObjects){
             if($GSkipCDPLLDPPhones){
                 if(($LLDPNeighbor[2].trim()) -like "*T*"){
@@ -603,6 +629,11 @@ function Get-ShowLLDPDetailsFromText(){
             Add-HostDebugText -HostObject $Device "Error with show ip route on Nexus routing."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }          
         foreach ($LLDPNeighbor in $Device.ProcessOutputObjects){
             $LLDPObject=$null
             if($GSkipCDPLLDPPhones){
@@ -670,6 +701,11 @@ function Get-ShowLLDPDetailsFromText(){
             Add-HostDebugText -HostObject $Device "Error with show ip route on Nexus routing."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }          
         foreach ($LLDPNeighbor in $Device.ProcessOutputObjects){
             $LLDPObject=Create-LLDPNeighborObject
             $LLDPObject.SystemDescription=$LLDPNeighbor[5].trim()
@@ -857,7 +893,7 @@ function Get-ShowIPRouteFromText(){
                 Add-HostDebugText -HostObject $Device "Found default gateway:$($RouteObject)"
                 $device.RoutingTable+=$RouteObject
                 return $device
-            } else {
+            }else{
                 # If TextFSM failed AND there's no fallback, log the error and return the UNMODIFIED device.
                 Add-HostDebugText -HostObject $Device "Error processing show ip route file '$($ShowIPRouteFile)'. TextFSM returned an error or the file is empty/invalid." -BackgroundColor Red
                 return $device # CRUCIAL: Return the original object so the chain doesn't break.
@@ -1101,6 +1137,11 @@ function Get-ShowMacAddressTableFromText(){
             Add-HostDebugText -HostObject $Device "Error with show mac address-table on IOS processing."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }
         foreach ($Mac in $Device.ProcessOutputObjects){
             $DeviceInterface=$null
             $MacAddressobject=Create-MacAddressObject
@@ -1150,6 +1191,11 @@ function Get-ShowMacAddressTableFromText(){
             Add-HostDebugText -HostObject $Device "Error with show mac address-table on IOS processing."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         foreach ($Mac in $Device.ProcessOutputObjects){
             $DeviceInterface=$null
             $MacAddressobject=Create-MacAddressObject
@@ -1202,6 +1248,11 @@ function Get-ShowMacAddressTableFromText(){
             Add-HostDebugText -HostObject $Device "Error with show mac address-table on IOS processing."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         foreach ($Mac in $Device.ProcessOutputObjects){
             $DeviceInterface=$null
             $MacAddressobject=Create-MacAddressObject
@@ -1272,6 +1323,11 @@ function Get-ShowIPInterfaceBriefFromText(){
             Add-HostDebugText -HostObject $Device "Error with Show IP Int Brief on IOS or XE-IOS."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         foreach ($int in $Device.ProcessOutputObjects){
             $int[0]=Replace-InterfaceShortName -string $int[0]
             $Interface = $Device.interfaces | where { $_.interface -eq $int[0]} | select -first 1
@@ -1328,6 +1384,11 @@ function Get-ShowInterfaceStatusFromText(){
             Add-HostDebugText -HostObject $Device "Error with Show Interface status IOS or XE-IOS."
             return $device
         }  
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         foreach ($int in $Device.ProcessOutputObjects){
             $int[0]=Replace-InterfaceShortName -string $int[0]
             $Interface = $Device.interfaces | where { $_.interface -eq $int[0]} | select -first 1
@@ -1422,8 +1483,20 @@ function Get-CdpNeighborsFromText(){
             Add-HostDebugText -HostObject $Device "Error with show cdp neighbors details on IOS or XE-IOS."
             return $device
         }
-
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
+        #We only have 1 CDP neighbor so and it doesn't come back as array.
+        #Convert it to an array of arrays.
+        if($Device.ProcessOutputObjects[0].GetType().name -eq "string"){
+            $array=@()
+            $array += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects=$array
+        }
         foreach ( $neighbor in $Device.ProcessOutputObjects){
+           
             if($GSkipCDPLLDPPhones){
                 if($neighbor[6] -like "*phone*" ){
                     continue
@@ -1453,6 +1526,11 @@ function Get-CdpNeighborsFromText(){
             Add-HostDebugText -HostObject $Device "Error with show cdp neighbors details on NXOS."
             return $device
         }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }        
         #We only have 1 CDP neighbor so and it doesn't come back as array.
         #Convert it to an array of arrays.
         if($Device.ProcessOutputObjects[0].GetType().name -eq "string"){

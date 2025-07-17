@@ -236,7 +236,7 @@ function Start-ProcessingFiles(){
             # Create a log entry object to store all relevant information
             $logEntry = [PSCustomObject]@{
                 Timestamp       = Get-Date
-                Text            = $text
+                Text            = $text.trim()
                 BackgroundColor = $BackgroundColor
                 ForegroundColor = $ForegroundColor
             }
@@ -302,7 +302,7 @@ function Start-ProcessingFiles(){
     $hostnameMap = @{} # Used for the duplicate check
     
     foreach ($device in ($processedDevices | Where-Object { $_ -ne $null })) {
-        # Duplicate hostname check (now done safely in the main thread)
+        # Duplicate hostname check 
         if ($hostnameMap.ContainsKey($device.hostname)) {
             write-HostDebugText "DUPLICATE HOSTNAME DETECTED: '$($device.hostname)'. Skipping this device. Fix your config files to ensure unique hostnames." -BackgroundColor Red
             continue # Skip to the next device
