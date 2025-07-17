@@ -204,27 +204,6 @@ function Execute-PythonTextFSM() {
     }
 	$HostObject.ProcessOutputObjects = $Objects
 	return $HostObject
-    #region --- Return Logic ---
-    # This logic ensures the function returns the object in the desired format (single object or array).
-    #if ($ReturnArray) {
-    #    # If an array is requested and the result is not already a collection, wrap it in an ArrayList.
-    #    if ($Objects -isnot [System.Collections.ICollection] -or $Objects[0] -is "string") {
-    #        # It's a single object, so we create a new collection and add our single object to it.
-	#		write-host "single object converting to array"
-    #        $myarray = [System.Collections.ArrayList]::new()
-    #        [void]$myarray.Add($Objects)
-    #        return ,$myarray
-    #    }
-    #    else {
-    #        # It's already null, empty, or a collection. Return it as is.
-    #        return $Objects
-    #    }
-    #}
-    #else {
-    #    # Return the single object or array as is.
-    #    return $Objects
-    #}
-    #endregion
 }
 
 #Import mac to vendor mapping or get the MAC address xml file from devtools360.com and make a hash table with it.

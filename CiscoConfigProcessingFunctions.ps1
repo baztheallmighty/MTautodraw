@@ -1423,7 +1423,7 @@ function Get-CdpNeighborsFromText(){
             return $device
         }
 
-        foreach ( $neighbor in $Device.RawObjects){
+        foreach ( $neighbor in $Device.ProcessOutputObjects){
             if($GSkipCDPLLDPPhones){
                 if($neighbor[6] -like "*phone*" ){
                     continue
