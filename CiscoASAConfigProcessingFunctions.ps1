@@ -143,12 +143,12 @@ function Get-CiscoASAShowInterfaceFromText(){
         return $device
     }
 
-    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowInterfaceTemplate -ShowFile $CiscoASAInterfaceFile -ReturnArray $true -HostObject $Device
-    if($ProcessOutputObjects -eq "ERROR"){
+    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowInterfaceTemplate -ShowFile $CiscoASAInterfaceFile -ReturnArray $true -HostObject $Device
+    if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device "Error with Show Interface on Cisco ASA file:$($CiscoASAInterfaceFile)"
         return $device
     }
-    foreach ($int in $ProcessOutputObjects){
+    foreach ($int in $Device.ProcessOutputObjects){
         $interfaceObject = Create-InterfaceObject
         $interfaceObject.Interface=$int[0]
         $interfaceObject.zone=$int[1]
@@ -225,14 +225,14 @@ function Get-CiscoASAShowRouteFromText(){
 
     #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
-    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
-    if($ProcessOutputObjects -eq "ERROR"){
+    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
+    if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device "Error with show route on Cisco ASA routing." -BackgroundColor red
         return $device
     }
 
 
-    foreach ($Route in $ProcessOutputObjects){
+    foreach ($Route in $Device.ProcessOutputObjects){
         $RouteObject=Create-RouteObject
         switch ($Route[0]){
             C{$RouteObject.RouteProtocol="connected"}

@@ -367,6 +367,7 @@ function Create-HostObject(){
     $newObject| Add-Member -type NoteProperty -Name BGPSummary -value @()                     #Array of BGP summary information objects
     $newObject| Add-Member -type NoteProperty -Name BGPNeighbors -value @()                   #Array of BGP neighbor objects
     $newObject| Add-Member -type NoteProperty -Name DebugLog -value @()                       #debug logs created when processing config files. 
+	$newObject| Add-Member -type NoteProperty -Name ProcessOutputObjects -value @()                       #Stores raw objects after processing of Execute-PythonTextFSM
     return $newObject
 }
 

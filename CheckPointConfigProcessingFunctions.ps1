@@ -111,12 +111,12 @@ function Get-CheckPointShowInterfaceFromText(){
         return $device
     }
 
-    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $Device
-    if($ProcessOutputObjects -eq "ERROR"){
+    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $Device
+    if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device  "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
         return $device
     }
-    foreach ($int in $ProcessOutputObjects){
+    foreach ($int in $Device.ProcessOutputObjects){
         $interfaceObject = Create-InterfaceObject
         $interfaceObject.Interface=$int[0]
         if($int[4] -eq "link up"){
@@ -193,14 +193,14 @@ function Get-CheckpointShowRouteFromText(){
 
     #Add-HostDebugText -HostObject $Device  "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
-    $ProcessOutputObjects,$Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
-    if($ProcessOutputObjects -eq "ERROR"){
+    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
+    if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device  "Error with show route on Checkpoint routing." -BackgroundColor red
         return $device
     }
 
 
-    foreach ($Route in $ProcessOutputObjects){
+    foreach ($Route in $Device.ProcessOutputObjects){
         $RouteObject=Create-RouteObject
         switch ($Route[0]){
             C{$RouteObject.RouteProtocol="connected"}

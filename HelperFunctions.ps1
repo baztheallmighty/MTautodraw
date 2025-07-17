@@ -150,7 +150,7 @@ function Execute-PythonTextFSM() {
         $ReturnArray,
         $HostObject
     )
-
+	$HostObject.ProcessOutputObjects =@()
     #region --- Define Cache Paths ---
     # Construct the path for the cached JSON file in a '.json' subdirectory.
     $FileBaseName = [System.IO.Path]::GetFileNameWithoutExtension($ShowFile)
@@ -182,7 +182,8 @@ function Execute-PythonTextFSM() {
         # Error handling for the script output.
         if (($ProcessOutput -like "Traceback*") -or ($ProcessOutput -like "An exception occurred*") -or ($ProcessOutput -eq "`[`]") -or ([string]::IsNullOrEmpty($ProcessOutput))) {
             Add-HostDebugText -HostObject $HostObject   "Error with TextFSM Processing $($ProcessOutput)."
-            return "ERROR",$HostObject
+			$HostObject.ProcessOutputObjects = "ERROR"
+            return $HostObject
         }
 
         # Convert the JSON output from the script into PowerShell objects.
@@ -201,7 +202,8 @@ function Execute-PythonTextFSM() {
         Add-HostDebugText -HostObject $HostObject   "Saved new cache file to: $JsonCacheFile"
         #endregion
     }
-	return $Objects,$HostObject
+	$HostObject.ProcessOutputObjects = $Objects
+	return $HostObject
     #region --- Return Logic ---
     # This logic ensures the function returns the object in the desired format (single object or array).
     #if ($ReturnArray) {
@@ -398,13 +400,13 @@ function Get-ConnectorStyle {
 #        }
 #    }
 #
-#    $ProcessOutputObjects = Execute-PythonTextFSM -TextFSTETemplate $Template -ShowFile $BGPSummaryFile -ReturnArray $true
-#    if($ProcessOutputObjects -eq "ERROR"){
+#    $Device.ProcessOutputObjects = Execute-PythonTextFSM -TextFSTETemplate $Template -ShowFile $BGPSummaryFile -ReturnArray $true
+#    if($Device.ProcessOutputObjects -eq "ERROR"){
 #        write-HostDebugText "Error with TextFSM processing for BGP Summary on file: $BGPSummaryFile" -BackgroundColor Red
 #        return $device
 #    }
 #
-#    foreach ($BGPSummaryEntry in $ProcessOutputObjects){
+#    foreach ($BGPSummaryEntry in $Device.ProcessOutputObjects){
 #        $BGPSummaryObject=Create-BGPSummaryObject
 #        $BGPSummaryObject.BGP_ID = $BGPSummaryEntry[0]
 #        $BGPSummaryObject.LOCAL_AS = $BGPSummaryEntry[1]
@@ -441,13 +443,13 @@ function Get-ConnectorStyle {
 #        $Template = $GTemplate.IOSShowIPBGPNeighborsTemplate
 #    }
 #
-#    $ProcessOutputObjects = Execute-PythonTextFSM -TextFSTETemplate $Template -ShowFile $BGPNeighborsFile -ReturnArray $true
-#    if($ProcessOutputObjects -eq "ERROR"){
+#    $Device.ProcessOutputObjects = Execute-PythonTextFSM -TextFSTETemplate $Template -ShowFile $BGPNeighborsFile -ReturnArray $true
+#    if($Device.ProcessOutputObjects -eq "ERROR"){
 #        write-HostDebugText "Error with TextFSM processing for BGP Neighbors on file: $BGPNeighborsFile" -BackgroundColor Red
 #        return $device
 #    }
 #
-#    foreach ($BGPNeighborEntry in $ProcessOutputObjects){
+#    foreach ($BGPNeighborEntry in $Device.ProcessOutputObjects){
 #        $BGPNeighborObject = Create-BGPNeighborObject
 #        if ($Device.version.type -eq "NXOS") {
 #            $BGPNeighborObject.VRF = $BGPNeighborEntry[0]
