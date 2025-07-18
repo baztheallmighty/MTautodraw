@@ -227,8 +227,15 @@ if($GdrawSingles){
     Initialize-DrawioFile
 
     foreach ($Device in $GArrayOfObjects){
+        # Draw the Layer 3 diagram for the device if enabled
         if($GDrawLayer3){
             Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
+        }
+        
+        # ADD THIS BLOCK to draw the physical diagram for the device if enabled
+        # Assumes a global variable $GDrawPhysical exists.
+        if($GDrawPhysical){
+            Draw-SingleHostPhysicalDrawio -Device $Device -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs
         }
     }
 

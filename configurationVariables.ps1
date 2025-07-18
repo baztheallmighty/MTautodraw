@@ -97,6 +97,9 @@ $GDrawMultipleDevicesDiagram=$true
 # static routes to different locations.
 $GdrawSingles=$true
 
+#This draws each device with all it's phyiscal connections to other devices. 
+$GDrawPhysical=$true
+
 # Draw CDP / LLDP Diagram. This will draw a physical (Layer 2) diagram.
 $GDrawCDP=$true
 
