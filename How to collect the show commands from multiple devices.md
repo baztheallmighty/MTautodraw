@@ -328,25 +328,75 @@ show arp-table
 ### Juniper (XML Output)
 ```powershell
 $Commands= @(
-    "show configuration | display xml | no-more",
-    "show spanning-tree bridge | display xml | no-more",
-    "show spanning-tree interface detail | display xml | no-more",
-    "show lldp neighbors | display xml | no-more",
-    "show ethernet-switching table detail | display xml | no-more",
-    "show arp | display xml | no-more",
-    "show route all | display xml | no-more",
-    "show vrrp | display xml | no-more",
-    "show virtual-chassis device-topology | display xml | no-more",
-    "show virtual-chassis  | display xml | no-more",
-    "show system uptime | display xml | no-more",
-    "show version  | display xml | no-more",
-    "show version detail all-members | display xml | no-more",
-    "show interfaces detail | display xml | no-more",
-    "show vlans detail | display xml | no-more",
-    "show lacp interfaces | display xml | no-more",
-    "show chassis | display xml | no-more",
-    "show ethernet-switching table extensive | display xml | no-more",
-    "show log messages | display xml | no-more"
+# --- System, Hardware & Configuration ---
+"show version | display xml | no-more",
+"show configuration | display xml | no-more",
+"show protocols | display xml | no-more",
+"show system license | display xml | no-more",
+"show chassis hardware | display xml | no-more",
+"show chassis environment | display xml | no-more",
+"show chassis power | display xml | no-more",
+"show virtual-chassis | display xml | no-more",
+
+# --- Interfaces ---
+"show interfaces | display xml | no-more",
+"show interfaces terse | display xml | no-more",
+"show interfaces detail | display xml | no-more",
+"show interfaces extensive | display xml | no-more",
+"show interfaces descriptions | display xml | no-more",
+"show interfaces diagnostics optics | display xml | no-more",
+
+# --- Layer 2 Switching ---
+"show vlans | display xml | no-more",
+"show ethernet-switching table | display xml | no-more",
+"show ethernet-switching interfaces | display xml | no-more",
+"show spanning-tree bridge | display xml | no-more",
+"show spanning-tree interface | display xml | no-more",
+"show lldp neighbors | display xml | no-more",
+"show lacp interfaces | display xml | no-more",
+"show multi-chassis mc-lag | display xml | no-more",
+"show ethernet-switching-options secure-access-port | display xml | no-more",
+
+# --- Layer 3 & General Routing ---
+"show route | display xml | no-more",
+"show route instance | display xml | no-more",
+"show arp no-resolve | display xml | no-more",
+"show vrrp | display xml | no-more",
+"show bfd session detail | display xml | no-more",
+"show route forwarding-table | display xml | no-more",
+"show route forwarding-table detail | display xml | no-more",
+
+# --- BGP Routing Protocol ---
+"show bgp summary | display xml | no-more",
+"show bgp summary family inet-vpn | display xml | no-more",
+"show bgp neighbor | display xml | no-more",
+"show route protocol bgp | display xml | no-more",
+"show route advertising-protocol bgp | display xml | no-more",
+"show route table inet.0 protocol bgp | display xml | no-more",
+"show route table inet6.0 protocol bgp | display xml | no-more",
+
+# --- OSPF Routing Protocol ---
+"show ospf neighbor | display xml | no-more",
+"show ospf interface | display xml | no-more",
+"show ospf database | display xml | no-more",
+
+# --- ISIS Routing Protocol ---
+"show isis interface | display xml | no-more",
+"show isis adjacency | display xml | no-more",
+"show isis database | display xml | no-more",
+"show isis topology | display xml | no-more",
+
+# --- Other Routing Protocols ---
+"show route protocol rip | display xml | no-more",
+
+# --- Services, Policy & Advanced Features ---
+"show ntp status | display xml | no-more",
+"show snmp statistics | display xml | no-more",
+"show policy | display xml | no-more",
+"show class-of-service interface | display xml | no-more",
+"show security nat source rule all | display xml | no-more",
+"show forwarding-options port-mirroring | display xml | no-more",
+"show ted database | display xml | no-more"
 )
 ```
 
