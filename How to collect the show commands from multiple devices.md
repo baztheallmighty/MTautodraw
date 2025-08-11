@@ -74,255 +74,311 @@ Create a array of commands you want to run on the switch / router / firewall. He
 ### Cisco
 ```powershell
 $Commands= @(
-    "show ip route vrf `*",
-    "show ip route vrf all",
-    "show snmp",
-    "show logging",
-    "show license all",
-    "show ntp status",
-    "show environment all",
-    "show environment",
-    "show env power all",
-    "show switch detail",
-    "show interfaces transceiver detail",
-    "show vtp status",
-    "show interfaces counters errors",
-    "show processes cpu history",
-    "show processes cpu",
+    # --- System, Hardware & Configuration ---
     "show version",
     "show run",
-    "show cdp neighbors",
-    "show cdp neighbors detail",
-    "show lldp neighbors",
-    "show lldp neighbors detail",
-    "show interface description",
-    "show interface status",
-    "show interface counter",
-    "show interface counter error",
-    "show interface trunk",
+    "show logging",
+    "show history",
+    "show inventory",
+    "show license all",
+    "show switch detail",
+    "show processes cpu",
+    "show processes cpu history",
+    "show environment",
+    "show environment all",
+    "show env power all",
+
+    # --- Interfaces ---
     "show interface",
     "show ip interface brief",
+    "show interface status",
+    "show interface description",
+    "show interface trunk",
+    "show interface counter",
+    "show interfaces counters errors",
+    "show interfaces transceiver detail",
+
+    # --- Layer 2 Switching ---
     "show vlan",
+    "show mac address-table",
+    "show etherchannel summary",
+    "show port-channel summary",
+    "show vpc brief",
+    "show vpc",
+    "show lldp neighbors",
+    "show lldp neighbors detail",
+    "show cdp neighbors",
+    "show cdp neighbors detail",
+    "show vtp status",
     "show spanning-tree",
     "show spanning-tree summary",
     "show spanning-tree root",
     "show spanning-tree blockedports",
-    "show vpc brief",
-    "show vpc",
-    "show ip bgp summary",
-    "show ip bgp",
-    "show ip bgp database",
-    "show ip bgp neighbors",
-    "show ip bgp ipv4 all",
-    "show ip bgp ipv6 all",
-    "show ip rip database",
-    "show eigrp neighbor",
-    "show ospf neighbor",
-    "show ospf enabled interfaces",
-    "show mac address-table",
-    "show ip arp",
-    "show etherchannel summary",
-    "show port-channel summary",
-    "show ip route",
-    "show standby",
-    "show vrf",
-    "show inventory",
-    "show hsrp all",
-    "show hsrp",
-    "show bfd sessions",
-    "show bfd neighbors details",
-    "show ip bgp vpnv4 all neighbors",
-    "show forwarding ipv4 route",
-    "show forwarding adjacency",
-    "show ip eigrp topology",
-    "show ip ospf interface brief",
-    "show ip ospf database router",
-    "show ip ospf database network",
-    "show ip ospf database",
-    "show policy-map interface input",
-    "show policy-map interface output",
-    "show policy-map interface brief",
-    "show queue",
-    "show queueing",
-    "show qos",
-    "show hqf interface",
-    "show table-map",
-    "show history",
-    "show ntp status",
-    "show protocols",
-    "show ip nat translations",
-    "show standby",
-    "show monitor session all",
-    "show port-security",
-    "show monitor session remote",
-    "show monitor session local",
     "show lacp",
     "show lacp counters",
     "show lacp internal",
     "show lacp neighbor detail",
+    
+    # --- Layer 3 & General Routing ---
+    "show ip route",
+    "show ip route vrf `*",
+    "show ip route vrf all",
+    "show vrf",
+    "show protocols",
+    "show ip arp",
+    "show standby",
+    "show hsrp",
+    "show hsrp all",
+    "show bfd sessions",
+    "show bfd neighbors details",
+
+    # --- BGP Routing Protocol ---
+    "show ip bgp",
+    "show ip bgp summary",
+    "show ip bgp neighbors",
+    "show ip bgp database",
+    "show ip bgp ipv4 all",
+    "show ip bgp ipv6 all",
+    "show ip bgp vpnv4 all neighbors",
+
+    # --- OSPF Routing Protocol ---
+    "show ospf neighbor",
+    "show ospf enabled interfaces",
+    "show ip ospf interface brief",
+    "show ip ospf database",
+    "show ip ospf database router",
+    "show ip ospf database network",
+
+    # --- EIGRP Routing Protocol ---
+    "show eigrp neighbor",
+    "show ip eigrp topology",
+
+    # --- ISIS & RIP Routing Protocols ---
+    "show isis adjacency",
+    "show isis database",
+    "show isis topology",
+    "show clns interface",
+    "show clns is-neighbors",
+    "show clns is-neighbors detail",
+    "show ip rip database",
+
+    # --- Forwarding, QoS & Policy ---
     "show cef interface",
     "show ip cef detail",
     "show cef linecard detail",
-    "show mpls traffic-eng forwarding-adjacency",
-    "show isis database",
-    "show isis adjacency",
-    "show clns interface",
-    "show isis topology",
-    "show clns is-neighbors",
-    "show clns is-neighbors detail"
+    "show forwarding ipv4 route",
+    "show forwarding adjacency",
+    "show qos",
+    "show queue",
+    "show queueing",
+    "show policy-map interface input",
+    "show policy-map interface output",
+    "show policy-map interface brief",
+    "show hqf interface",
+    "show table-map",
+
+    # --- Security & Services ---
+    "show ntp status",
+    "show snmp",
+    "show ip nat translations",
+    "show port-security",
+    "show monitor session all",
+    "show monitor session local",
+    "show monitor session remote",
+
+    # --- MPLS ---
+    "show mpls traffic-eng forwarding-adjacency"
 )
 ```
 ### CheckPoint
 ```powershell
 $Commands= @(
+    # --- System, Hardware & Configuration ---
+    "show version all",
+    "show configuration",
+    "show uptime",
     "show sysenv all",
     "show asset all",
-    "show ospf neighbors detailed",
+    "show ntp active",
+    "show ntp servers",
+
+    # --- Interfaces & Layer 2 ---
+    "show interfaces all",
+    "show arp dynamic all",
+
+    # --- Routing & Layer 3 ---
+    "show route all",
     "show ospf summary",
-    "show rip summary",
+    "show ospf neighbors detailed",
     "show ospf interfaces detailed",
     "show bgp summary",
     "show bgp peers detailed",
-    "show version all",
-    "show interfaces all",
-    "show arp dynamic all",
-    "show route all",
-    "show configuration",
-    "show uptime",
+    "show rip summary",
     "show pbr summary",
     "show pbr rules",
-    "show ntp active",
-    "show ntp servers",
-    "show vpn tunnels",
+
+    # --- High Availability & VPN ---
+    "show cluster state",
     "show vrrp summary",
-    "show cluster state"
+    "show vpn tunnels"
 )
 ```
 
 ### Cisco ASA
 ```powershell
 $Commands= @(
+    # --- System & Configuration ---
     "show version",
-    "show ip",
+    "show configuration",
+    "show inventory",
     "show environment",
-    "show failover",
+    "show context",
+    "show context count",
+    "changeto system",
+
+    # --- Interfaces & Layer 2 ---
+    "show interface",
+    "show interface summary",
+    "show port-channel summary",
+    "show port-channel detail",
+    "show bridge-group",
+    
+    # --- Routing & Layer 3 ---
+    "show ip",
+    "show route",
+    "show arp",
+    "show policy-route",
     "show bgp summary",
     "show bgp neighbors",
     "show ospf neighbor detail",
     "show eigrp neighbors",
     "show eigrp topology",
-    "show interface",
-    "show configuration",
-    "show route",
-    "show arp",
-    "show zone",
-    "show vpn-sessiondb summary",
-    "show port-channel summary",
-    "show port-channel detail",
-    "show interface summary",
-    "show policy-route",
+
+    # --- High Availability & Clustering ---
+    "show failover",
+    "show cluster info",
+
+    # --- Security, Services & VPN ---
     "show firewall",
-    "show inventory",
+    "show zone",
+    "show traffic",
+    "show vpn-sessiondb summary",
     "show ipsec sa summary",
     "show ipsec stats",
-    "show ntp status",
-    "show cluster info",
-    "show traffic",
-    "show policy-route",
-    "show inventory",
-    "show bridge-group",
-    "changeto system",
-    "show context",
-    "show context count"
+    "show ntp status"
 )
 ```
 
 ### PA firewall
 ```powershell
 $Commands= @(
+    # --- System & Configuration ---
     "show system info",
-    "show lldp neighbors all",
+    "show config running",
+    "request license info",
+    "show chassis inventory",
+    "show ntp",
+    
+    # --- Interfaces & Layer 2 ---
     "show interface all",
+    "show lldp neighbors all",
+    "show lacp aggregate-ethernet all",
+    "show vlan all",
+    "show mac all",
+
+    # --- Routing & Layer 3 ---
     "show routing route",
     "show routing summary",
     "show arp all",
-    "show lacp aggregate-ethernet all",
-    "show vlan all",
-    "show vpn tunnel",
-    "show ntp",
-    "show mac all",
+
+    # --- High Availability ---
     "show high-availability all",
-    "show chassis inventory",
-    "show config running",
-    "request license info",
-    "show config pushed-shared-policy",
+    
+    # --- Security, Policy & VPN ---
+    "show running security-policy",
     "show running nat-policy",
-    "show running security-policy"
+    "show config pushed-shared-policy",
+    "show vpn tunnel"
 )
 ```
 
 ### WLC
 ```powershell
 $Commands= @(
+    # --- System & Configuration ---
     "show run-config",
-    "show wlan summary",
-    "show wlan apgroups",
-    "show logging",
-    "show rf-profile summary",
-    "show mobility summary",
-    "show mobility anchor",
-    "show mobility ap-list",
-    "show guest-lan summary",
-    "show cdp entry all",
-    "show route summary",
-    "show system route",
-    "show rules",
+    "show run-config commands",
     "show sysinfo",
-    "show stats switch detailed",
-    "show port detailed-info",
-    "show port vlan",
-    "show network summary",
-    "show network profile details",
-    "show dhcp summary",
-    "show ldap summary",
-    "show system interfaces",
+    "show logging",
     "show license all",
-    "show tacacs summary",
-    "show network summary",
-    "show interface detailed virtual",
-    "show interface detailed management",
+    
+    # --- AP & Wireless Management ---
     "show ap summary",
     "show ap inventory all",
     "show ap cdp all",
-    "show run-config commands"
+    "show wlan summary",
+    "show wlan apgroups",
+    "show rf-profile summary",
+    "show guest-lan summary",
+
+    # --- Mobility & Roaming ---
+    "show mobility summary",
+    "show mobility anchor",
+    "show mobility ap-list",
+    
+    # --- Interfaces & Ports ---
+    "show network summary",
+    "show system interfaces",
+    "show interface detailed virtual",
+    "show interface detailed management",
+    "show port detailed-info",
+    "show port vlan",
+    "show cdp entry all",
+    
+    # --- Network Services & Routing ---
+    "show route summary",
+    "show system route",
+    "show dhcp summary",
+    "show ldap summary",
+    "show tacacs summary",
+    "show rules"
 )
 ```
 
 ### Blue coat 
 ```
-show interface all
+--- System & Configuration ---
 show version
-show routing-domain
-show virtual-ip
-show accelerated-pac
-show bridge
-show dns
-show dns-forwarding
-show failover configuration
-show forwarding
 show general
-show ip-default-gateway 
-show ip-route-table
 show licenses
-show ntp
-show policy config
+show tcp-ip
+
+--- Interfaces & Network ---
+show interface all
+show bridge
+show virtual-ip
 show private-network
+
+--- Routing & Layer 3 ---
+show routing-domain
+show ip-default-gateway
+show ip-route-table
+show static-routes
+show arp-table
+
+--- Proxy Services & Policy ---
+show accelerated-pac
 show proxy-services
 show management-services
-show static-routes
-show tcp-ip
+show policy config
+show forwarding
+
+--- High Availability & Services ---
+show failover configuration
+show dns
+show dns-forwarding
+show ntp
 show wccp status
-show arp-table
 ```
 
 ### Juniper (XML Output)
