@@ -82,6 +82,9 @@ $GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPNeighborsTemplate -
 $GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPNeighborsAdvertisedTemplate -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_neighbors_advertised-routes.textfsm"
 $GTemplate | Add-Member -type NoteProperty -Name NexusShowIPBGPSummaryTemplate -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_bgp_summary.textfsm"
 $GTemplate | Add-Member -type NoteProperty -Name NexusShowIPBGPNeighborsTemplate -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_bgp_neighbors.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPVPNv4NeighborsTemplate -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_vpnv4_all_neighbors.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceLogical -value "$($GPathToTextFSMTemplates)paloalto_panos_show_interface_logical.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -value "$($GPathToTextFSMTemplates)paloalto_panos_show_interface_hardware.textfsm"
 
 ################################################################################
 ## --- Diagram Generation Toggles ---

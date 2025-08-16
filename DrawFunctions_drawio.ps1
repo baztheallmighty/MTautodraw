@@ -272,7 +272,7 @@ function Add-DrawioPhysicalInterface {
         $crossId = "cross-$((New-Guid).ToString().Substring(0,8))"
         $crossStyle = "shape=mxgraph.basic.cross;strokeColor=#D32F2F;strokeWidth=3;rotation=20;"
         # This cross shape is a child of the interface shape and is positioned relatively within it.
-        $global:drawioXml += "        <mxCell id=`"$crossId`" value=`"`" style=`"$crossStyle`" vertex=`"1`" parent=`"$interfaceId`">`n             <mxGeometry x=`"0.25`" y=`"0.25`" width=`"0.5`" height=`"0.5`" relative=`"1`" as=`"geometry`" />`n        </mxCell>`n"
+        $global:drawioXml += "        <mxCell id=`"$crossId`" value=`"`" style=`"$crossStyle`" vertex=`"1`" parent=`"$interfaceId`">`n             <mxGeometry x=`"0.25`" y=`"0.25`" width=`"10`" height=`"10`" relative=`"1`" as=`"geometry`" />`n        </mxCell>`n"
     }
     return $interfaceId
 }
@@ -297,7 +297,10 @@ function Add-DrawioHostPhysical {
             $_.HasCPDNieghbor -or
             $_.HasLLDPNeighbor -or
             ($_.STRole -eq 'Root' -or $_.STRole -eq 'ALT')
-        ) -and ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel' -and (-not $_.shutdown))
+        # --- START MODIFICATION ---
+        # Added 'ae' to the regex to prevent aggregate interfaces from being drawn as physical ports.
+        ) -and ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown))
+        # --- END MODIFICATION ---
     })
 
     # Optionally, also select interfaces that have a significant number of MAC addresses learned.
@@ -306,8 +309,10 @@ function Add-DrawioHostPhysical {
         $macInterfacesToDraw = @($Device.interfaces | Where-Object {
             # Ensure we don't re-select interfaces already chosen above.
             ($_.Interface -notin $neighborAndStpInterfaces.Interface) -and
-            # Apply the same exclusion filters.
-            ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel' -and (-not $_.shutdown)) -and
+            # --- START MODIFICATION ---
+            # Added 'ae' to this regex as well for consistency.
+            ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown)) -and
+            # --- END MODIFICATION ---
             # Check if the MAC address count meets the global threshold.
             ($_.MacAddressArray) -and
             (($_.MacAddressArray).Count -ge $GDrawPortsWithMacs)
@@ -598,7 +603,6 @@ function Add-DrawioLogicalInterface {
             <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$GDrawioLogicalInterfaceWidth`" height=`"$height`" as=`"geometry`" />
         </mxCell>`n"
 }
-
 # Creates the XML for a Layer 3 host and its logical interfaces.
 function Add-DrawioHostLayer3 {
     [CmdletBinding()]
@@ -622,7 +626,6 @@ function Add-DrawioHostLayer3 {
     }
     elseif ($DiagramType -eq "RoutesOnly") {
         # For 'RoutesOnly' diagrams, only draw interfaces that are actively part of a route being displayed.
-        # This is controlled by a pre-populated '.DrawOnRoutesOnlyDiagram' property.
         $interfacesToDraw = $Device.interfaces | Where-Object { $_.DrawOnRoutesOnlyDiagram } | Sort-Object vrf, interface
 
     }
@@ -636,30 +639,39 @@ function Add-DrawioHostLayer3 {
     $hostWidth = [System.Math]::Max($hostWidth, $GDrawioLayer3HostFormWidth) # Enforce minimum width.
     # Create the main group cell.
     $hostGroupId = "l3-host-group-$((New-Guid).ToString().Substring(0,8))"
-    $global:drawioXml += "        <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
-        <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$($GDrawioLayer3HostFormHeight + $GDrawioLogicalInterfaceHeight + 40)`" as=`"geometry`" />
+    $global:drawioXml += "         <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
+    <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$($GDrawioLayer3HostFormHeight + $GDrawioLogicalInterfaceHeight + 40)`" as=`"geometry`" />
     </mxCell>`n"
     # Style the host box based on its type.
     $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fontSize=$($GCDPHostFontSize);fontStyle=1;strokeWidth=2;"
+    
+    # Prepare the local AS Number text if it exists on the device.
+    $asNumberText = ""
+    if ($Device.BGP_AS_Number) {
+        $asNumberText = "<br><b>AS:</b> $($Device.BGP_AS_Number)"
+    }
+
     if ($HostType -eq "GatewayHost") {
-        $hostText = "<b>$($Device.HostName)</b>"
+        # For gateway hosts, the label includes the HostName and the discovered AS number.
+        $hostText = "<b>$($Device.HostName)</b>$asNumberText"
         $hostStyle += "fillColor=$(Convert-RgbToHex -RgbString $Layer3ARPHostColour);"
     }
     else {
-        $hostText = "<b>$($Device.DeviceIdentifier)</b><br>$($Device.HostName)"
+        # For regular hosts, just show their own AS number.
+        $hostText = "<b>$($Device.DeviceIdentifier)</b><br>$($Device.HostName)$asNumberText"
         $hostStyle += "fillColor=$(Convert-RgbToHex -RgbString $Layer3HostColour);"
     }
     $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
     # Create the visible host box cell.
     $hostId = "l3-host-box-$((New-Guid).ToString().Substring(0,8))"
-    $global:drawioXml += "        <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
-        <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$GDrawioLayer3HostFormHeight`" as=`"geometry`" />
+    $global:drawioXml += "         <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
+    <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$GDrawioLayer3HostFormHeight`" as=`"geometry`" />
     </mxCell>`n"
     # If it's a gateway host, add a small router icon for visual distinction.
     if ($HostType -eq "GatewayHost") {
         $iconId = "icon-$((New-Guid).ToString().Substring(0,8))"
         $iconStyle = "shape=mxgraph.cisco.routers.router;fillColor=#FFFFFF;strokeColor=none;"
-        $global:drawioXml += "        <mxCell id=`"$iconId`" value=`"`" style=`"$iconStyle`" vertex=`"1`" parent=`"$hostGroupId`">
+        $global:drawioXml += "         <mxCell id=`"$iconId`" value=`"`" style=`"$iconStyle`" vertex=`"1`" parent=`"$hostGroupId`">
             <mxGeometry x=`"10`" y=`"-20`" width=`"50`" height=`"35`" as=`"geometry`" />
         </mxCell>`n"
     }

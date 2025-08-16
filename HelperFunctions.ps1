@@ -352,111 +352,24 @@ function Get-ConnectorStyle {
     }
 }
 
+# Checks if a file exists, is not empty, and does not contain common CLI errors.
+function Test-FileHasValidData {
+    param(
+        [parameter(Mandatory=$true)]
+        [string]$FilePath
+    )
+    
+    # Check if file exists and has content
+    if (-not (Test-Path -Path $FilePath) -or (Get-Item $FilePath).Length -lt 10) {
+        return $false
+    }
 
-#function Get-BGPSummaryFromText {
-#    param (
-#        [parameter(Mandatory=$true)]
-#        $BGPSummaryFile,
-#        $Device
-#    )
-#    $BGPSummaryText = Get-Content -raw $BGPSummaryFile
-#    $AllBGPSummaryObjects=@()
-#
-#    if(($BGPSummaryText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing)").Matches.Success){
-#        write-HostDebugText "BGP Summary file contains invalid data or is empty: $BGPSummaryFile" -BackgroundColor Red
-#        return $device
-#    }
-#
-#    $Template = $null
-#    switch ($Device.version.type) {
-#        "NXOS" { $Template = $GTemplate.NexusShowIPBGPSummaryTemplate }
-#        "IOS" { $Template = $GTemplate.IOSShowIPBGPSummaryTemplate }
-#        "XE-IOS" { $Template = $GTemplate.IOSShowIPBGPSummaryTemplate }
-#        "CiscoASA" { $Template = $GTemplate.ASAShowBGPSummaryTemplate }
-#        default {
-#            write-HostDebugText "BGP Summary parsing not supported for device type $($Device.version.type)" -BackgroundColor Yellow
-#            return $device
-#        }
-#    }
-#
-#    $Device.ProcessOutputObjects = Execute-PythonTextFSM -TextFSTETemplate $Template -ShowFile $BGPSummaryFile -ReturnArray $true
-#    if($Device.ProcessOutputObjects -eq "ERROR"){
-#        write-HostDebugText "Error with TextFSM processing for BGP Summary on file: $BGPSummaryFile" -BackgroundColor Red
-#        return $device
-#    }
-#
-#    foreach ($BGPSummaryEntry in $Device.ProcessOutputObjects){
-#        $BGPSummaryObject=Create-BGPSummaryObject
-#        $BGPSummaryObject.BGP_ID = $BGPSummaryEntry[0]
-#        $BGPSummaryObject.LOCAL_AS = $BGPSummaryEntry[1]
-#        $BGPSummaryObject.NEIGHBOR = $BGPSummaryEntry[2]
-#        $BGPSummaryObject.VRF = $BGPSummaryEntry[3]
-#        $BGPSummaryObject.REMOTE_AS = $BGPSummaryEntry[4]
-#        $BGPSummaryObject.UP_DOWN = $BGPSummaryEntry[8]
-#        $BGPSummaryObject.STATE_PFX = $BGPSummaryEntry[9]
-#        $AllBGPSummaryObjects += $BGPSummaryObject
-#    }
-#
-#    $device.BGPSummary = $AllBGPSummaryObjects
-#    return $device
-#}
-#
-#function Get-BGPNeighborsFromText {
-#    param (
-#        [parameter(Mandatory=$true)]
-#        $BGPNeighborsFile,
-#        $Device
-#    )
-#    $BGPNeighborsText = Get-Content -raw $BGPNeighborsFile
-#    $AllBGPNeighborObjects=@()
-#
-#    if(($BGPNeighborsText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing)").Matches.Success){
-#        write-HostDebugText "BGP Neighbors file contains invalid data or is empty: $BGPNeighborsFile" -BackgroundColor Red
-#        return $device
-#    }
-#
-#    $Template = $null
-#    if ($Device.version.type -eq "NXOS") {
-#        $Template = $GTemplate.NexusShowIPBGPNeighborsTemplate
-#    } else { # Covers IOS and XE-IOS as they use the same template
-#        $Template = $GTemplate.IOSShowIPBGPNeighborsTemplate
-#    }
-#
-#    $Device.ProcessOutputObjects = Execute-PythonTextFSM -TextFSTETemplate $Template -ShowFile $BGPNeighborsFile -ReturnArray $true
-#    if($Device.ProcessOutputObjects -eq "ERROR"){
-#        write-HostDebugText "Error with TextFSM processing for BGP Neighbors on file: $BGPNeighborsFile" -BackgroundColor Red
-#        return $device
-#    }
-#
-#    foreach ($BGPNeighborEntry in $Device.ProcessOutputObjects){
-#        $BGPNeighborObject = Create-BGPNeighborObject
-#        if ($Device.version.type -eq "NXOS") {
-#            $BGPNeighborObject.VRF = $BGPNeighborEntry[0]
-#            $BGPNeighborObject.NEIGHBOR = $BGPNeighborEntry[1]
-#            $BGPNeighborObject.REMOTE_AS = $BGPNeighborEntry[2]
-#            $BGPNeighborObject.BGP_STATE = $BGPNeighborEntry[3]
-#            $BGPNeighborObject.REMOTE_ROUTER_ID = $BGPNeighborEntry[4]
-#            $BGPNeighborObject.INBOUND_ROUTEMAP = $BGPNeighborEntry[5]
-#            $BGPNeighborObject.OUTBOUND_ROUTEMAP = $BGPNeighborEntry[6]
-#            $BGPNeighborObject.PEER_GROUP = $BGPNeighborEntry[7]
-#            $BGPNeighborObject.SOURCE_IFACE = $BGPNeighborEntry[8]
-#            $BGPNeighborObject.LOCALHOST_IP = $BGPNeighborEntry[9]
-#            $BGPNeighborObject.LOCALHOST_PORT = $BGPNeighborEntry[10]
-#            $BGPNeighborObject.REMOTE_IP = $BGPNeighborEntry[11]
-#            $BGPNeighborObject.REMOTE_PORT = $BGPNeighborEntry[12]
-#        } else { # IOS and XE-IOS
-#            $BGPNeighborObject.NEIGHBOR = $BGPNeighborEntry[0]
-#            $BGPNeighborObject.REMOTE_AS = $BGPNeighborEntry[1]
-#            $BGPNeighborObject.BGP_STATE = $BGPNeighborEntry[2]
-#            $BGPNeighborObject.REMOTE_ROUTER_ID = $BGPNeighborEntry[3]
-#            $BGPNeighborObject.LOCALHOST_IP = $BGPNeighborEntry[4]
-#            $BGPNeighborObject.LOCALHOST_PORT = $BGPNeighborEntry[5]
-#            $BGPNeighborObject.REMOTE_IP = $BGPNeighborEntry[6]
-#            $BGPNeighborObject.REMOTE_PORT = $BGPNeighborEntry[7]
-#        }
-#        $AllBGPNeighborObjects += $BGPNeighborObject
-#    }
-#
-#    $device.BGPNeighbors = $AllBGPNeighborObjects
-#    return $device
-#}
+    # Check for common error strings
+    $Content = Get-Content -raw $FilePath
+    if (($Content | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|% Unrecognized command)").Matches.Success) {
+        return $false
+    }
+
+    # If all checks pass, the file is considered valid
+    return $true
+}

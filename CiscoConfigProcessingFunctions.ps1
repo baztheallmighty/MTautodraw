@@ -90,15 +90,50 @@ function Process-CiscoHostFiles{
             }
         }
         
-        #if($hostid.ShowIPBGPSummary){
-        #    Add-HostDebugText -HostObject $Device "Processing Show BGP Summary: $($hostid.ShowIPBGPSummary)"
-        #    $Device=Get-BGPSummaryFromText -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
-        #}
-        #
-        #if($hostid.ShowIPBGPNeighbors){
-        #    Add-HostDebugText -HostObject $Device "Processing Show BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
-        #    $Device=Get-BGPNeighborsFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
-        #}
+        # Check if ANY BGP neighbor file property has been populated for this host
+        if ($hostid.ShowIPBGPNeighbors -or $hostid.ShowIPBGPVPNv4Neighbors) {
+           # Check the OS type determined from 'show version'
+           if ($Device.version.type -eq "NXOS") {
+               # --- NX-OS LOGIC ---
+               Add-HostDebugText -HostObject $Device "Device is NX-OS. Checking NX-OS BGP file."
+               if ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
+                   Add-HostDebugText -HostObject $Device "Processing NX-OS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
+                   $Device = Get-BGPNeighborsNXOSFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
+               }
+               else {
+                   Add-HostDebugText -HostObject $Device "NX-OS BGP file is not valid or was not found." -BackgroundColor Yellow
+               }
+           }
+           else {
+               # --- IOS/IOS-XE LOGIC ---
+               Add-HostDebugText -HostObject $Device "Device is IOS/XE. Checking IOS BGP files."
+               # Check the more specific VPNv4 neighbors file first for valid data
+               if ($hostid.ShowIPBGPVPNv4Neighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPVPNv4Neighbors)) {
+                   Add-HostDebugText -HostObject $Device "Processing IOS BGP VPNv4 Neighbors: $($hostid.ShowIPBGPVPNv4Neighbors)"
+                   $Device=Get-BGPNeighborsFromText -BGPNeighborsFile $hostid.ShowIPBGPVPNv4Neighbors -Device $Device
+               }
+               # If the VPNv4 file is invalid or missing, fall back to the standard neighbors file
+               elseif ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
+                   Add-HostDebugText -HostObject $Device "Processing IOS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
+                   $Device=Get-BGPNeighborsStandardFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
+               }
+               else {
+                   Add-HostDebugText -HostObject $Device "No valid IOS BGP neighbor files found to process." -BackgroundColor Yellow
+               }
+           }
+        }
+        else {
+           Add-HostDebugText -HostObject $Device "No BGP neighbor file properties were populated for this host." -BackgroundColor Yellow
+        }
+        # 2. FALLBACK: If no neighbors were found, use the summary file
+        if ($device.BGPNeighbors.Count -eq 0 -and $hostid.ShowIPBGPSummary) {
+           Add-HostDebugText -HostObject $Device "No valid BGP neighbor data found. Attempting fallback to summary file." -BackgroundColor Yellow
+           if (Test-FileHasValidData -FilePath $hostid.ShowIPBGPSummary) {
+               $Device = Get-BGPNeighborsFromSummary -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
+           } else {
+               Add-HostDebugText -HostObject $Device "BGP Summary file is also invalid, skipping." -BackgroundColor Red
+           }
+        }
         
         if($hostid.ShowSpanningTree){
            Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree"
@@ -1812,7 +1847,12 @@ function Get-ShowRunFromText(){
         }
         $vlans+= $vlanObject
     }
-
+    
+    $BGPSection = ($Lconfig | Select-String -Pattern '(?smi)^router bgp.*?(?=^!|^\S)' -AllMatches).Matches.Value
+    if ($BGPSection) {
+        $HostObject.BGP_AS_Number = (($BGPSection | Select-String 'router bgp \d+').Matches.Value -replace 'router bgp\s+','' -replace '\s.*','').Trim()
+    }
+    
     $HostObject.vlans = $vlans
     $HostObject.interfaces = $interfaces
     $HostObject.vrfs = $vrfs
@@ -1822,4 +1862,246 @@ function Get-ShowRunFromText(){
     return $HostObject
 }
 
+#Process the show ip bgp neighbors file for VPNv4 contexts
+function Get-BGPNeighborsFromText(){
+    param (
+        [parameter(Mandatory=$true)]
+        $BGPNeighborsFile,
+        $Device
+    )
 
+    # --- Validation Check ---
+    $BGPNeighborsText = Get-Content -raw $BGPNeighborsFile
+    if(($BGPNeighborsText | Select-String "(BGP not active|Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|LLDP is not enabled)").Matches.Success){
+        Add-HostDebugText -HostObject $Device "$($BGPNeighborsText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+        return $device
+    }
+    # --- End of Validation Check ---
+
+    $AllBGPNeighbors = @() # Array to hold all neighbor objects
+
+
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPBGPVPNv4NeighborsTemplate -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
+
+    if($Device.ProcessOutputObjects -eq "ERROR"){
+        Add-HostDebugText -HostObject $Device "Error processing BGP VPNv4 neighbors file: $($BGPNeighborsFile)" -BackgroundColor Red
+        return $device
+    }
+
+    # Handle cases where only one neighbor is returned as a flat array
+    if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+        $tempArray = @()
+        $tempArray += ,$Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    # Process each neighbor found by TextFSM
+    foreach ($NeighborData in $Device.ProcessOutputObjects){
+        $NeighborObject = Create-BGPNeighborObject
+        $NeighborObject.NEIGHBOR           = $NeighborData[0]
+        $NeighborObject.VRF                = $NeighborData[1]
+        $NeighborObject.REMOTE_AS          = $NeighborData[2]
+        $NeighborObject.LOCAL_AS           = $NeighborData[3]
+        $NeighborObject.PEER_GROUP         = $NeighborData[4]
+        $NeighborObject.REMOTE_ROUTER_ID   = $NeighborData[5]
+        $NeighborObject.BGP_STATE          = $NeighborData[6]
+        $NeighborObject.LOCALHOST_IP       = $NeighborData[7]
+        $NeighborObject.LOCALHOST_PORT     = $NeighborData[8]
+        $NeighborObject.REMOTE_IP          = $NeighborData[9]
+        $NeighborObject.REMOTE_PORT        = $NeighborData[10]
+        $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[11]
+        $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[12]
+        
+        $AllBGPNeighbors += $NeighborObject
+    }
+
+    $device.BGPNeighbors = $AllBGPNeighbors
+    return $device
+}
+
+
+
+
+#Process the standard 'show ip bgp neighbors' file
+function Get-BGPNeighborsStandardFromText(){
+    param (
+        [parameter(Mandatory=$true)]
+        $BGPNeighborsFile,
+        $Device
+    )
+
+    # Read the file to check for errors before processing
+    $BGPNeighborsText = Get-Content -raw $BGPNeighborsFile
+
+    if(($BGPNeighborsText | Select-String "(BGP not active|Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
+        Add-HostDebugText -HostObject $Device "$($BGPNeighborsText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+        return $device
+    }
+
+    # Start with any neighbors that may have already been added (e.g., from VPNv4)
+    $AllBGPNeighbors = $Device.BGPNeighbors 
+
+    # Use the standard IOS BGP Neighbors template
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPBGPNeighborsTemplate -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
+
+    if($Device.ProcessOutputObjects -eq "ERROR"){
+        Add-HostDebugText -HostObject $Device "Error processing standard BGP neighbors file: $($BGPNeighborsFile)" -BackgroundColor Red
+        return $device
+    }
+
+    # Handle cases where only one neighbor is returned
+    if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+        $tempArray = @()
+        $tempArray += ,$Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    # Process each neighbor found by TextFSM
+    foreach ($NeighborData in $Device.ProcessOutputObjects){
+        $NeighborObject = Create-BGPNeighborObject
+        $NeighborObject.NEIGHBOR           = $NeighborData[0]
+        $NeighborObject.REMOTE_AS          = $NeighborData[1]
+        $NeighborObject.PEER_GROUP         = $NeighborData[2]
+        $NeighborObject.REMOTE_ROUTER_ID   = $NeighborData[3]
+        $NeighborObject.BGP_STATE          = $NeighborData[4]
+        $NeighborObject.LOCALHOST_IP       = $NeighborData[5]
+        $NeighborObject.LOCALHOST_PORT     = $NeighborData[6]
+        $NeighborObject.REMOTE_IP          = $NeighborData[7]
+        $NeighborObject.REMOTE_PORT        = $NeighborData[8]
+        $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[9]
+        $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[10]
+        
+        $AllBGPNeighbors += $NeighborObject
+    }
+
+    $device.BGPNeighbors = $AllBGPNeighbors
+    return $device
+}
+
+
+#Process the 'show ip bgp neighbors' file for NX-OS devices
+function Get-BGPNeighborsNXOSFromText {
+    param (
+        [parameter(Mandatory=$true)]
+        $BGPNeighborsFile,
+        $Device
+    )
+
+    # Standard validation check
+    $BGPNeighborsText = Get-Content -raw $BGPNeighborsFile
+    if (($BGPNeighborsText | Select-String "(BGP not active|Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|% Unrecognized command)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($BGPNeighborsText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $device
+    }
+
+    # Start with any existing neighbors
+    $AllBGPNeighbors = $Device.BGPNeighbors
+
+    # Use the NX-OS BGP Neighbors template
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPBGPNeighborsTemplate -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
+
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error processing NX-OS BGP neighbors file: $($BGPNeighborsFile)" -BackgroundColor Red
+        return $device
+    }
+
+    # Handle single result
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += ,$Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    # Process each neighbor, mapping only common fields
+    foreach ($NeighborData in $Device.ProcessOutputObjects) {
+        $NeighborObject = Create-BGPNeighborObject
+        $NeighborObject.NEIGHBOR           = $NeighborData[0]
+        $NeighborObject.DESCRIPTION        = $NeighborData[1]
+        $NeighborObject.REMOTE_AS          = $NeighborData[2]
+        $NeighborObject.BGP_STATE          = $NeighborData[3]
+        $NeighborObject.SOURCE_IFACE       = $NeighborData[5]
+        $NeighborObject.LOCALHOST_IP       = $NeighborData[17]
+        $NeighborObject.LOCALHOST_PORT     = $NeighborData[18]
+        $NeighborObject.REMOTE_IP          = $NeighborData[19]
+        $NeighborObject.REMOTE_PORT        = $NeighborData[20]
+        $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[52]
+        $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[53]
+
+        $AllBGPNeighbors += $NeighborObject
+    }
+
+    $device.BGPNeighbors = $AllBGPNeighbors
+    return $device
+}
+
+
+#Process the 'show ip bgp summary' file as a fallback to populate BGP neighbors
+function Get-BGPNeighborsFromSummary {
+    param (
+        [parameter(Mandatory=$true)]
+        $BGPSummaryFile,
+        $Device
+    )
+
+    # Standard validation check
+    $BGPSummaryText = Get-Content -raw $BGPSummaryFile
+    if (($BGPSummaryText | Select-String "(BGP not active|Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|% Unrecognized command)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($BGPSummaryText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "BGP Summary file contains invalid data or is empty." -BackgroundColor red
+        return $device
+    }
+
+    $AllBGPNeighbors = @()
+    $TemplateToUse = $null
+
+    # Determine which TextFSM template to use based on OS type
+    if ($Device.version.type -eq "NXOS") {
+        $TemplateToUse = $GTemplate.NexusShowIPBGPSummaryTemplate
+    } else {
+        $TemplateToUse = $GTemplate.IOSShowIPBGPSummaryTemplate
+    }
+
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $TemplateToUse -ShowFile $BGPSummaryFile -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") { return $device }
+
+    # Handle single result
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += ,$Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    # Process each summary entry, creating BGPNeighborObjects
+    foreach ($SummaryData in $Device.ProcessOutputObjects) {
+        $NeighborObject = Create-BGPNeighborObject
+        
+        if ($Device.version.type -eq "NXOS") {
+            $NeighborObject.NEIGHBOR    = $SummaryData[3]
+            $NeighborObject.REMOTE_AS   = $SummaryData[4]
+            # Try to determine state from the 'State/PfxRcd' field
+            if ($SummaryData[10] -match '^\d+$') {
+                $NeighborObject.BGP_STATE = "Established"
+            } else {
+                $NeighborObject.BGP_STATE = $SummaryData[10]
+            }
+        }
+        else { # IOS/IOS-XE
+            $NeighborObject.NEIGHBOR    = $SummaryData[3]
+            $NeighborObject.REMOTE_AS   = $SummaryData[4]
+            # Try to determine state from the 'State/PfxRcd' field
+            if ($SummaryData[6] -match '^\d+$') {
+                $NeighborObject.BGP_STATE = "Established"
+            } else {
+                $NeighborObject.BGP_STATE = $SummaryData[6]
+            }
+        }
+        $AllBGPNeighbors += $NeighborObject
+    }
+
+    $device.BGPNeighbors = $AllBGPNeighbors
+    Add-HostDebugText -HostObject $Device "  -> Populated $($AllBGPNeighbors.Count) BGP neighbors from summary file."
+    return $device
+}

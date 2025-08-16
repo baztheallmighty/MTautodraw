@@ -184,10 +184,14 @@ function Create-FileObject(){
     $newObject| Add-Member -type NoteProperty -Name CiscoASAShowRoute -value $null
     $newObject| Add-Member -type NoteProperty -Name ShowSpanningTreeInterface -value $null
     $newObject| Add-Member -type NoteProperty -Name JunosShowSpanningTreeBridgeFromXML -value $null
-
-    $newObject| Add-Member -type NoteProperty -Name ShowIPBGPSummary -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPBGPNeighbors -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPBGPNeighborsAdvertised -value $null    
+    $newObject| Add-Member -type NoteProperty -Name ShowIPBGPSummary  -value $null
+    $newObject| Add-Member -type NoteProperty -Name ShowIPBGPVPNv4Neighbors -value $null
+    $newObject| Add-Member -type NoteProperty -Name ShowSystemInfo -value $null # Add this line
+    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceAll -value $null # Add this line
+    $newObject| Add-Member -type NoteProperty -Name ShowArp -value $null
+    $newObject| Add-Member -type NoteProperty -Name ShowEthernetSwitchingTable -value $null
+    $newObject| Add-Member -type NoteProperty -Name ShowVlansDetail -value $null
+    
     return $newObject
 }
 
@@ -364,7 +368,7 @@ function Create-HostObject(){
     $newObject| Add-Member -type NoteProperty -Name Capabilities -value $null                #This is used for CDP information and contains the platform that is pulled from cdp neighbors
     $newObject| Add-Member -type NoteProperty -Name DeviceIdentifier  -value $null           #Part of the file name used to identify this device.
     $newObject| Add-Member -type NoteProperty -Name Shape -value $null                       #Shape object used to hold the shape information for drawing in visio
-    $newObject| Add-Member -type NoteProperty -Name BGPSummary -value @()                     #Array of BGP summary information objects
+    $newObject| Add-Member -type NoteProperty -Name BGP_AS_Number -value $null                #store the bgp AS 
     $newObject| Add-Member -type NoteProperty -Name BGPNeighbors -value @()                   #Array of BGP neighbor objects
     $newObject| Add-Member -type NoteProperty -Name DebugLog -value @()                       #debug logs created when processing config files. 
 	$newObject| Add-Member -type NoteProperty -Name ProcessOutputObjects -value @()                       #Stores raw objects after processing of Execute-PythonTextFSM
@@ -373,33 +377,23 @@ function Create-HostObject(){
 
 
 
-function Create-BGPSummaryObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name VRF -value $null
-    $newObject| Add-Member -type NoteProperty -Name BGP_ID -value $null
-    $newObject| Add-Member -type NoteProperty -Name LOCAL_AS -value $null
-    $newObject| Add-Member -type NoteProperty -Name NEIGHBOR -value $null
-    $newObject| Add-Member -type NoteProperty -Name REMOTE_AS -value $null
-    $newObject| Add-Member -type NoteProperty -Name UP_DOWN -value $null
-    $newObject| Add-Member -type NoteProperty -Name STATE_PFX -value $null
-    return $newObject
-}
-
 function Create-BGPNeighborObject(){
     $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name VRF -value "default"
     $newObject| Add-Member -type NoteProperty -Name NEIGHBOR -value $null
+    $newObject| Add-Member -type NoteProperty -Name DESCRIPTION -value $null # <-- Add this
+    $newObject| Add-Member -type NoteProperty -Name SOURCE_IFACE -value $null # <-- Add this
+    $newObject| Add-Member -type NoteProperty -Name VRF -value "default"
     $newObject| Add-Member -type NoteProperty -Name REMOTE_AS -value $null
-    $newObject| Add-Member -type NoteProperty -Name BGP_STATE -value $null
-    $newObject| Add-Member -type NoteProperty -Name REMOTE_ROUTER_ID -value $null
-    $newObject| Add-Member -type NoteProperty -Name INBOUND_ROUTEMAP -value $null
-    $newObject| Add-Member -type NoteProperty -Name OUTBOUND_ROUTEMAP -value $null
+    $newObject| Add-Member -type NoteProperty -Name LOCAL_AS -value $null
     $newObject| Add-Member -type NoteProperty -Name PEER_GROUP -value $null
-    $newObject| Add-Member -type NoteProperty -Name SOURCE_IFACE -value $null
+    $newObject| Add-Member -type NoteProperty -Name REMOTE_ROUTER_ID -value $null
+    $newObject| Add-Member -type NoteProperty -Name BGP_STATE -value $null
     $newObject| Add-Member -type NoteProperty -Name LOCALHOST_IP -value $null
     $newObject| Add-Member -type NoteProperty -Name LOCALHOST_PORT -value $null
     $newObject| Add-Member -type NoteProperty -Name REMOTE_IP -value $null
     $newObject| Add-Member -type NoteProperty -Name REMOTE_PORT -value $null
+    $newObject| Add-Member -type NoteProperty -Name INBOUND_ROUTEMAP -value $null
+    $newObject| Add-Member -type NoteProperty -Name OUTBOUND_ROUTEMAP -value $null
     $newObject| Add-Member -type NoteProperty -Name AdvertisedRoutes -value @()
     return $newObject
 }

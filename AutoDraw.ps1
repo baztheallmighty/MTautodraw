@@ -93,7 +93,8 @@ $GLibrariesToLoad=@(
     "CheckPointConfigProcessingFunctions.ps1",
     "CiscoASAConfigProcessingFunctions.ps1",
     "StartProcessingConfig.ps1",
-    "JunosConfigProcessingFunctions.ps1"
+    "JunosConfigProcessingFunctions.ps1",
+    "PaloAltoConfigProcessingFunctions.ps1"
 )
 
 #Check all the templates exist
@@ -194,7 +195,7 @@ if($GExportData){
         $t
     } | select DeviceIdentifier,cidr,routedvlan,networkname,partentobject,DeviceInVlan | export-csv "$($GOutPutDirectory)cidr.csv" -NoTypeInformation
 
-    $GArrayOfObjects | ConvertTo-Json -Depth 10 | Out-File "$($GOutPutDirectory)Objects.json" -Encoding utf8
+    #$GArrayOfObjects | ConvertTo-Json -Depth 10 | Out-File "$($GOutPutDirectory)Objects.json" -Encoding utf8
 }
 
 
