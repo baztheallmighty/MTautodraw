@@ -940,7 +940,7 @@ function Get-ShowIPRouteFromText(){
             $RouteObject=Create-RouteObject
             $RouteObject.VRF=$Route[0]
             $RouteObject.RouteProtocol=$Route[1]
-            if($RouteObject.RouteProtocol -eq "hsrp" -and $SkipHSRPRoutes){ #HSRP is not a routing protocol we want to have included.
+            if($RouteObject.RouteProtocol -eq "hsrp" -and $GSkipHSRPRoutes){ #HSRP is not a routing protocol we want to have included.
                 continue
             }
             if($null -eq $RouteObject.RouteProtocol){ #something went wrong, we have a route without a routing protocol

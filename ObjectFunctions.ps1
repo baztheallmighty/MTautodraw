@@ -133,6 +133,7 @@ function Create-SpanningTreeInterface(){
     $newObject| Add-Member -type NoteProperty -Name Interface  -value $null 
     $newObject| Add-Member -type NoteProperty -Name Role       -value $null
     $newObject| Add-Member -type NoteProperty -Name Status     -value $null #This is incorrect and should be state TODO: Fix this. 
+
     $newObject| Add-Member -type NoteProperty -Name Cost       -value $null
     $newObject| Add-Member -type NoteProperty -Name PrioNbr    -value $null
     $newObject| Add-Member -type NoteProperty -Name Type       -value $null
@@ -355,7 +356,6 @@ function Create-HostObject(){
     $newObject| Add-Member -type NoteProperty -Name CDPNeighbors -value @()                #Array of neighbours  from show cdp neighbours details
     $newObject| Add-Member -type NoteProperty -Name ArrayOfNetworks -value @()             #Array of subnets found on the device from show run
     $newObject| Add-Member -type NoteProperty -Name ArrayOfIPAddresses -value @()          #Array of ip addresses found on the device  from show run
-    $newObject| Add-Member -type NoteProperty -Name ArrayOfVlans -value @()                #Not sure this might need deleting. TODO:Check and delete
     $newObject| Add-Member -type NoteProperty -Name SpanningTree -value $null                #Object containing Spanning tree configuration data from show spanning-tree
     $newObject| Add-Member -type NoteProperty -Name RoutingTable -value @()                #Array of routes data from show ip route
     $newObject| Add-Member -type NoteProperty -Name ParentObject -value $null                #This will be filled for each host object created from CDP/lldp config data

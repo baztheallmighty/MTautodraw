@@ -69,7 +69,7 @@ function Replace-InterfaceShortName {
     param (
         $String
     )
-
+    if (-not $String) { return $null }
     # This code will now ONLY run if the .Trim() method in the 'try' block succeeds.
     $String = $String.Trim() -replace "vl(\d+.*)", 'Vlan$1' `
         -replace "Se(\d+.*)", 'Serial$1' `

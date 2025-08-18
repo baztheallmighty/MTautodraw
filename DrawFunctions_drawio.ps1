@@ -205,6 +205,10 @@ function Add-DrawioPhysicalInterface {
             $currentY -= $GDrawioPhysicalHostInterfaceOffsetY # Move shape up
             $currentHeight += $GDrawioSpanningTreeInterfaceSize
         }
+        if ($Interface.STALTnInterfaceForVlans -or $Interface.STRole -eq "BACKUP") {
+            $currentY -= $GDrawioPhysicalHostInterfaceOffsetY # Move shape up
+            $currentHeight += $GDrawioSpanningTreeInterfaceSize
+        }        
     }
 
     # --- END OF CHANGES ---
@@ -270,9 +274,10 @@ function Add-DrawioPhysicalInterface {
     # Add a visual "X" overlay if the port is in an STP blocking state.
     if ($DrawType -eq "neighbors" -and $Interface.STState -eq "BLK") {
         $crossId = "cross-$((New-Guid).ToString().Substring(0,8))"
-        $crossStyle = "shape=mxgraph.basic.cross;strokeColor=#D32F2F;strokeWidth=3;rotation=20;"
+        # Increased strokeWidth to make the cross bolder.
+        $crossStyle = "shape=mxgraph.basic.cross;strokeColor=#D32F2F;strokeWidth=4;rotation=20;"
         # This cross shape is a child of the interface shape and is positioned relatively within it.
-        $global:drawioXml += "        <mxCell id=`"$crossId`" value=`"`" style=`"$crossStyle`" vertex=`"1`" parent=`"$interfaceId`">`n             <mxGeometry x=`"0.25`" y=`"0.25`" width=`"10`" height=`"10`" relative=`"1`" as=`"geometry`" />`n        </mxCell>`n"
+        $global:drawioXml += "        <mxCell id=`"$crossId`" value=`"`" style=`"$crossStyle`" vertex=`"1`" parent=`"$interfaceId`">`n              <mxGeometry x=`"0.125`" y=`"0.125`" width=`"30`" height=`"30`" relative=`"1`" as=`"geometry`" />`n        </mxCell>`n"
     }
     return $interfaceId
 }
@@ -292,16 +297,13 @@ function Add-DrawioHostPhysical {
     # --- Section 1: Identify Interfaces to Draw and Calculate Total Width ---
     # First, select high-priority interfaces: those with CDP/LLDP neighbors or important STP roles.
     # Exclude non-physical interfaces and those that are shutdown.
-    $neighborAndStpInterfaces = @($Device.interfaces | Where-Object {
-        (
-            $_.HasCPDNieghbor -or
-            $_.HasLLDPNeighbor -or
-            ($_.STRole -eq 'Root' -or $_.STRole -eq 'ALT')
-        # --- START MODIFICATION ---
-        # Added 'ae' to the regex to prevent aggregate interfaces from being drawn as physical ports.
-        ) -and ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown))
-        # --- END MODIFICATION ---
-    })
+   $neighborAndStpInterfaces = @($Device.interfaces | Where-Object {
+       (
+           $_.HasCPDNieghbor -or
+           $_.HasLLDPNeighbor -or
+           ($_.STRole -eq 'Root' -or $_.STRole -eq 'ALT' )) -and ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown))
+   })
+
 
     # Optionally, also select interfaces that have a significant number of MAC addresses learned.
     $macInterfacesToDraw = @()

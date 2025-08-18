@@ -120,9 +120,8 @@ function Get-JunosShowVersionFromXML{
     return $device
 }
 
-# ==============================================================================
-# CORRECTED Junos LLDP Parsing Function
-# ==============================================================================
+
+
 function Get-JunosShowLLDPNeighbors{
     param (
         [parameter(Mandatory=$true)]
@@ -206,84 +205,250 @@ function Get-JunosShowLLDPNeighbors{
     return $device
 }
 
-#Extract all the information from the spanning tree bridges xml file
-function Get-JunosShowSpanningTreeInterfaceFromXML{
-    param (
-		[parameter(Mandatory=$true)]
-		$ShowSpanningTreeInterfaceFile,
+
+
+
+
+
+
+
+
+
+
+
+function Get-JunosShowSpanningTreeBridgeFromXML {
+    param(
+        [parameter(Mandatory = $true)]
+        $JunosShowSpanningTreeBridgeFile,
+        [parameter(Mandatory = $true)]
         $device
     )
-    $SpanningTreeInterfaces = [xml] (Get-Content -Raw $ShowSpanningTreeInterfaceFile )
+    
+    $FunctionName = "Get-JunosShowSpanningTreeBridgeFromXML"
 
-    foreach($Int in $SpanningTreeInterfaces.'rpc-reply'.'stp-interface-information'.'stp-instance'.'stp-interfaces'.'stp-interface-entry'){
-        $Interface=$device.interfaces | where { $_.interface -eq ($Int.'interface-name' -replace "\.0$",'')}
-        $Interface.STState=$Int.'port-state'
-        $Interface.STRole=$Int.'port-role'
+    $SpanningTreeXml = [xml](Get-Content -Raw $JunosShowSpanningTreeBridgeFile)
+
+    $namespaceManager = [System.Xml.XmlNamespaceManager]::new($SpanningTreeXml.NameTable)
+    $stpNode = $SpanningTreeXml.SelectSingleNode("//*[local-name()='stp-bridge']")
+    
+    if ($null -eq $stpNode) {
+        return $device
     }
 
-    #Find all of the interfaces part of a port channels and transfer the port state and role to the child interface.  
-    foreach ($interface in ($device.interfaces | where { $_.channelgroup} )){
-        $interface.STState=($device.interfaces | where { $interface.channelgroup -eq $_.interface}).STState
-        $interface.STRole=($device.interfaces | where { $interface.channelgroup -eq $_.interface}).STRole
-    }
 
-    return $device
-}
+    $namespaceURI = $stpNode.NamespaceURI
+    $namespaceManager.AddNamespace("j", $namespaceURI)
+
+    $device.SpanningTree = Create-SpanningTreeObject
+    
+    $cistParams = $stpNode.SelectSingleNode("j:cist-bridge-parameters", $namespaceManager)
+    
+    # Safely get node values
+    $protocolNode = $stpNode.SelectSingleNode("j:protocol", $namespaceManager)
+    $extendedIdNode = $cistParams.SelectSingleNode("j:extended-system-id", $namespaceManager)
+    $rootMacNode = $cistParams.SelectSingleNode("j:root-bridge/j:bridge-mac", $namespaceManager)
+    $thisMacNode = $cistParams.SelectSingleNode("j:this-bridge/j:bridge-mac", $namespaceManager)
+
+    $device.SpanningTree.SpanningTreeMode = if ($protocolNode) { $protocolNode.'#text' } else { 'N/A' }
+    $device.SpanningTree.SpanningTreeExtended = if ($extendedIdNode -and $extendedIdNode.'#text' -ne "0") { $true } else { $false }
+
+    $rootMac = if ($rootMacNode) { $rootMacNode.'#text' } else { '' }
+    $thisMac = if ($thisMacNode) { $thisMacNode.'#text' } else { '' }
+    $isRootBridge = ($rootMac -eq $thisMac -and $rootMac -ne '')
 
 
+    foreach ($vlan in $device.vlans) {
+        $stpVlanObject = Create-SpanningTreeVlan
+        
+        $stpVlanObject.VlanID = $vlan.number
+        $stpVlanObject.protocol = $device.SpanningTree.SpanningTreeMode
+        $stpVlanObject.RootBridge = $isRootBridge
+        
+        # Safely get node values for the loop
+        $rootPriorityNode = $cistParams.SelectSingleNode("j:root-bridge/j:bridge-priority", $namespaceManager)
+        $helloTimeNode = $cistParams.SelectSingleNode("j:hello-time-learned", $namespaceManager)
+        $maxAgeNode = $cistParams.SelectSingleNode("j:max-age-learned", $namespaceManager)
+        $bridgePriorityNode = $cistParams.SelectSingleNode("j:this-bridge/j:bridge-priority", $namespaceManager)
 
-#TODO:Test $Device.SpanningTree.SpanningTreeArray+=$SpanningTreevlanObject is filled correctly and displays the root bridge vlans. This is untested. 
-#Extract all the information from the spanning tree bridges xml file
-function Get-JunosShowSpanningTreeBridgeFromXML{
-    param (
-		[parameter(Mandatory=$true)]
-		$JunosShowSpanningTreeBridgeFile,
-        $device
-    )
-    $SpanningTree = [xml] (Get-Content -Raw $JunosShowSpanningTreeBridgeFile )
-    $device.SpanningTree=Create-SpanningTreeObject
-    $device.SpanningTree.SpanningTreeMode = $SpanningTree.'rpc-reply'.'stp-bridge'.protocol
-    $Device.SpanningTree.SpanningTreeArray=@()
-    if($device.SpanningTree.SpanningTreeMode -eq "RSTP" -and $SpanningTree.'rpc-reply'.'stp-bridge'.'cist-bridge-parameters'.'root-bridge' -eq $SpanningTree.'rpc-reply'.'stp-bridge'.'cist-bridge-parameters'.'this-bridge'){
-        foreach($vlan in $device.ArrayOfVlans){
-            $SpanningTreevlanObject=Create-SpanningTreevlan
-            $SpanningTreevlanObject.RootBridge = $true
-            $SpanningTreevlanObject.vlanID = $vlan.number
-            $SpanningTreevlanObject.RootIDPriority = $SpanningTree.'rpc-reply'.'stp-bridge'.'cist-bridge-parameters'.'root-bridge'.'bridge-priority'
-            $Device.SpanningTree.SpanningTreeArray+=$SpanningTreevlanObject            
+        # --- Root Bridge Information ---
+        $stpVlanObject.RootIDPriority = if ($rootPriorityNode) { $rootPriorityNode.'#text' } else { 'N/A' }
+        $stpVlanObject.Address = $rootMac
+        $stpVlanObject.RootBridgeHelloTime = if ($helloTimeNode) { $helloTimeNode.'#text' } else { 'N/A' }
+        $stpVlanObject.RootBridgeAgingTime = if ($maxAgeNode) { $maxAgeNode.'#text' } else { 'N/A' }
+        
+        # --- Local Bridge Information ---
+        $stpVlanObject.BridgeIDPriority = if ($bridgePriorityNode) { $bridgePriorityNode.'#text' } else { 'N/A' }
+        $stpVlanObject.BridgeIDPriorityaddress = $thisMac
+        
+        if (-not $isRootBridge) {
+            $rootCostNode = $cistParams.SelectSingleNode("j:root-cost", $namespaceManager)
+            $rootPortNode = $cistParams.SelectSingleNode("j:root-port", $namespaceManager)
+
+            $stpVlanObject.RootBridgeCost = if ($rootCostNode) { $rootCostNode.'#text' } else { '0' }
+            $stpVlanObject.RootBridgePort = if ($rootPortNode) { $rootPortNode.'#text' } else { 'N/A' }
+            $stpVlanObject.port = $stpVlanObject.RootBridgePort
         }
-
+        
+        $device.SpanningTree.SpanningTreeArray += $stpVlanObject
     }
+    
+    $device.SpanningTree.RootBridgeForVlans = $device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true } | Select-Object -ExpandProperty VlanID
 
     return $device
 }
 
 
 
-#Extract all the information from the show route all xml file
-#Extract all the information from the show route all xml file
-function Get-JunosShowRouteAllFromXML{
+
+function Get-JunosShowSpanningTreeInterfaceFromXML {
+    param (
+        [parameter(Mandatory=$true)]
+        $ShowSpanningTreeInterfaceFile,
+        [parameter(Mandatory=$true)]
+        $device
+    )
+    $SpanningTreeInterfacesXml = [xml] (Get-Content -Raw $ShowSpanningTreeInterfaceFile)
+
+    if ($device.interfaces -and $SpanningTreeInterfacesXml.'rpc-reply'.'stp-interface-information'.'stp-instance'.'stp-interfaces'.'stp-interface-entry') {
+
+        $stpInterfaceEntries = $SpanningTreeInterfacesXml.'rpc-reply'.'stp-interface-information'.'stp-instance'.'stp-interfaces'.'stp-interface-entry'
+
+        # Loop through each interface object directly on the $device
+        foreach ($currentDeviceInterface in $device.interfaces) {
+            # Check if the interface is part of a ChannelGroup
+            if ($currentDeviceInterface.ChannelGroup) {
+                $searchInterfaceName = $currentDeviceInterface.ChannelGroup  -replace "\.0$"
+            } else {
+                $searchInterfaceName = $currentDeviceInterface.Interface -replace "\.0$"
+            }
+
+            # Find the matching STP entry from the XML data
+            $matchingStpEntry = $stpInterfaceEntries | Where-Object {
+                ($_.'interface-name' -eq $searchInterfaceName)
+            }
+
+            if ($matchingStpEntry) {
+                # Add debug logging for each interface search
+
+                # Update the Spanning Tree Role property directly on the $currentDeviceInterface
+                switch ($matchingStpEntry.'port-role') {
+                    'ROOT' { $currentDeviceInterface.STRole = 'Root' }
+                    'ALT' { $currentDeviceInterface.STRole = 'ALT' }
+                    'DESG' { $currentDeviceInterface.STRole = 'DESG' }
+                    'BACKUP' { $currentDeviceInterface.STRole = 'BACKUP' }
+                    'BKUP' { $currentDeviceInterface.STRole = 'BACKUP' }
+                    'DIS' { $currentDeviceInterface.STRole = 'DIS' }
+                    default { $currentDeviceInterface.STRole = 'UNKNOWN' }
+                }
+                
+                # Update the Spanning Tree State property directly on the $currentDeviceInterface
+                switch ($matchingStpEntry.'port-state') {
+                    'FWD' { $currentDeviceInterface.STState = 'FWD' }
+                    'LEARN' { $currentDeviceInterface.STState = 'LEARN' }
+                    'BLK' { $currentDeviceInterface.STState = 'BLK' }
+                    default { $currentDeviceInterface.STState = 'UNKNOWN' }
+                }
+            } 
+        }
+    }
+ 
+    return $device
+}
+
+
+# UPDATED FUNCTION
+function get-JunosShowRouteAllFromXML {
     param (
         [parameter(Mandatory=$true)]
         $JunosShowRouteAllFile,
+        
+        [parameter(Mandatory=$true)]
         $device
     )
-    $RoutingTables = [xml] (Get-Content -Raw $JunosShowRouteAllFile )
-    $Routes=@()
-    foreach ($table in $RoutingTables.'rpc-reply'.'route-information'.'route-table'){
-        foreach ($Route in $table.rt){
-            $RouteObject=Create-RouteObject
-            # MODIFIED: Added '-replace "irb\.",'irb'' to shorten irb interface names.
-            $RouteObject.Interface=($Route.'rt-entry'.nh.via -replace "vlan\.",'vlan' -replace "irb\.",'irb' -replace "\.0$",'')
-            $RouteObject.gateway=$Route.'rt-entry'.nh.to
-            $RouteObject.Subnet=$Route.'rt-destination'
-            $RouteObject.RouteProtocol=$Route.'rt-entry'.'protocol-name'
-            $Routes+=$RouteObject
+
+    $routeObjects = [System.Collections.Generic.List[pscustomobject]]::new()
+    
+    #--> ADDED: Define protocols to completely exclude from the output.
+    # Junos uses 'Direct' for connected routes and 'Local' for local routes.
+    $protocolsToExclude = @('Local', 'Direct')
+
+    try {
+        $xmlContent = [xml](Get-Content -Path $JunosShowRouteAllFile -Raw)
+    }
+    catch {
+        Write-Warning "Failed to parse '$JunosShowRouteAllFile' as XML. It might be a plain text file or corrupted. Skipping."
+        return $device
+    }
+
+    $namespaceUri = $xmlContent.DocumentElement.'route-information'.NamespaceURI
+    if (-not $namespaceUri) {
+        Write-Warning "Could not detect a Junos routing namespace in '$JunosShowRouteAllFile'. Skipping."
+        return $device
+    }
+    
+    $namespace = @{ jrt = $namespaceUri }
+    $routeEntries = Select-Xml -Xml $xmlContent -XPath "//jrt:rt" -Namespace $namespace
+
+    foreach ($entry in $routeEntries) {
+        $routeNode = $entry.Node
+        $routingTableName = $routeNode.ParentNode.'table-name'
+
+        foreach ($nextHop in $routeNode.'rt-entry') {
+            $routeObject = Create-RouteObject
+            $routeObject.VRF = $routingTableName
+            $routeObject.Subnet = $routeNode.'rt-destination'
+            $routeObject.RouteProtocol = $nextHop.'protocol-name'
+
+            #--> ADDED: Filter to skip processing and adding local/direct routes.
+            if ($protocolsToExclude -contains $routeObject.RouteProtocol) {
+                continue # Skip this route and move to the next one.
+            }
             
+            if ($nextHop.preference) {
+                $routeObject.DISTANCE = [int]$nextHop.preference
+            }
+            
+            if ($nextHop.metric) {
+                $routeObject.METRIC = [int]$nextHop.metric
+            }
+
+            if ($routeObject.Subnet -eq '0.0.0.0/0') {
+                $routeObject.defaultgateway = $true
+            }
+
+            if ($null -ne $nextHop.nh) {
+                if ($nextHop.nh.to) {
+                    $routeObject.Gateway = $nextHop.nh.to
+                }
+                if ($nextHop.nh.via) {
+                    $routeObject.Interface = $nextHop.nh.via -replace "vlan\.", 'vlan' -replace "irb\.", 'irb' -replace "\.0$", ''
+                }
+                elseif ($nextHop.nh.'nh-local-interface') {
+                    $routeObject.Interface = $nextHop.nh.'nh-local-interface'
+                }
+            }
+
+            # This logic now only runs on routes that have a gateway (e.g., Static, BGP, OSPF).
+            $localProtocolsForGatewaySearch = @('Receive', 'Aggregate') # Protocols that can have gateways but we might still want to skip the search for.
+            if ($routeObject.Gateway -and $device.interfaces -and ($localProtocolsForGatewaySearch -notcontains $routeObject.RouteProtocol)) {
+                
+                foreach ($interface in $device.interfaces) {
+                    if ($interface.Cidr -and (Find-Subnet -addr1 $interface.Cidr -addr2 $routeObject.Gateway).condition) {
+                        $routeObject.GatewayCidr = $interface.Cidr
+                        
+                        if (-not $routeObject.Interface) {
+                           $routeObject.Interface = $interface.Interface
+                        }
+                        break 
+                    }
+                }
+            }
+
+            $routeObjects.Add($routeObject)
         }
     }
-    $device.RoutingTable=$Routes
-
+    
+    $device.RoutingTable = $routeObjects
     return $device
 }
 
@@ -461,263 +626,6 @@ function Get-JunosMacAddressTableFromXML {
 
 
 
-
-
-
-#function Get-JunosShowRunFromXML {
-#    param (
-#        [parameter(Mandatory = $true)]
-#        $Lconfig
-#    )
-#
-#    #region Helper Functions
-#    function Convert-CidrToSubnetMask {
-#        param([int]$Cidr)
-#        if ($Cidr -lt 0 -or $Cidr -gt 32) { return $null }
-#        $binaryString = ('1' * $Cidr).PadRight(32, '0')
-#        $octets = for ($i = 0; $i -lt 4; $i++) {
-#            [Convert]::ToByte($binaryString.Substring($i * 8, 8), 2)
-#        }
-#        return $octets -join '.'
-#    }
-#
-#    function Get-NetworkAddress {
-#        param($IPAddress, $PrefixLength)
-#        $ip = [System.Net.IPAddress]::Parse($IPAddress)
-#        # Use the unambiguous hex value 0xFFFFFFFF instead of -1 for the bitmask.
-#        $mask = 0xFFFFFFFF -shl (32 - $PrefixLength)
-#        $ipBytes = $ip.GetAddressBytes()
-#        if ([System.BitConverter]::IsLittleEndian) { [System.Array]::Reverse($ipBytes) }
-#        $ipInt = [System.BitConverter]::ToUInt32($ipBytes, 0)
-#        $networkInt = $ipInt -band $mask
-#        $networkBytes = [System.BitConverter]::GetBytes($networkInt)
-#        if ([System.BitConverter]::IsLittleEndian) { [System.Array]::Reverse($networkBytes) }
-#        return ([System.Net.IPAddress]$networkBytes).IPAddressToString
-#    }
-#    #endregion
-#
-#    $Device = Create-HostObject
-#    $Device.Origin = "config"
-#    $ArrayOfHostNetworks = @()
-#    $hostname = $Lconfig.'rpc-reply'.configuration.system.'host-name'
-#    if ($null -eq $hostname -or $hostname -eq "") {
-#        $hostname = "NoHostNameFoundCheckForConfigProblems"
-#        Add-HostDebugText -HostObject $Device "No hostname found in Junos config" -BackgroundColor red
-#    }
-#    $Device.hostname = $hostname
-#
-#    $vlans = @()
-#    foreach ($vlan in ($Lconfig.'rpc-reply'.configuration.vlans.vlan)) {
-#        $vlanObject = Create-vlanObject
-#        $vlanObject.number = $vlan.'vlan-id'
-#        $vlanObject.name = $vlan.name
-#        $vlanObject.description = $vlan.description
-#        $vlans += $vlanObject
-#    }
-#
-#    [array]$ArrayOfIPAddresses = @()
-#    $interfaceObjects = @{}
-#    $configNode = $Lconfig.'rpc-reply'.configuration
-#
-#    $vlanMap = @{}
-#    $configNode.vlans.vlan | ForEach-Object { $vlanMap[$_.name] = $_.'vlan-id' }
-#
-#    foreach ($ifaceNode in $configNode.interfaces.interface) {
-#        $baseInterfaceName = $ifaceNode.name
-#
-#        if ($baseInterfaceName -match '^(irb|vlan)$') {
-#            foreach ($unit in $ifaceNode.unit) {
-#                $logicalInterfaceName = "$baseInterfaceName$($unit.name)"
-#                if (-not $interfaceObjects.ContainsKey($logicalInterfaceName)) {
-#                    $obj = Create-InterfaceObject
-#                    $obj.Interface = $logicalInterfaceName
-#                    $interfaceObjects[$logicalInterfaceName] = $obj
-#                }
-#                $obj = $interfaceObjects[$logicalInterfaceName]
-#                
-#                $obj.Description = $unit.description
-#                $obj.shutdown = [bool]($unit.disable)
-#                $obj.SwitchPortType = 'routed'
-#                $obj.RoutedVlan = $unit.name
-#
-#                $inet = $unit.family.inet
-#                if ($inet.address) {
-#                    $addresses = @($inet.address)
-#                    if ($addresses[0].name) {
-#                        try {
-#                            $ipParts = $addresses[0].name.Split('/')
-#                            if ($ipParts.Count -lt 2) { throw "IP address format is missing the CIDR prefix (e.g., /24)." }
-#                            $prefix = [int]$ipParts[1]
-#                            $obj.IPAddress = $ipParts[0]
-#                            $obj.SubnetMask = Convert-CidrToSubnetMask -Cidr $prefix
-#                            $networkAddr = Get-NetworkAddress -IPAddress $obj.IPAddress -PrefixLength $prefix
-#                            $obj.Cidr = "$networkAddr/$prefix"
-#                            $ArrayOfIPAddresses += $obj.IPAddress
-#                        } catch {
-#                            Write-Warning "Failed to parse IP Address '$($addresses[0].name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
-#                        }
-#                    }
-#                    if ($addresses.Count -gt 1 -and $addresses[1].name) {
-#                        try {
-#                            $ipParts = $addresses[1].name.Split('/')
-#                            if ($ipParts.Count -lt 2) { throw "Secondary IP address format is missing the CIDR prefix (e.g., /24)." }
-#                            $prefix = [int]$ipParts[1]
-#                            $obj.SecondaryIPAddress = $ipParts[0]
-#                            $obj.SecondarySubnetMask = Convert-CidrToSubnetMask -Cidr $prefix
-#                        } catch {
-#                            Write-Warning "Failed to parse Secondary IP Address '$($addresses[1].name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
-#                        }
-#                    }
-#                }
-#            }
-#        } else {
-#            if (-not $interfaceObjects.ContainsKey($baseInterfaceName)) {
-#                $obj = Create-InterfaceObject
-#                $obj.Interface = $baseInterfaceName
-#                $interfaceObjects[$baseInterfaceName] = $obj
-#            }
-#            $obj = $interfaceObjects[$baseInterfaceName]
-#
-#            $obj.Description = $ifaceNode.description
-#            $obj.shutdown = [bool]($ifaceNode.disable)
-#            if ($ifaceNode.'native-vlan-id') { $obj.NativeVlan = $ifaceNode.'native-vlan-id' }
-#
-#            $etherOptions = $ifaceNode.'ether-options'
-#            if (-not $etherOptions) { $etherOptions = $ifaceNode.'gigether-options' }
-#            
-#            # Handle multiple possible XML formats for LAGs (802.3ad)
-#            $bundle = $null
-#            if ($etherOptions) {
-#                # 1. Check for the modern nested format first (e.g., <ieee-802.3ad><bundle>ae1</bundle></ieee-802.3ad>)
-#                $bundle = $etherOptions.'ieee-802.3ad'.bundle
-#
-#                # 2. If not found, check for the simple legacy format (e.g., <802.3ad>ae1</802.3ad>)
-#                if (-not $bundle) {
-#                    $bundle = $etherOptions.'802.3ad'
-#                }
-#            }
-#
-#            if ($bundle) {
-#                $obj.ChannelGroup = $bundle.Trim()
-#            }
-#
-#            foreach ($unit in $ifaceNode.unit) {
-#                $switching = $unit.family.'ethernet-switching'
-#                if ($switching) {
-#                    $obj.SwitchPortType = 'switched'
-#
-#                    # Try the newer format first, then fall back to the older format
-#                    $obj.SwitchportMode = $switching.'interface-mode'
-#                    if (-not $obj.SwitchportMode) {
-#                        $obj.SwitchportMode = $switching.'port-mode'
-#                    }
-#                    # Only process VLAN members if they exist
-#                    if ($switching.vlan.members) {
-#                        if ($obj.SwitchportMode -eq 'access') {
-#                            $vlanName = $switching.vlan.members
-#                            # Ensure vlanName is not null before using it as a key
-#                            if ($null -ne $vlanName) {
-#                                $obj.SwitchportAccessVlan = if ($vlanMap.ContainsKey($vlanName)) { $vlanMap[$vlanName] } else { $vlanName }
-#                            }
-#                        } elseif ($obj.SwitchportMode -eq 'trunk') {
-#                            if ($switching.vlan.members -eq 'all') {
-#                                $obj.SwitchportTrunkVlan = ($vlanMap.Values | Sort-Object -Unique) -join ','
-#                            } else {
-#                                # In the ForEach-Object loop, $_ can be null if a tag is empty. Filter it out.
-#                                $trunkVlans = @($switching.vlan.members) | Where-Object { $null -ne $_ } | ForEach-Object { if ($vlanMap.ContainsKey($_)) { $vlanMap[$_] } else { $_ } }
-#                                $obj.SwitchportTrunkVlan = ($trunkVlans | Sort-Object -Unique) -join ','
-#                            }
-#                        }
-#                    }
-#                }
-#
-#                $inet = $unit.family.inet
-#                if ($inet.address) {
-#                    $obj.SwitchPortType = 'routed'
-#                    $addresses = @($inet.address)
-#                    if ($addresses[0].name) {
-#                        try {
-#                            $ipParts = $addresses[0].name.Split('/')
-#                            if ($ipParts.Count -lt 2) { throw "IP address format is missing the CIDR prefix (e.g., /24)." }
-#                            $prefix = [int]$ipParts[1]
-#                            $obj.IPAddress = $ipParts[0]
-#                            $obj.SubnetMask = Convert-CidrToSubnetMask -Cidr $prefix
-#                            $networkAddr = Get-NetworkAddress -IPAddress $obj.IPAddress -PrefixLength $prefix
-#                            $obj.Cidr = "$networkAddr/$prefix"
-#                            $ArrayOfIPAddresses += $obj.IPAddress
-#                        } catch {
-#                            Write-Warning "Failed to parse IP Address '$($addresses[0].name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
-#                        }
-#                    }
-#                    if ($addresses.Count -gt 1 -and $addresses[1].name) {
-#                        try {
-#                            $ipParts = $addresses[1].name.Split('/')
-#                            if ($ipParts.Count -lt 2) { throw "Secondary IP address format is missing the CIDR prefix (e.g., /24)." }
-#                            $prefix = [int]$ipParts[1]
-#                            $obj.SecondaryIPAddress = $ipParts[0]
-#                            $obj.SecondarySubnetMask = Convert-CidrToSubnetMask -Cidr $prefix
-#                        } catch {
-#                            Write-Warning "Failed to parse Secondary IP Address '$($addresses[1].name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
-#                        }
-#                    }
-#                }
-#            }
-#        }
-#    }
-#
-#    [array]$interfaces = $interfaceObjects.Values | Sort-Object { $_.Interface -replace '\d+', { $_.Value.PadLeft(4, '0') } }
-#
-#    foreach ($ag in ($interfaces | where { $_.interface -like "ae*"})) {
-#        $ag.ShapeColor = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)"
-#        # Find physical interfaces where the ChannelGroup property matches the ae interface name
-#        $interfaces | where { $_.ChannelGroup -eq $ag.interface } | ForEach-Object { $_.ShapeColor = $ag.ShapeColor }
-#    }
-#
-#    foreach ($vlan in ($Lconfig.'rpc-reply'.configuration.vlans.vlan)) {
-#        foreach ($int in $vlan.interface) {
-#            $FoundInterface = $interfaces | where { $_.interface -notlike "*vlan*"} | where { $_.interface -eq ($int.name -replace "\.0",'')}
-#            if ($FoundInterface) {
-#                if ($FoundInterface.SwitchportMode -eq "access") {
-#                    $FoundInterface.SwitchportAccessVlan = [int]$vlan.'vlan-id'
-#                } else {
-#                    [array]$FoundInterface.SwitchportTrunkVlan += [int]$vlan.'vlan-id'
-#                }
-#            } else {
-#                Add-HostDebugText -HostObject $Device "Couldnt find $($int.name) - $($int.name -replace '\.0', '') in interfaces list. Parsed IPs: $($ArrayOfIPAddresses -join ', '). Interfaces list: $($interfaces|ft | out-string)"
-#            }
-#        }
-#    }
-#
-#    foreach ($interface in $interfaces) {
-#        if ($null -ne $interface.Cidr) {
-#            $NetworkObject = Create-NetworkObject
-#            $NetworkObject.Cidr = $interface.Cidr
-#            if ($interface.Interface -like "*vlan*" -or $interface.Interface -like "*irb*") {
-#                $NetworkObject.Routedvlan = $interface.Interface
-#            } else {
-#                $NetworkObject.Routedvlan = "no vlan"
-#            }
-#            $ArrayOfHostNetworks += $NetworkObject
-#        }
-#    }
-#
-#    $Device.ArrayOfIPAddresses = $ArrayOfIPAddresses
-#    $Device.ArrayOfNetworks = $ArrayOfHostNetworks
-#    $Device.vlans = $vlans
-#    $Device.interfaces = $interfaces
-#    
-#    # MODIFIED: Changed the final debug output to a more detailed report.
-#    $ipReport = $interfaces | Where-Object { $_.IPAddress } | ForEach-Object {
-#        $prefix = if ($_.Cidr) { ($_.Cidr -split '/')[1] } else { 'N/A' }
-#        "$($_.Interface): $($_.IPAddress)/$prefix"
-#    }
-#    Add-HostDebugText -HostObject $Device "Final Parsed IP Report: $($ipReport -join '; ')"
-#
-#    return $Device
-#}
-
-
-
 #region Helper Functions
 function Convert-CidrToSubnetMask {
     param([int]$Cidr)
@@ -743,13 +651,29 @@ function Get-NetworkAddress {
 }
 #endregion
 
+
+# Helper function to expand interface range syntax e.g., ge-0/0/[0-7]
+function Expand-JunosInterfaceRange {
+    param([string]$Name)
+    $expandedNames = @()
+    if ($Name -match '(.+?)\[(\d+)-(\d+)\](.*)') {
+        $prefix = $matches[1]
+        $start = [int]$matches[2]
+        $end = [int]$matches[3]
+        $suffix = $matches[4]
+        for ($i = $start; $i -le $end; $i++) {
+            $expandedNames += "$prefix$i$suffix"
+        }
+    } else {
+        $expandedNames += $Name
+    }
+    return $expandedNames
+}
 function Get-JunosShowRunFromXML {
     param (
         [parameter(Mandatory = $true)]
         $Lconfig
     )
-
-
 
     $Device = Create-HostObject
     $Device.Origin = "config"
@@ -763,16 +687,30 @@ function Get-JunosShowRunFromXML {
 
     $vlanPSObjects = @()
     $vlanMap = @{}
-    # FIX 1: Add check for the existence of the <vlans> section
+    # Check if the vlans tag exists before processing
     if ($Lconfig.'rpc-reply'.configuration.vlans) {
-        # FIX 2: Wrap vlan collection in @() to handle cases where there is only one VLAN
+        # Force the object into an array to handle single and multiple VLANs
         foreach ($vlan in @($Lconfig.'rpc-reply'.configuration.vlans.vlan)) {
             $vlanObject = Create-vlanObject
-            $vlanObject.number = $vlan.'vlan-id'
-            $vlanObject.name = $vlan.name
-            $vlanObject.description = $vlan.description
+            
+            # Check if the properties exist before accessing them
+            if ($vlan.'vlan-id') {
+                $vlanObject.number = $vlan.'vlan-id'
+            }
+            
+            if ($vlan.name) {
+                $vlanObject.name = $vlan.name
+            }
+            
+            if ($vlan.description) {
+                $vlanObject.description = $vlan.description
+            }
+            
             $vlanPSObjects += $vlanObject
-            $vlanMap[$vlan.name] = $vlan.'vlan-id'
+            # This line will only work if $vlan.name and $vlan.'vlan-id' exist
+            if ($vlan.name -and $vlan.'vlan-id') {
+                $vlanMap[$vlan.name] = $vlan.'vlan-id'
+            }
         }
     }
 
@@ -780,14 +718,110 @@ function Get-JunosShowRunFromXML {
     $interfaceObjects = @{}
     $configNode = $Lconfig.'rpc-reply'.configuration
 
-    # FIX 1: Add check for the existence of the <interfaces> section
+    $groupMap = @{}
+    foreach ($group in @($configNode.groups)) {
+        if ($group.name) {
+            $groupMap[$group.name] = $group
+        }
+    }
+
+    if ($configNode.interfaces.'interface-range') {
+        foreach ($rangeNode in @($configNode.interfaces.'interface-range')) {
+            $configToApply = $null
+            $groupName = $rangeNode.'apply-groups'
+
+            if ($groupName -and $groupMap.ContainsKey($groupName)) {
+                $configToApply = $groupMap[$groupName].interfaces.interface
+            }
+            else {
+                $configToApply = $rangeNode
+            }
+
+            if ($configToApply) {
+                $allMemberNames = @()
+                foreach ($member in @($rangeNode.member)) {
+                    $allMemberNames += Expand-JunosInterfaceRange -Name $member.name
+                }
+                
+                # --- START: CORRECTED member-range PARSING ---
+                foreach ($memberRange in @($rangeNode.'member-range')) {
+                    if ($memberRange.name -match '(.+/)(\d+)$') {
+                        # Capture the results from the first match immediately
+                        $prefix = $matches[1]
+                        $start = [int]$matches[2]
+
+                        # Now, perform the second match
+                        if ($memberRange.'end-range' -match '(.+/)(\d+)$') {
+                            $end = [int]$matches[2]
+                            
+                            if ($start -le $end) {
+                                for ($i = $start; $i -le $end; $i++) {
+                                    $allMemberNames += "$prefix$i"
+                                }
+                            }
+                        }
+                    }
+                }
+                # --- END: CORRECTED member-range PARSING ---
+
+                foreach ($ifaceName in ($allMemberNames | Sort-Object -Unique)) {
+                    if (-not $interfaceObjects.ContainsKey($ifaceName)) {
+                        $obj = Create-InterfaceObject
+                        $obj.Interface = $ifaceName
+                        $interfaceObjects[$ifaceName] = $obj
+                    }
+                    $obj = $interfaceObjects[$ifaceName]
+
+                    $obj.NativeVlan = $configToApply.'native-vlan-id'
+
+                    $etherOptions = $configToApply.'ether-options'
+                    if (-not $etherOptions) { $etherOptions = $configToApply.'gigether-options' }
+                    if (-not $etherOptions) { $etherOptions = $configToApply.'ten-gigether-options' }
+                    if ($etherOptions) {
+                        $bundle = $etherOptions.'ieee-802.3ad'.bundle
+                        if (-not $bundle) { $bundle = $etherOptions.'802.3ad' }
+                        if ($bundle) { $obj.ChannelGroup = $bundle.Trim() }
+                    }
+
+                    foreach ($unit in @($configToApply.unit)) {
+                        $switching = $unit.family.'ethernet-switching'
+                        if ($switching) {
+                            $obj.SwitchPortType = 'switched'
+                            $obj.SwitchportMode = 'access'
+                            $obj.SwitchportAccessVlan = '1'
+                            if ($switching.'native-vlan-id') {
+                                $nativeVlanName = $switching.'native-vlan-id'
+                                $obj.NativeVlan = if ($vlanMap.ContainsKey($nativeVlanName)) { $vlanMap[$nativeVlanName] } else { $nativeVlanName }
+                            }
+                            $portMode = $switching.'interface-mode'
+                            if (-not $portMode) { $portMode = $switching.'port-mode' }
+                            if ($portMode) { $obj.SwitchportMode = $portMode }
+                            if ($switching.vlan.members) {
+                                if ($obj.SwitchportMode -eq 'access') {
+                                    $vlanName = $switching.vlan.members
+                                    if ($vlanName) { $obj.SwitchportAccessVlan = if ($vlanMap.ContainsKey($vlanName)) { $vlanMap[$vlanName] } else { $vlanName } }
+                                } elseif ($obj.SwitchportMode -eq 'trunk') {
+                                    $obj.SwitchportAccessVlan = $null
+                                    if ($switching.vlan.members -eq 'all') {
+                                        $obj.SwitchportTrunkVlan = ($vlanMap.Values | Sort-Object -Unique) -join ','
+                                    } else {
+                                        $trunkVlans = @($switching.vlan.members) | Where-Object { $_ } | ForEach-Object { if ($vlanMap.ContainsKey($_)) { $vlanMap[$_] } else { $_ } }
+                                        $obj.SwitchportTrunkVlan = ($trunkVlans | Sort-Object -Unique) -join ','
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if ($configNode.interfaces) {
-        # FIX 2: Wrap interface collection in @() to handle cases where there is only one interface
         foreach ($ifaceNode in @($configNode.interfaces.interface)) {
             $baseInterfaceName = $ifaceNode.name
 
             if ($baseInterfaceName -match '^(irb|vlan)$') {
-                # FIX 2: Wrap unit collection in @() to handle cases where there is only one unit
                 foreach ($unit in @($ifaceNode.unit)) {
                     $logicalInterfaceName = "$baseInterfaceName$($unit.name)"
                     if (-not $interfaceObjects.ContainsKey($logicalInterfaceName)) {
@@ -840,48 +874,75 @@ function Get-JunosShowRunFromXML {
                 }
                 $obj = $interfaceObjects[$baseInterfaceName]
 
-                $obj.Description = $ifaceNode.description
-                $obj.shutdown = [bool]($ifaceNode.disable)
-                
-                # Handle various locations for native-vlan-id
-                $obj.NativeVlan = $ifaceNode.'native-vlan-id'
+                if ($ifaceNode.'apply-groups') {
+                    $groupName = $ifaceNode.'apply-groups'
+                    if ($groupName -and $groupMap.ContainsKey($groupName)) {
+                        $groupTemplate = $groupMap[$groupName]
+                        $configToApply = $groupTemplate.interfaces.interface
+                        if ($configToApply) {
+                            if ($configToApply.description) { $obj.Description = $configToApply.description }
+                            if ($configToApply.disable) { $obj.shutdown = $true }
+                            if ($configToApply.'native-vlan-id') { $obj.NativeVlan = $configToApply.'native-vlan-id' }
 
-                # Handle various -options tags for different interface speeds
+                            foreach ($unit in @($configToApply.unit)) {
+                                $switching = $unit.family.'ethernet-switching'
+                                if ($switching) {
+                                    $obj.SwitchPortType = 'switched'
+                                    $obj.SwitchportMode = 'access'
+                                    $obj.SwitchportAccessVlan = '1'
+                                    if ($switching.'native-vlan-id') {
+                                        $nativeVlanName = $switching.'native-vlan-id'
+                                        $obj.NativeVlan = if ($vlanMap.ContainsKey($nativeVlanName)) { $vlanMap[$nativeVlanName] } else { $nativeVlanName }
+                                    }
+                                    $portMode = $switching.'interface-mode'
+                                    if (-not $portMode) { $portMode = $switching.'port-mode' }
+                                    if ($portMode) { $obj.SwitchportMode = $portMode }
+                                    if ($switching.vlan.members) {
+                                        if ($obj.SwitchportMode -eq 'access') {
+                                            $vlanName = $switching.vlan.members
+                                            if ($vlanName) { $obj.SwitchportAccessVlan = if ($vlanMap.ContainsKey($vlanName)) { $vlanMap[$vlanName] } else { $vlanName } }
+                                        } elseif ($obj.SwitchportMode -eq 'trunk') {
+                                            $obj.SwitchportAccessVlan = $null
+                                            if ($switching.vlan.members -eq 'all') {
+                                                $obj.SwitchportTrunkVlan = ($vlanMap.Values | Sort-Object -Unique) -join ','
+                                            } else {
+                                                $trunkVlans = @($switching.vlan.members) | Where-Object { $_ } | ForEach-Object { if ($vlanMap.ContainsKey($_)) { $vlanMap[$_] } else { $_ } }
+                                                $obj.SwitchportTrunkVlan = ($trunkVlans | Sort-Object -Unique) -join ','
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if ($ifaceNode.description) { $obj.Description = $ifaceNode.description }
+                if ($ifaceNode.disable) { $obj.shutdown = $true }
+                if ($ifaceNode.'native-vlan-id') { $obj.NativeVlan = $ifaceNode.'native-vlan-id' }
+                
                 $etherOptions = $ifaceNode.'ether-options'
                 if (-not $etherOptions) { $etherOptions = $ifaceNode.'gigether-options' }
                 if (-not $etherOptions) { $etherOptions = $ifaceNode.'ten-gigether-options' }
+                if (-not $etherOptions) { $etherOptions = $ifaceNode.'aggregated-ether-options' }
                 
-                # FIX 3: Robust LAG/ChannelGroup parsing
                 $bundle = $null
                 if ($etherOptions) {
                     $bundle = $etherOptions.'ieee-802.3ad'.bundle
-                    if (-not $bundle) {
-                        $bundle = $etherOptions.'802.3ad'
-                    }
+                    if (-not $bundle) { $bundle = $etherOptions.'802.3ad' }
                 }
-                if ($bundle) {
-                    $obj.ChannelGroup = $bundle.Trim()
-                }
+                if ($bundle) { $obj.ChannelGroup = $bundle.Trim() }
 
-                # FIX 2: Wrap unit collection in @()
                 foreach ($unit in @($ifaceNode.unit)) {
                     $switching = $unit.family.'ethernet-switching'
                     if ($switching) {
-                        # --- MODIFICATION START ---
-                        # The presence of the <ethernet-switching> tag itself defines the port as L2.
-                        # Set this first, even if the block is empty.
-                        $obj.SwitchPortType = 'switched' 
-                        # By default, an unconfigured switchport is an access port on VLAN 1.
+                        $obj.SwitchPortType = 'switched'
                         $obj.SwitchportMode = 'access'
                         $obj.SwitchportAccessVlan = '1'
-                        # --- MODIFICATION END ---
-                                            # Update Native VLAN if it's defined here
                         if ($switching.'native-vlan-id') { 
-                            # Convert VLAN name to ID if possible
                             $nativeVlanName = $switching.'native-vlan-id'
                             $obj.NativeVlan = if ($vlanMap.ContainsKey($nativeVlanName)) { $vlanMap[$nativeVlanName] } else { $nativeVlanName }
                         }
-                                            # Robust Switchport Mode parsing (will override the default 'access' if set)
                         $portMode = $switching.'interface-mode'
                         if (-not $portMode) {
                             $portMode = $switching.'port-mode'
@@ -890,7 +951,6 @@ function Get-JunosShowRunFromXML {
                             $obj.SwitchportMode = $portMode
                         }
                         
-                        # Prevent error if vlan members are not defined
                         if ($switching.vlan.members) {
                             if ($obj.SwitchportMode -eq 'access') {
                                 $vlanName = $switching.vlan.members
@@ -898,7 +958,6 @@ function Get-JunosShowRunFromXML {
                                     $obj.SwitchportAccessVlan = if ($vlanMap.ContainsKey($vlanName)) { $vlanMap[$vlanName] } else { $vlanName }
                                 }
                             } elseif ($obj.SwitchportMode -eq 'trunk') {
-                                # Clear the default access vlan since this is a trunk
                                 $obj.SwitchportAccessVlan = $null 
                                 if ($switching.vlan.members -eq 'all') {
                                     $obj.SwitchportTrunkVlan = ($vlanMap.Values | Sort-Object -Unique) -join ','
@@ -913,38 +972,28 @@ function Get-JunosShowRunFromXML {
                     $inet = $unit.family.inet
                     if ($inet.address) {
                         $obj.SwitchPortType = 'routed'
-                        # (IP address parsing logic remains the same)
                     }
                 }
             }
         }
-        #
-        # --- START: NEW LOGIC BLOCK FOR LAG MEMBER INHERITANCE ---
-        #
-        # PASS 2: Find all physical LAG members and have them inherit their parent ae interface's configuration.
+        
         foreach ($ifaceObj in $interfaceObjects.Values) {
-            # Check if this interface is a member of a channel group
             if ($ifaceObj.ChannelGroup) {
                 $aeName = $ifaceObj.ChannelGroup
-                # Look up the parent ae interface in the objects we've already parsed
                 if ($interfaceObjects.ContainsKey($aeName)) {
                     $parentAe = $interfaceObjects[$aeName]
                     
-                    # Copy the essential L2/L3 properties from the parent ae to the physical member
                     $ifaceObj.SwitchPortType       = $parentAe.SwitchPortType
                     $ifaceObj.SwitchportMode       = $parentAe.SwitchportMode
                     $ifaceObj.SwitchportAccessVlan = $parentAe.SwitchportAccessVlan
                     $ifaceObj.SwitchportTrunkVlan  = $parentAe.SwitchportTrunkVlan
                     $ifaceObj.NativeVlan           = $parentAe.NativeVlan
-                    
-                    # Also copy L3 info in case the ae is routed
                     $ifaceObj.IPAddress            = $parentAe.IPAddress
                     $ifaceObj.SubnetMask           = $parentAe.SubnetMask
                     $ifaceObj.Cidr                 = $parentAe.Cidr
                 }
             }
-        }        
-        
+        }
     }
 
     [array]$interfaces = $interfaceObjects.Values | Sort-Object { $_.Interface -replace '\d+', { $_.Value.PadLeft(4, '0') } }
@@ -953,10 +1002,6 @@ function Get-JunosShowRunFromXML {
         $ag.ShapeColor = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)"
         $interfaces | where { $_.ChannelGroup -eq $ag.interface } | ForEach-Object { $_.ShapeColor = $ag.ShapeColor }
     }
-
-    # IMPROVEMENT: The redundant VLAN loop that was here has been removed.
-    # The primary interface loop above is the correct and single source of truth for VLAN port assignments.
-    # Removing this prevents conflicting logic and potential bugs.
 
     foreach ($interface in $interfaces) {
         if ($null -ne $interface.Cidr) {
@@ -984,5 +1029,6 @@ function Get-JunosShowRunFromXML {
 
     return $Device
 }
+
 
 

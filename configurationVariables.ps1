@@ -124,8 +124,12 @@ $GDrawLayer3RoutesOnly=$true
 ## These variables control how the script processes data and handles specific cases.
 ################################################################################
 
+#If set to true this will draw all interfaces that are blocked by spanning tree. 
+$GdrawBlockedStpPorts = $true
+
+
 # Skip HSRP routes. Use this option to not see HSRP routes in the routing protocol as they are mostly just noise.
-$SkipHSRPRoutes=$true
+$GSkipHSRPRoutes=$true
 
 # Skip phones if the platform name contains the word "phone".
 # Access switches can have a lot of phones and they just mess up the diagram.
@@ -158,134 +162,6 @@ $GExportData=$true
 
 # If we know we have duplicate hostnames and we want to skip the hard error out. Note: this is a bad idea to skip and will give unpredictable results.
 $SkipHostnameErrorCheck=$false
-
-
-################################################################################
-## --- LEGACY Drawing Variables (DEPRECATED) ---
-## This entire section contains variables from a previous version of the script
-## that generated Visio diagrams. They are no longer used by the current
-## Draw.io functions and can be safely ignored.
-################################################################################
-
-#$GVRFSpacing=0.3 #Spacing between VRF's
-#$GEthernetSpacingPhysical=0.6 #Spacing between Ethernet Device when drawing
-#$GEthernetSpacingLogical=0.4 #Spacing between Ethernet Device when drawing
-#$GStartLocationNetwork=(0,10)#Location to start placing vlans
-#$GStartLocationGateway=(0,20)#Location to start placing vlans
-#$GVlanStep=2 #Distance between vlans
-#$GGatewayStep=3 #Distance between gateways
-#$GStartLocationHosts=(0,0) #The starting location for drawingall hosts.
-#$GStartARPLocationHosts=(0,-20) #The starting location for drawing all ARP hosts.
-#$GStartLocationCDPHosts=(0,-20)
-#$GStartLocationLLDPHosts=(0,+20)
-#$GHostLayer3Step=10 #Distance between hosts when drawing layer 3 diagrams
-#$GHostEthernetStep=10 #Distance between hosts when drawing ethernet diagrams
-#$GPhysicalInterfaceFontSize="8pt"
-#$GCDPHostFontSize="12pt"
-#$GLogicalInterfaceFontSize="8pt"
-#$GHostEthernetFontSize="8pt"
-#$GRouteFontSize="8pt"
-#Size of VRF objects. This should generally be the same size as the interface object.
-#$GVRFXFormWidth=2
-#$GVRFXFormHeight=2
-#Size of Draw-HostCDPNeighbors host objects
-#$GHostCDPXFormHeight=2.4
-#$GHostCDPXFormWidth=2
-#Logical interface size
-#$GLogicalInterfaceFormHeight=0.9
-#$GLogicalInterfaceFormWidth=1
-#Physical interface size
-#$GPhysicalInterfaceFormHeight=1
-#$GPhysicalInterfaceFormWidth=1.3
-#Draw-HostEthernet Size of host objects
-#$GEthernetHostFormHeight=2
-#$GEthernetHostFormWidth=2
-#$GNeighborHightExtension=1.5
-#Draw-HostLayer3 Size of host objects
-#$GLayer3HostFormHeight=2
-#$GLayer3HostFormWidth=3
-#$GLayer3HightExtension=2
-#Size of BGP objects drawn in protocols.
-#$GBGPWidth=2.5
-#$GBGPhight=2.5
-#vlan size
-#$GVlanWidth=10
-#$GVlanHight=0.75
-#ARP Bubles size
-#$GARPWidth=4
-#$GARPHight=3
-#Gateway size
-#$GGatewayWidth=2
-#$GGatewayHight=2
-#This is use to move the interface up or down relative to the host object
-#These are used to draw hosts we have config for.
-#$GPhysicalHostInterfaceOffsetY=1.5
-#$GLogicalInterfacesOffsetY=1.1
-#How much higher up should we draw the mac addresses.
-#$GMacAddressOffSetY=8
-#How much lower we should draw the icon relative to the lldp or cdp host object.
-#$GCDPLLDPIconOffsetDown=1.5
-#How much lower we should draw the icon relative to the ARP host object.
-#$GCDPARPIconOffsetDown=1
-#This is used in the Draw-HostEthernet function to offset the interface upwards relative to the host object.
-#This is mainly used to draw lldp or cdp devices we don't have config for.
-#$GPhysicalInterfaceOffSetUP=1.6
-#$GNOVlanSubnetOffset=-15
-#Where do we want to put the arp entries relative to the starting position
-#$GARPEntriesOffsetX=-10
-#Space between ARP entries.
-#$GARPEntriesSpacingHeigh=10
-#This is added to spanning tree interfaces to allow room for the text.
-#$GSpanningTreeInterfaceSize=0.4
-#This is added to Logical interfaces to allow room for the VRF text.
-#$GVRFTextSizeExtension=0.4
-#Colour of Layer 3 hosts
-#$Layer3HostColour="rgb(93,138,168)"
-#Layer 3 ARP host colour
-#$Layer3ARPHostColour="rgb(59,0,179)"
-#Colour black used for Layer 3 links
-#$GColourBlack="rgb(0,0,0)"
-#Physical interface speed and type diagram properties. 
-#$GInterfaceCircleXFormWidth = 0.4
-#$GInterfaceCircleXFormHeight = 0.4
-#$GInterfaceLineWidth = 0.5
-#Color for the line if we are using a SPF.
-#$GInterfaceCircleLineColorNormal = "rgb(100,100,100)"
-#Color for the line if we are using a RJ45 SPF adaptor.
-#$GInterfaceCircleLineColorRed = "rgb(255,153,170)"
-#Default color for Interfaces "WHITE"
-#$GDefaultInterfacesColor="rgb(255,255,255)"
-#Colors for interface types. These are the common interfaces and the colors that go with them.
-#$GArrayOfInterfaceTypes=@(
-#@("Unknown","Unknown"               ,"rgb(0,0,0,)"),
-#@("RJ45","100BaseTX"                 ,"rgb(85,85,85)"),
-#@("RJ45","10/100BaseTX"              ,"rgb(85,85,85)"),
-#@("RJ45","10/100/1000-TX"             ,"rgb(0,0,0)"),
-#@("RJ45","10/100/1000BaseT"           ,"rgb(0,0,0)"),
-#@("RJ45","10/100/1000BaseTX"          ,"rgb(0,0,0)"),
-#@("RJ45","1000BaseT"                 ,"rgb(0,0,0)"),
-#@("RJ45-SFP","10/100/1000BaseTX SFP","rgb(0,0,0)"),
-#@("RJ45","T"                         ,"rgb(0,0,0)"),
-#@("RJ45","RJ45"                      ,"rgb(0,0,0)"),
-#@("Unknown","1G"                      ,"rgb(255,204,204)"),
-#@("Unknown","10G"                     ,"rgb(255,102,102)"),
-#@("Unknown","40G"                     ,"rgb(255,0,0)"),
-#@("Fibre","1000BaseLH"                ,"rgb(213,255,204)"),
-#@("Fibre","LH"                        ,"rgb(128,255,102)"),
-#@("Fibre","1000BaseLX SFP"            ,"rgb(179,255,242)"),
-#@("Fibre","LX"                        ,"rgb(25,255,217)"),
-#@("Fibre","1000BaseSX"                ,"rgb(204,204,255)"),
-#@("Fibre","1000BaseSX SFP"            ,"rgb(128,128,255)"),
-#@("Fibre","SX"                        ,"rgb(51,51,255)"),
-#@("Fibre","10GBase-LR"                ,"rgb(255,255,230)"),
-#@("Fibre","SFP-10GBase-LR"            ,"rgb(255,255,128)"),
-#@("Fibre","SFP-LR"                    ,"rgb(255,255,51)"),
-#@("Fibre","10Gbase-LRM"               ,"rgb(153,153,0)"),
-#@("Fibre","10Gbase-ZR"                ,"rgb(255,102,229)"),
-#@("Fibre","10GBase-CU 3M"             ,"rgb(179,0,149)"),
-#@("Fibre","10Gbase-SR"                ,"rgb(247,255,230)"),
-#@("Fibre","SFP-10GBase-SR"            ,"rgb(221,255,153)"),
-#@("Fibre","SFP-10GBase-ZR"            ,"rgb(179,255,25)"))
 
 
 ################################################################################

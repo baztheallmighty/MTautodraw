@@ -147,7 +147,18 @@ function Draw-AllNeighborsDrawio {
                 # Use a labeled loop to allow breaking out from a nested loop.
                 :outer foreach ($discoveredDevice in $ArrayOfLLDPDeviceIDs) {
                     # Check if the discovered device's hostname matches the neighbor's reported hostname or Chassis ID. LLDP can use either.
-                    if (($discoveredDevice.hostname -eq $lldpNeighbor.HostName) -or ($discoveredDevice.hostname -eq $lldpNeighbor.ChassisID)) {
+						# --- MODIFICATION START ---
+						# Clean the hostname from LLDP data to handle FQDN vs. short name mismatches.
+						$cleanedNeighborHostName = if (-not [string]::IsNullOrEmpty($lldpNeighbor.HostName)) {
+							($lldpNeighbor.HostName -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+						}
+						# Also clean the chassis ID, as it can sometimes be a hostname.
+						$cleanedChassisId = if (-not [string]::IsNullOrEmpty($lldpNeighbor.ChassisID)) {
+							($lldpNeighbor.ChassisID -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+						}
+						# Check against cleaned/original hostname AND cleaned/original chassis ID.
+						if (($discoveredDevice.hostname -eq $cleanedNeighborHostName) -or ($discoveredDevice.hostname -eq $lldpNeighbor.HostName) -or ($discoveredDevice.hostname -eq $cleanedChassisId) -or ($discoveredDevice.hostname -eq $lldpNeighbor.ChassisID)) {
+						# --- MODIFICATION END ---
 
                         # Now loop through the interfaces on the correctly identified device.
                         foreach ($remoteInterface in $discoveredDevice.interfaces) {
@@ -159,6 +170,10 @@ function Draw-AllNeighborsDrawio {
                         }
                     }
                 }
+
+				if (-not $toInterface) {
+					Write-Host "WARNING [AllNeighbors]: Could not find a matching discovered LLDP device for neighbor '$($lldpNeighbor.HostName)' on interface '$($lldpNeighbor.InterfaceRemoteDevice)'. Skipping connector." -ForegroundColor DarkYellow
+				}
 
                 # Connect the shapes if both local and remote interfaces were successfully found.
                 if ($fromInterface.PhysicalDrawioId -and $toInterface.PhysicalDrawioId) {
@@ -748,7 +763,10 @@ function Draw-SingleHostPhysicalDrawio {
                 # --- This is a DISCOVERED-ONLY Neighbor ---
                 $partnerHost = $ArrayOfCDPDeviceIDs | Where-Object { $_.HostName -eq $cdpNeighbor.DeviceID } | Select-Object -First 1
                 
-                if (-not $partnerHost) { continue } # Discovered device object was not created.
+                if (-not $partnerHost) { 
+					Write-Host "WARNING [SingleHost]: Could not find a discovered CDP device with DeviceID '$($cdpNeighbor.DeviceID)'. Skipping connector." -ForegroundColor DarkYellow
+					continue 
+				} # Discovered device object was not created.
 
                 if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
                     Add-DrawioNeighborHost -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "CDPNeighbor"
@@ -790,8 +808,18 @@ function Draw-SingleHostPhysicalDrawio {
                 # --- DISCOVERED-ONLY Neighbor ---
                 $neighborId = $lldpNeighbor.HostName
                 $chassisId = $lldpNeighbor.ChassisID
-                $partnerHost = $ArrayOfLLDPDeviceIDs | Where-Object { $_.HostName -eq $neighborId -or $_.HostName -eq $chassisId } | Select-Object -First 1
-
+ 				# --- MODIFICATION START ---
+ 				# Clean the hostname to handle FQDN vs. short name mismatches.
+ 				$cleanedNeighborHostName = if (-not [string]::IsNullOrEmpty($neighborId)) {
+ 					($neighborId -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+ 				}
+ 				# Also clean the chassis ID.
+ 				$cleanedChassisId = if (-not [string]::IsNullOrEmpty($chassisId)) {
+ 					($chassisId -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+ 				}
+ 				# Check against cleaned/original hostname AND cleaned/original chassis ID.
+ 				$partnerHost = $ArrayOfLLDPDeviceIDs | Where-Object { $_.HostName -eq $cleanedNeighborHostName -or $_.HostName -eq $neighborId -or $_.HostName -eq $cleanedChassisId -or $_.HostName -eq $chassisId } | Select-Object -First 1
+ 				# --- MODIFICATION END ---
                 if (-not $partnerHost) { continue }
 
                 if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
