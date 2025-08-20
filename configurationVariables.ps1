@@ -129,7 +129,7 @@ $GdrawBlockedStpPorts = $true
 
 
 # Skip HSRP routes. Use this option to not see HSRP routes in the routing protocol as they are mostly just noise.
-$GSkipHSRPRoutes=$true
+$GSkipHSRPRoutes=$false
 
 # Skip phones if the platform name contains the word "phone".
 # Access switches can have a lot of phones and they just mess up the diagram.

@@ -189,433 +189,6 @@ function Draw-AllNeighborsDrawio {
 }
 
 
-#function Draw-AllLayer3Drawio {
-#    [CmdletBinding()]
-#    param (
-#        # An array of all configured device objects.
-#        [parameter(Mandatory = $true)] $ArrayOfObjects,
-#        # An array of all discovered network segment (VLAN/subnet) objects.
-#        [parameter(Mandatory = $true)] $ArrayOfNetworks,
-#        # An optional array of ARP table entries.
-#        [parameter(Mandatory = $false)] $ArrayOfIPApr,
-#        # Defines the type of L3 diagram to create: "Normal", "RoutesOnly", or "LinksOnly".
-#        [parameter(Mandatory = $true)] $DiagramType,
-#        # The name to be displayed on the Draw.io page tab.
-#        [parameter(Mandatory = $true)] $NameOfPage,
-#        # An optional array of gateway-only devices (e.g., firewalls, routers not in the main set).
-#        [parameter(Mandatory = $false)] $ArrayofGatewayHosts
-#    )
-#    #Write-Host "Drawing Layer 3 Diagram: $NameOfPage" -ForegroundColor Green
-#    # Start a new diagram page with the specified name.
-#    Start-DrawioDiagram -Name $NameOfPage
-#
-#    # This hashtable will store networks drawn on THIS specific page.
-#    # It's crucial for connecting devices to the correct network shapes.
-#    # The key is the network CIDR, and the value is the network object.
-#    $drawableNetworksOnPage = @{}
-#
-#    # --- Phase 1: Draw all nodes (Hosts and Networks/VLANs with ARP bubbles) ---
-#    #Write-Host "`nDEBUG: Phase 1 - Drawing all physical nodes and networks..." -ForegroundColor Cyan
-#
-#    # Draw regular hosts
-#    $currentX = 50
-#    # Loop through each configured device to draw its logical representation.
-#    foreach ($Device in ($ArrayOfObjects | Sort-Object HostName)) {
-#        # Calls a helper function to draw the L3 view of the host.
-#        $hostWidth = Add-DrawioHostLayer3 -Device $Device -Location ([PSCustomObject]@{X = $currentX; Y = 500}) -DiagramType $DiagramType
-#        # Increment X position for the next host.
-#        $currentX += 700
-#        $currentX += $hostWidth
-#    }
-#
-#    # Draw gateway hosts, if provided and if the diagram type requires them.
-#    if (($DiagramType -eq "RoutesOnly" -or $DiagramType -eq "LinksOnly") -and $ArrayofGatewayHosts) {
-#        $currentX = 50
-#        foreach ($GatewayHost in $ArrayofGatewayHosts) {
-#            # Pass the DiagramType parameter here as well.
-#            # Draws a host specifically marked as a "GatewayHost".
-#            $hostWidth = Add-DrawioHostLayer3 -Device $GatewayHost -Location ([PSCustomObject]@{X = $currentX; Y = 1100}) -HostType "GatewayHost" -DiagramType $DiagramType
-#            $currentX += 700
-#            $currentX += $hostWidth
-#        }
-#    }
-#    # Draw networks (VLANs) and their associated ARP bubbles.
-#    # Check if the diagram type is "Normal" or "LinksOnly", as "RoutesOnly" does not show network segments.
-#    if ($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly") {
-#        #Write-Host "`nDEBUG: Drawing networks and ARP entries..." -ForegroundColor Cyan
-#        $currentY = 50 # Starting Y for networks, adjust as needed relative to hosts.
-#        foreach ($network in $ArrayOfNetworks) {
-#            # Skip networks that have no routed connectors when in "LinksOnly" mode to reduce clutter.
-#            if ($DiagramType -eq "LinksOnly" -and $network.NumberOfRoutedConnectors -eq 0) { continue }
-#
-#            # Draw the network segment shape (e.g., a cloud or a line).
-#            $netId = Add-DrawioNetworkSegment -Network $network -Location ([PSCustomObject]@{X = 100; Y = $currentY})
-#
-#            # Store the network object in our page-specific map using its CIDR as key.
-#            # This is critical for connecting devices to networks later.
-#            $drawableNetworksOnPage[$network.cidr] = $network
-#
-#            # Draw ARP entries bubble if enabled and data exists for this network.
-#            if ($GDrawAprEntries -and $network.ARPEntries) {
-#                $arpId = Add-DrawioArpBubble -Network $network -Location ([PSCustomObject]@{X = 400; Y = $currentY}) # Adjusted X for ARP bubble
-#
-#                # Connect the network to the ARP bubble with a dashed line.
-#                if ($netId -and $arpId) { # Ensure both shapes were drawn.
-#                    Add-DrawioConnector -SourceId $netId -TargetId $arpId -Style "endArrow=none;dashed=1;strokeColor=#9E9E9E;strokeWidth=2;" -Text "ARP"
-#                }
-#            }
-#            # Increment Y position for the next network shape.
-#            $currentY += ($GDrawioVlanHeight + 50) # Increment Y for next network, adjust spacing
-#        }
-#    }
-#
-#    # --- Phase 2: Draw all connectors ---
-#    Write-Host "Connecting L3 components for page '$NameOfPage'..." -ForegroundColor Cyan
-#    # Combine the main devices and gateway devices into a single list for searching.
-#    $allDrawableHosts = $ArrayOfObjects + $ArrayofGatewayHosts
-#
-#    # Iterate through every device that was drawn on the page.
-#    foreach ($device in $allDrawableHosts) {
-#        # Iterate through each active interface with an IP address on the device.
-#        foreach ($interface in ($device.interfaces | Where-Object { $_.ipaddress -and (-not $_.shutdown) })) {
-#            # --- Connect Device Interfaces to Networks/VLANs ---
-#            # This connection type is only drawn for "Normal" or "LinksOnly" diagrams.
-#            if (($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly")) {
-#                # Find the target network shape from the hashtable using the interface's CIDR.
-#                $targetNetwork = $drawableNetworksOnPage[$interface.cidr]
-#
-#                # If the interface shape and the network shape both exist, draw a connector.
-#                if ($interface.LogicalDrawioId -and $targetNetwork -and $targetNetwork.LogicalDrawioId) {
-#                    #Write-Host "       DEBUG: Connecting device $($device.HostName) interface $($interface.name) to network $($targetNetwork.cidr)." -ForegroundColor DarkGreen
-#                    Add-DrawioConnector -SourceId $interface.LogicalDrawioId -TargetId $targetNetwork.LogicalDrawioId -Style "endArrow=none;html=1;strokeWidth=2;strokeColor=#4CAF50;" -Text "$($interface.name)<br>$($interface.ipaddress)"
-#                }
-#                elseif ($DiagramType -eq "Normal") {
-#                    #Write-Warning "Interface $($device.HostName).$($interface.name) (IP: $($interface.ipaddress)) has CIDR $($interface.cidr) but matching network was not drawn or found on this page."
-#                }
-#            }
-#
-#            # --- Handle Primary Gateway Routes (with multiple standby IP fallbacks) ---
-#            # This logic is only for "RoutesOnly" diagrams.
-#            if ($DiagramType -eq "RoutesOnly" -and $interface.RoutesForInterface) {
-#                # Group all routes for this interface by their next-hop gateway IP address.
-#                $routeGroups = $interface.RoutesForInterface | Where-Object { $_.gateway } | Group-Object -Property gateway
-#
-#                # Process each group of routes (all routes pointing to the same next-hop).
-#                foreach ($group in $routeGroups) {
-#                    $gatewayIp = $group.Name
-#                    $targetInterfaces = @()
-#                    $connectionType = "Primary"
-#
-#                    #Write-Host "       DEBUG: Processing route from $($interface.name) to Gateway IP: $gatewayIp" -ForegroundColor Magenta
-#
-#                    # 1. First, search for the Gateway IP among all PHYSICAL hosts as a PRIMARY IP.
-#                    foreach ($deviceToSearch in $allDrawableHosts) {
-#                        # Find an interface where the main IP address matches the gateway IP.
-#                        $foundPrimaryInterface = $deviceToSearch.interfaces | Where-Object { $_.ipaddress -eq $gatewayIp }
-#                        if ($foundPrimaryInterface) {
-#                            $targetInterfaces += ($foundPrimaryInterface | Select-Object -First 1)
-#                            #Write-Host "         DEBUG: Gateway IP $gatewayIp found as PRIMARY IP on device $($deviceToSearch.HostName)." -ForegroundColor Green
-#                            $connectionType = "Primary"
-#                            break # Found the primary, no need to search further.
-#                        }
-#                    }
-#
-#                    # 2. If NOT found as a primary IP, then look for it as a STANDBY IP on other devices.
-#                    # This handles cases like HSRP/VRRP where the gateway is a virtual IP.
-#                    if (-not $targetInterfaces) {
-#                        #Write-Host "         DEBUG: Gateway IP $gatewayIp not found as primary. Checking ALL standby IPs on other devices..." -ForegroundColor Yellow
-#                        foreach ($deviceToSearch in $allDrawableHosts) {
-#                            if ($deviceToSearch.interfaces) {
-#                                foreach ($otherInterface in $deviceToSearch.interfaces) {
-#                                    if ($null -ne $otherInterface.standbyip) {
-#                                        # Ensure standbyip is treated as an array for the -contains operator.
-#                                        $standbyIpsToCheck = @($otherInterface.standbyip)
-#                                        if ($standbyIpsToCheck -contains $gatewayIp) {
-#                                            $targetInterfaces += $otherInterface
-#                                            #Write-Host "         DEBUG: Gateway IP $gatewayIp found as STANDBY IP on device $($deviceToSearch.HostName) on interface $($otherInterface.name)." -ForegroundColor Green
-#                                            $connectionType = "StandbyFallback"
-#                                            # We don't break here, as multiple devices could have the same standby IP.
-#                                        }
-#                                    }
-#                                }
-#                            }
-#                        }
-#                    }
-#
-#                    # If no device has this gateway IP (as primary or standby), we can't draw the route.
-#                    if (-not $targetInterfaces) {
-#                        #Write-Host "         DEBUG: Gateway IP $gatewayIp not found on any physical devices (primary or standby). Skipping route connection." -ForegroundColor Red
-#                        continue
-#                    }
-#
-#                    # Loop through all found target interfaces (usually one, but standby could be multiple).
-#                    foreach ($targetInterface in $targetInterfaces) {
-#                        # Check that both the source and target shapes have valid Draw.io IDs.
-#                        if ($interface.LogicalDrawioId -and $targetInterface.LogicalDrawioId) {
-#                            #Write-Host "         DEBUG: SUCCESS - Connecting from '$($interface.ipaddress)' to target '$($targetInterface.ipaddress)'. SourceID: $($interface.LogicalDrawioId), TargetID: $($targetInterface.LogicalDrawioId)" -ForegroundColor Green
-#
-#                            # Initialize connector style properties.
-#                            $text = ""
-#                            $color = ""
-#                            $strokeWidth = "8"
-#                            $endArrow = "classic"
-#                            $endArrowSize = "8"
-#                            $dashed = "0"
-#
-#                            # Logic for determining protocol and route details for text and color.
-#                            $routeCount = $group.Count
-#                            $protocols = ($group.Group.RouteProtocol | Sort-Object -Unique) -join ', '
-#
-#                            # Determine the primary protocol to decide the connector color.
-#                            $primaryProtocol = ($group.Group.RouteProtocol | Select-Object -First 1)
-#                            if ($protocols -like "*BGP*") { $primaryProtocol = "BGP" }
-#                            elseif ($protocols -like "*EIGRP*") { $primaryProtocol = "EIGRP" }
-#                            elseif ($protocols -like "*OSPF*") { $primaryProtocol = "OSPF" }
-#                            elseif ($protocols -like "*static*") { $primaryProtocol = "static" }
-#
-#                            # Set the connector color based on the routing protocol.
-#                            switch -wildcard ($primaryProtocol) {
-#                                "static" { $color = "rgb(0,107,60)" } # Green
-#                                "RIP" { $color = "rgb(179,89,0)" } # Dark orange
-#                                "BGP" { $color = "rgb(0,0,179)" } # blue
-#                                "BGP-*" { $color = "rgb(0,0,179)" } # blue
-#                                "B" { $color = "rgb(0,0,179)" } # blue
-#                                "EIGRP" { $color = "rgb(160,32,240)" } # purple
-#                                "OSPF" { $color = "rgb(255,255,51)" } # Yellow
-#                                "OSPF-*" { $color = "rgb(255,255,51)" } # Yellow
-#                                "IS-IS" { $color = "rgb(204,238,255)" } # Light blue
-#                                "Default gateway" { $color = "rgb(0,107,60)" } # Green
-#                                default { $color = "#000000" } # black
-#                            }
-#
-#                            # Text generation: If there are too many routes, summarize them. Otherwise, list them.
-#                            if (($group.Group | select subnet).count -gt 30) {
-#                                if ($group.Group | where { $_.subnet -like "*0.0.0.0/0*" }) {
-#                                    $text = "$($protocols)<br>$($gatewayIp)<br>Route Count:$routeCount<br>Routes For: 0.0.0.0/0"
-#                                }
-#                                else {
-#                                    $text = "$($protocols)<br>$($gatewayIp)<br>Route Count:$routeCount"
-#                                }
-#                            }
-#                            else {
-#                                $text = "$($protocols)<br>$($gatewayIp)<br>"
-#                                $text += ($group.Group | select -ExpandProperty subnet | sort) -join '<br>'
-#                            }
-#
-#                            # Line pattern for default routes vs other routes.
-#                            if ($text -like "*0.0.0.0/0*") {
-#                                $dashed = "0" # Solid line for default route.
-#                            }
-#                            else {
-#                                $dashed = "1" # Dashed line for specific routes.
-#                            }
-#
-#                            # Apply standby specific style adjustments if it's a fallback connection.
-#                            if ($connectionType -eq "StandbyFallback") {
-#                                $text = "Standby: " + $text # Prepend "Standby: " to the existing route text.
-#                                $color = "#FF8C00" # Dark Orange for standby line color.
-#                                $strokeWidth = "2" # Thinner line for standby.
-#                                $dashed = "1" # Always dashed for standby.
-#                            }
-#
-#                            # Construct the final style string for the Draw.io connector.
-#                            $style = "endArrow=$endArrow;html=1;strokeWidth=$strokeWidth;strokeColor=$color;endSize=$endArrowSize;"
-#                            if ($dashed -eq "1") {
-#                                $style += "dashed=1;"
-#                            }
-#
-#                            # Add the connector to the diagram with the calculated style and text.
-#                            Add-DrawioConnector -SourceId $interface.LogicalDrawioId -TargetId $targetInterface.LogicalDrawioId -Style $style -Text $text
-#
-#                        }
-#                        else {
-#                            #Write-Host "         DEBUG: FAILED - Missing Shape ID. Source: $($interface.LogicalDrawioId), Target: $($targetInterface.LogicalDrawioId)" -ForegroundColor Red
-#                        }
-#                    } # End foreach targetInterface
-#                } # End foreach group
-#            }
-#        } # End foreach interface
-#    } # End foreach device
-#    # Finalize and save the diagram page.
-#    End-DrawioDiagram
-#}
-
-function Draw-AllLayer3Drawio {
-    [CmdletBinding()]
-    param (
-        # An array of all configured device objects.
-        [parameter(Mandatory = $true)] $ArrayOfObjects,
-        # An array of all discovered network segment (VLAN/subnet) objects.
-        [parameter(Mandatory = $true)] $ArrayOfNetworks,
-        # An optional array of ARP table entries.
-        [parameter(Mandatory = $false)] $ArrayOfIPApr,
-        # Defines the type of L3 diagram to create: "Normal", "RoutesOnly", or "LinksOnly".
-        [parameter(Mandatory = $true)] $DiagramType,
-        # The name to be displayed on the Draw.io page tab.
-        [parameter(Mandatory = $true)] $NameOfPage,
-        # An optional array of gateway-only devices (e.g., firewalls, routers not in the main set).
-        [parameter(Mandatory = $false)] $ArrayofGatewayHosts
-    )
-    #Write-Host "Drawing Layer 3 Diagram: $NameOfPage" -ForegroundColor Green
-    Start-DrawioDiagram -Name $NameOfPage
-    $drawableNetworksOnPage = @{}
-
-    # --- Phase 1: Draw all nodes (Hosts and Networks/VLANs with ARP bubbles) ---
-    $currentX = 50
-    foreach ($Device in ($ArrayOfObjects | Sort-Object HostName)) {
-        $hostWidth = Add-DrawioHostLayer3 -Device $Device -Location ([PSCustomObject]@{X = $currentX; Y = 500}) -DiagramType $DiagramType
-        $currentX += 700 + $hostWidth
-    }
-
-    if (($DiagramType -eq "RoutesOnly" -or $DiagramType -eq "LinksOnly") -and $ArrayofGatewayHosts) {
-        $currentX = 50
-        foreach ($GatewayHost in $ArrayofGatewayHosts) {
-            $hostWidth = Add-DrawioHostLayer3 -Device $GatewayHost -Location ([PSCustomObject]@{X = $currentX; Y = 1100}) -HostType "GatewayHost" -DiagramType $DiagramType
-            $currentX += 700 + $hostWidth
-        }
-    }
-    
-    if ($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly") {
-        $currentY = 50 
-        foreach ($network in $ArrayOfNetworks) {
-            if ($DiagramType -eq "LinksOnly" -and $network.NumberOfRoutedConnectors -eq 0) { continue }
-            $netId = Add-DrawioNetworkSegment -Network $network -Location ([PSCustomObject]@{X = 100; Y = $currentY})
-            $drawableNetworksOnPage[$network.cidr] = $network
-            if ($GDrawAprEntries -and $network.ARPEntries) {
-                $arpId = Add-DrawioArpBubble -Network $network -Location ([PSCustomObject]@{X = 400; Y = $currentY}) 
-                if ($netId -and $arpId) { 
-                    Add-DrawioConnector -SourceId $netId -TargetId $arpId -Style "endArrow=none;dashed=1;strokeColor=#9E9E9E;strokeWidth=2;" -Text "ARP"
-                }
-            }
-            $currentY += ($GDrawioVlanHeight + 50) 
-        }
-    }
-
-    # --- Phase 2: Draw all connectors ---
-    Write-Host "Connecting L3 components for page '$NameOfPage'..." -ForegroundColor Cyan
-    $allDrawableHosts = $ArrayOfObjects + $ArrayofGatewayHosts
-
-    foreach ($device in $allDrawableHosts) {
-        foreach ($interface in ($device.interfaces | Where-Object { $_.ipaddress -and (-not $_.shutdown) })) {
-            if (($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly")) {
-                 
-                $targetNetwork = $drawableNetworksOnPage[$interface.cidr]
-
-                if ($interface.LogicalDrawioId -and $targetNetwork -and $targetNetwork.LogicalDrawioId) {
-                    Add-DrawioConnector -SourceId $interface.LogicalDrawioId -TargetId $targetNetwork.LogicalDrawioId -Style "endArrow=none;html=1;strokeWidth=2;strokeColor=#4CAF50;" -Text "$($interface.name)<br>$($interface.ipaddress)"
-                }
-            }
-
-            if ($DiagramType -eq "RoutesOnly" -and $interface.RoutesForInterface) {
-                $routeGroups = $interface.RoutesForInterface | Where-Object { $_.gateway } | Group-Object -Property gateway
-                foreach ($group in $routeGroups) {
-                    $gatewayIp = $group.Name
-                    $targetInterfaces = @()
-                    $connectionType = "Primary"
-
-                    foreach ($deviceToSearch in $allDrawableHosts) {
-                        $foundPrimaryInterface = $deviceToSearch.interfaces | Where-Object { $_.ipaddress -eq $gatewayIp }
-                        if ($foundPrimaryInterface) {
-                            $targetInterfaces += ($foundPrimaryInterface | Select-Object -First 1)
-                            $connectionType = "Primary"
-                            break 
-                        }
-                    }
-
-                    if (-not $targetInterfaces) {
-                        foreach ($deviceToSearch in $allDrawableHosts) {
-                            if ($deviceToSearch.interfaces) {
-                                foreach ($otherInterface in $deviceToSearch.interfaces) {
-                                    if ($null -ne $otherInterface.standbyip) {
-                                        $standbyIpsToCheck = @($otherInterface.standbyip)
-                                        if ($standbyIpsToCheck -contains $gatewayIp) {
-                                            $targetInterfaces += $otherInterface
-                                            $connectionType = "StandbyFallback"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (-not $targetInterfaces) {
-                        continue
-                    }
-
-                    foreach ($targetInterface in $targetInterfaces) {
-                        if ($interface.LogicalDrawioId -and $targetInterface.LogicalDrawioId) {
-                            $text = ""
-                            $color = ""
-                            $strokeWidth = "8"
-                            $endArrow = "classic"
-                            $endArrowSize = "8"
-                            $dashed = "0"
-                            $routeCount = $group.Count
-                            $protocols = ($group.Group.RouteProtocol | Sort-Object -Unique) -join ', '
-                            $primaryProtocol = ($group.Group.RouteProtocol | Select-Object -First 1)
-                            if ($protocols -like "*BGP*") { $primaryProtocol = "BGP" }
-                            elseif ($protocols -like "*EIGRP*") { $primaryProtocol = "EIGRP" }
-                            elseif ($protocols -like "*OSPF*") { $primaryProtocol = "OSPF" }
-                            elseif ($protocols -like "*static*") { $primaryProtocol = "static" }
-
-                            switch -wildcard ($primaryProtocol) {
-                                "static" { $color = "rgb(0,107,60)" } 
-                                "RIP" { $color = "rgb(179,89,0)" } 
-                                "BGP" { $color = "rgb(0,0,179)" } 
-                                "BGP-*" { $color = "rgb(0,0,179)" } 
-                                "B" { $color = "rgb(0,0,179)" } 
-                                "EIGRP" { $color = "rgb(160,32,240)" } 
-                                "OSPF" { $color = "rgb(255,255,51)" } 
-                                "OSPF-*" { $color = "rgb(255,255,51)" } 
-                                "IS-IS" { $color = "rgb(204,238,255)" } 
-                                "Default gateway" { $color = "rgb(0,107,60)" } 
-                                default { $color = "#000000" } 
-                            }
-
-                            if (($group.Group | select subnet).count -gt 30) {
-                                if ($group.Group | where { $_.subnet -like "*0.0.0.0/0*" }) {
-                                    $text = "$($protocols)<br>$($gatewayIp)<br>Route Count:$routeCount<br>Routes For: 0.0.0.0/0"
-                                }
-                                else {
-                                    $text = "$($protocols)<br>$($gatewayIp)<br>Route Count:$routeCount"
-                                }
-                            }
-                            else {
-                                $text = "$($protocols)<br>$($gatewayIp)<br>"
-                                $text += ($group.Group | select -ExpandProperty subnet | sort) -join '<br>'
-                            }
-
-                            if ($text -like "*0.0.0.0/0*") {
-                                $dashed = "0" 
-                            }
-                            else {
-                                $dashed = "1" 
-                            }
-
-                            if ($connectionType -eq "StandbyFallback") {
-                                $text = "Standby: " + $text 
-                                $color = "#FF8C00" 
-                                $strokeWidth = "2" 
-                                $dashed = "1" 
-                            }
-
-                            $style = "endArrow=$endArrow;html=1;strokeWidth=$strokeWidth;strokeColor=$color;endSize=$endArrowSize;"
-                            if ($dashed -eq "1") {
-                                $style += "dashed=1;"
-                            }
-
-                            Add-DrawioConnector -SourceId $interface.LogicalDrawioId -TargetId $targetInterface.LogicalDrawioId -Style $style -Text $text
-                        }
-                        else {
-                        }
-                    } 
-                } 
-            }
-        } 
-    } 
-    End-DrawioDiagram
-}
-
 
 function Draw-SinglesLayer3Drawio {
     [CmdletBinding()]
@@ -844,5 +417,179 @@ function Draw-SingleHostPhysicalDrawio {
 }
 
 
+function Draw-AllLayer3Drawio {
+    [CmdletBinding()]
+    param (
+        # An array of all configured device objects.
+        [parameter(Mandatory = $true)] $ArrayOfObjects,
+        # An array of all discovered network segment (VLAN/subnet) objects.
+        [parameter(Mandatory = $true)] $ArrayOfNetworks,
+        # An optional array of ARP table entries.
+        [parameter(Mandatory = $false)] $ArrayOfIPApr,
+        # Defines the type of L3 diagram to create: "Normal", "RoutesOnly", or "LinksOnly".
+        [parameter(Mandatory = $true)] $DiagramType,
+        # The name to be displayed on the Draw.io page tab.
+        [parameter(Mandatory = $true)] $NameOfPage,
+        # An optional array of gateway-only devices (e.g., firewalls, routers not in the main set).
+        [parameter(Mandatory = $false)] $ArrayofGatewayHosts
+    )
+    #Write-Host "Drawing Layer 3 Diagram: $NameOfPage" -ForegroundColor Green
+    Start-DrawioDiagram -Name $NameOfPage
+    $drawableNetworksOnPage = @{}
 
+    # --- Phase 1: Draw all nodes (Hosts and Networks/VLANs with ARP bubbles) ---
+    $currentX = 50
+    foreach ($Device in ($ArrayOfObjects | Sort-Object HostName)) {
+        $hostWidth = Add-DrawioHostLayer3 -Device $Device -Location ([PSCustomObject]@{X = $currentX; Y = 500}) -DiagramType $DiagramType
+        $currentX += 700 + $hostWidth
+    }
+
+    if (($DiagramType -eq "RoutesOnly" -or $DiagramType -eq "LinksOnly") -and $ArrayofGatewayHosts) {
+        $currentX = 50
+        foreach ($GatewayHost in $ArrayofGatewayHosts) {
+            $hostWidth = Add-DrawioHostLayer3 -Device $GatewayHost -Location ([PSCustomObject]@{X = $currentX; Y = 1100}) -HostType "GatewayHost" -DiagramType $DiagramType
+            $currentX += 700 + $hostWidth
+        }
+    }
+    
+    if ($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly") {
+        $currentY = 50 
+        foreach ($network in $ArrayOfNetworks) {
+            if ($DiagramType -eq "LinksOnly" -and $network.NumberOfRoutedConnectors -eq 0) { continue }
+            $netId = Add-DrawioNetworkSegment -Network $network -Location ([PSCustomObject]@{X = 100; Y = $currentY})
+            $drawableNetworksOnPage[$network.cidr] = $network
+            if ($GDrawAprEntries -and $network.ARPEntries) {
+                $arpId = Add-DrawioArpBubble -Network $network -Location ([PSCustomObject]@{X = 400; Y = $currentY}) 
+                if ($netId -and $arpId) { 
+                    Add-DrawioConnector -SourceId $netId -TargetId $arpId -Style "endArrow=none;dashed=1;strokeColor=#9E9E9E;strokeWidth=2;" -Text "ARP"
+                }
+            }
+            $currentY += ($GDrawioVlanHeight + 50) 
+        }
+    }
+
+    # --- Phase 2: Draw all connectors ---
+    Write-Host "Connecting L3 components for page '$NameOfPage'..." -ForegroundColor Cyan
+    $allDrawableHosts = $ArrayOfObjects + $ArrayofGatewayHosts
+
+    foreach ($device in $allDrawableHosts) {
+        foreach ($interface in ($device.interfaces | Where-Object { $_.ipaddress -and (-not $_.shutdown) })) {
+            if (($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly")) {
+                 
+                $targetNetwork = $drawableNetworksOnPage[$interface.cidr]
+
+                if ($interface.LogicalDrawioId -and $targetNetwork -and $targetNetwork.LogicalDrawioId) {
+                    Add-DrawioConnector -SourceId $interface.LogicalDrawioId -TargetId $targetNetwork.LogicalDrawioId -Style "endArrow=none;html=1;strokeWidth=2;strokeColor=#4CAF50;" -Text "$($interface.name)<br>$($interface.ipaddress)"
+                }
+            }
+
+            if ($DiagramType -eq "RoutesOnly" -and $interface.RoutesForInterface) {
+                $routeGroups = $interface.RoutesForInterface | Where-Object { $_.gateway } | Group-Object -Property gateway
+                foreach ($group in $routeGroups) {
+                    $gatewayIp = $group.Name
+                    $targetInterfaces = @()
+                    $connectionType = "Primary"
+
+                    foreach ($deviceToSearch in $allDrawableHosts) {
+                        $foundPrimaryInterface = $deviceToSearch.interfaces | Where-Object { $_.ipaddress -eq $gatewayIp }
+                        if ($foundPrimaryInterface) {
+                            $targetInterfaces += ($foundPrimaryInterface | Select-Object -First 1)
+                            $connectionType = "Primary"
+                            break 
+                        }
+                    }
+
+                    if (-not $targetInterfaces) {
+                        foreach ($deviceToSearch in $allDrawableHosts) {
+                            if ($deviceToSearch.interfaces) {
+                                foreach ($otherInterface in $deviceToSearch.interfaces) {
+                                    if ($null -ne $otherInterface.standbyip) {
+                                        $standbyIpsToCheck = @($otherInterface.standbyip)
+                                        if ($standbyIpsToCheck -contains $gatewayIp) {
+                                            $targetInterfaces += $otherInterface
+                                            $connectionType = "StandbyFallback"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (-not $targetInterfaces) {
+                        continue
+                    }
+
+                    foreach ($targetInterface in $targetInterfaces) {
+                        if ($interface.LogicalDrawioId -and $targetInterface.LogicalDrawioId) {
+                            $text = ""
+                            $color = ""
+                            $strokeWidth = "8"
+                            $endArrow = "classic"
+                            $endArrowSize = "8"
+                            $dashed = "0"
+                            $routeCount = $group.Count
+                            $protocols = ($group.Group.RouteProtocol | Sort-Object -Unique) -join ', '
+                            $primaryProtocol = ($group.Group.RouteProtocol | Select-Object -First 1)
+                            if ($protocols -like "*BGP*") { $primaryProtocol = "BGP" }
+                            elseif ($protocols -like "*EIGRP*") { $primaryProtocol = "EIGRP" }
+                            elseif ($protocols -like "*OSPF*") { $primaryProtocol = "OSPF" }
+                            elseif ($protocols -like "*static*") { $primaryProtocol = "static" }
+
+                            switch -wildcard ($primaryProtocol) {
+                                "static" { $color = "rgb(0,107,60)" } 
+                                "RIP" { $color = "rgb(179,89,0)" } 
+                                "BGP" { $color = "rgb(0,0,179)" } 
+                                "BGP-*" { $color = "rgb(0,0,179)" } 
+                                "B" { $color = "rgb(0,0,179)" } 
+                                "EIGRP" { $color = "rgb(160,32,240)" } 
+                                "OSPF" { $color = "rgb(255,255,51)" } 
+                                "OSPF-*" { $color = "rgb(255,255,51)" } 
+                                "IS-IS" { $color = "rgb(204,238,255)" } 
+                                "Default gateway" { $color = "rgb(0,107,60)" } 
+                                default { $color = "#000000" } 
+                            }
+
+                            if (($group.Group | select subnet).count -gt 30) {
+                                if ($group.Group | where { $_.subnet -like "*0.0.0.0/0*" }) {
+                                    $text = "$($protocols)<br>$($gatewayIp)<br>Route Count:$routeCount<br>Routes For: 0.0.0.0/0"
+                                }
+                                else {
+                                    $text = "$($protocols)<br>$($gatewayIp)<br>Route Count:$routeCount"
+                                }
+                            }
+                            else {
+                                $text = "$($protocols)<br>$($gatewayIp)<br>"
+                                $text += ($group.Group | select -ExpandProperty subnet | sort) -join '<br>'
+                            }
+
+                            if ($text -like "*0.0.0.0/0*") {
+                                $dashed = "0" 
+                            }
+                            else {
+                                $dashed = "1" 
+                            }
+
+                            if ($connectionType -eq "StandbyFallback") {
+                                $text = "Standby: " + $text 
+                                $color = "#FF8C00" 
+                                $strokeWidth = "2" 
+                                $dashed = "1" 
+                            }
+
+                            $style = "endArrow=$endArrow;html=1;strokeWidth=$strokeWidth;strokeColor=$color;endSize=$endArrowSize;"
+                            if ($dashed -eq "1") {
+                                $style += "dashed=1;"
+                            }
+
+                            Add-DrawioConnector -SourceId $interface.LogicalDrawioId -TargetId $targetInterface.LogicalDrawioId -Style $style -Text $text
+                        }
+                        else {
+                        }
+                    } 
+                } 
+            }
+        } 
+    } 
+    End-DrawioDiagram
+}
 

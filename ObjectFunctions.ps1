@@ -372,6 +372,8 @@ function Create-HostObject(){
     $newObject| Add-Member -type NoteProperty -Name BGPNeighbors -value @()                   #Array of BGP neighbor objects
     $newObject| Add-Member -type NoteProperty -Name DebugLog -value @()                       #debug logs created when processing config files. 
 	$newObject| Add-Member -type NoteProperty -Name ProcessOutputObjects -value @()                       #Stores raw objects after processing of Execute-PythonTextFSM
+    $newObject| Add-Member -type NoteProperty -Name HostTypeIfCDPorLLDP -value @()                       #If this device is a lldp or cdp neighbor and it's name is a mac address we store it's make here. e.g HP or Dell or whatever
+    
     return $newObject
 }
 

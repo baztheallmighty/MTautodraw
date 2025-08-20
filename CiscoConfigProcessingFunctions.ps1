@@ -457,109 +457,105 @@ function Get-ShowInterfaceFromText(){
 }
 
 #Process the show IP arp file
-function Get-ShowIPArpText(){
-    param (
-        [parameter(Mandatory=$true)]
-        $ShowIPArpFile,
-        $Device
-    )
-    #Read the file into one big string
-    $ShowIPArpText = Get-Content -raw $ShowIPArpFile
-    $AllIPArpObjects=@() #Array of routes(Create-RouteObject) that will be passed back to the host object.
-    if(($ShowIPArpText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
-        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
-        return $device
-    }
-    if($Device.version.type -eq "NXOS"){
-        #Add-HostDebugText -HostObject $Device "This is a  NXOS device"
-        #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
-        #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPArpTemplate -ShowFile $ShowIPArpFile  -ReturnArray $true -HostObject $Device
-        if($Device.ProcessOutputObjects -eq "ERROR"){
-            Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
-            return $device
-        }
-        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
-            $tempArray = @()
-            $tempArray += ,$Device.ProcessOutputObjects
-            $Device.ProcessOutputObjects = $tempArray
-        }        
-        foreach ($IPArpEntry in $Device.ProcessOutputObjects){
-            $IPArpObject=Create-ShowIPArpObject
-            $IPArpObject.ipaddress    =$IPArpEntry[0].trim()
-            $IPArpObject.AGE          =$IPArpEntry[1].trim()
-            $IPArpObject.MAC          =$IPArpEntry[2].trim()
-            if($IPArpEntry[3].trim() -ne ""){#keep it as $null don't fill with a empty string.
-                $IPArpObject.INTERFACE    =$IPArpEntry[3].trim()
-            }
-            $MacInOtherFormat=$null
-            $MacInOtherFormat=($IPArpEntry[2].trim() -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
-            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
-                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
-            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
-                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
-            }else{
-                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
-            }
-            #TODO:More optimisation here
-            foreach ( $interface in $device.interfaces | sort cidr -desc){
-                if(-not $interface.cidr){
-                    break
-                }
-
-                if((Find-Subnet -addr1 $interface.Cidr -addr2 $IPArpObject.ipaddress).condition){
-                    $IPArpObject.cidr=$interface.Cidr
-                    break
-                }
-            }
-            $AllIPArpObjects+=$IPArpObject
-        }
-        $device.IPArpEntries=$AllIPArpObjects
-        return $device
-    }
-
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
-        #Add-HostDebugText -HostObject $Device "This is a XE-IOS or IOS device"
-        #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
-        #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPArpTemplate -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
-        if($Device.ProcessOutputObjects -eq "ERROR"){
-            Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
-            return $device
-        }
-        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
-            $tempArray = @()
-            $tempArray += ,$Device.ProcessOutputObjects
-            $Device.ProcessOutputObjects = $tempArray
-        }        
-        foreach ($IPArpEntry in $Device.ProcessOutputObjects){
-            $IPArpObject=Create-ShowIPArpObject
-            $IPArpObject.PROTOCOL= $IPArpEntry[0].trim()
-            $IPArpObject.ipaddress=  $IPArpEntry[1].trim()
-            $IPArpObject.AGE=      $IPArpEntry[2].trim()
-            $IPArpObject.MAC=      $IPArpEntry[3].trim()
-            $IPArpObject.TYPE=     $IPArpEntry[4].trim()
-            $IPArpObject.INTERFACE=$IPArpEntry[5].trim()
-            $MacInOtherFormat=$null
-            $MacInOtherFormat=($IPArpObject.MAC -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
-            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
-                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
-            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
-                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
-            }else{
-                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
-            }
-            $IPArpObject.cidr = $device.interfaces | where { $_.Cidr } | where {(Find-Subnet -addr1 $_.Cidr -addr2 $IPArpObject.ipaddress).condition } | select -first 1 | % { $_.cidr }
-            $AllIPArpObjects+=$IPArpObject
-        }
-        $device.IPArpEntries=$AllIPArpObjects
-        return $device
-    }
-    Add-HostDebugText -HostObject $Device "Error with show ip arp. Unable to find device type"   -BackgroundColor  red
-    return $device
-}
-
+#function Get-ShowIPArpText(){
+#    param (
+#        [parameter(Mandatory=$true)]
+#        $ShowIPArpFile,
+#        $Device
+#    )
+#    #Read the file into one big string
+#    $ShowIPArpText = Get-Content -raw $ShowIPArpFile
+#    if(($ShowIPArpText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
+#        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
+#        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+#        return $device
+#    }
+#    if($Device.version.type -eq "NXOS"){
+#        #Start Python process with TextFSM to convert the Text to a Object
+#        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPArpTemplate -ShowFile $ShowIPArpFile  -ReturnArray $true -HostObject $Device
+#        if($Device.ProcessOutputObjects -eq "ERROR"){
+#            Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
+#            return $device
+#        }
+#        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+#            $tempArray = @()
+#            $tempArray += ,$Device.ProcessOutputObjects
+#            $Device.ProcessOutputObjects = $tempArray
+#        }
+#
+#        # OPTIMIZATION: Pre-filter and sort interfaces with a CIDR once before the loop.
+#        $routableInterfaces = $device.interfaces | Where-Object { $_.Cidr } | Sort-Object Cidr -Descending
+#        
+#        # OPTIMIZATION: Let the pipeline build the array instead of using +=
+#        $device.IPArpEntries = foreach ($IPArpEntry in $Device.ProcessOutputObjects){
+#            $IPArpObject=Create-ShowIPArpObject
+#            $IPArpObject.ipaddress    =$IPArpEntry[0].trim()
+#            $IPArpObject.AGE          =$IPArpEntry[1].trim()
+#            $IPArpObject.MAC          =$IPArpEntry[2].trim()
+#            if($IPArpEntry[3].trim() -ne ""){#keep it as $null don't fill with a empty string.
+#                $IPArpObject.INTERFACE    =$IPArpEntry[3].trim()
+#            }
+#            $MacInOtherFormat=($IPArpEntry[2].trim() -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
+#            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
+#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
+#            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
+#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
+#            }else{
+#                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
+#            }
+#            
+#            # OPTIMIZATION: Search the much smaller, pre-filtered list instead of the full list.
+#            $IPArpObject.cidr = ($routableInterfaces | where {(Find-Subnet -addr1 $_.Cidr -addr2 $IPArpObject.ipaddress).condition } | Select-Object -ExpandProperty Cidr -First 1)
+#
+#            $IPArpObject # Output the object to the pipeline
+#        }
+#        return $device
+#    }
+#
+#    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+#        #Start Python process with TextFSM to convert the Text to a Object
+#        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPArpTemplate -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
+#        if($Device.ProcessOutputObjects -eq "ERROR"){
+#            Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
+#            return $device
+#        }
+#        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+#            $tempArray = @()
+#            $tempArray += ,$Device.ProcessOutputObjects
+#            $Device.ProcessOutputObjects = $tempArray
+#        }
+#        
+#        # OPTIMIZATION: Pre-filter and sort interfaces with a CIDR once before the loop.
+#        $routableInterfaces = $device.interfaces | Where-Object { $_.Cidr } | Sort-Object Cidr -Descending
+#
+#        # OPTIMIZATION: Let the pipeline build the array instead of using +=
+#        $device.IPArpEntries = foreach ($IPArpEntry in $Device.ProcessOutputObjects){
+#            $IPArpObject=Create-ShowIPArpObject
+#            $IPArpObject.PROTOCOL= $IPArpEntry[0].trim()
+#            $IPArpObject.ipaddress=  $IPArpEntry[1].trim()
+#            $IPArpObject.AGE=      $IPArpEntry[2].trim()
+#            $IPArpObject.MAC=      $IPArpEntry[3].trim()
+#            $IPArpObject.TYPE=     $IPArpEntry[4].trim()
+#            $IPArpObject.INTERFACE=$IPArpEntry[5].trim()
+#            $MacInOtherFormat=($IPArpObject.MAC -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
+#            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
+#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
+#            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
+#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
+#            }else{
+#                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
+#            }
+#            
+#            # OPTIMIZATION: Search the much smaller, pre-filtered list.
+#            $IPArpObject.cidr = ($routableInterfaces | where {(Find-Subnet -addr1 $_.Cidr -addr2 $IPArpObject.ipaddress).condition } | Select-Object -ExpandProperty Cidr -First 1)
+#            
+#            $IPArpObject # Output the object to the pipeline
+#        }
+#        return $device
+#    }
+#    Add-HostDebugText -HostObject $Device "Error with show ip arp. Unable to find device type"   -BackgroundColor  red
+#    return $device
+#}
 
 
 ##Process the show version file
@@ -856,206 +852,6 @@ function Get-ShowVersionFromText(){
 }
 
 
-#Process the show ip route file
-function Get-ShowIPRouteFromText(){
-    param (
-        [parameter(Mandatory=$true)]
-        $ShowIPRouteFile,
-        $ShowIPRouteVRFstarFile,
-        $Device
-    )
-    $AllRouteObjects=@() #Array of routes(Create-RouteObject) that will be passed back to the host object.
-    $UseShowIPRouteVRFstarFile=$false #should we use the $ShowIPRouteVRFstarFile file or not. Default no.
-    if($ShowIPRouteVRFstarFile){#Always default to using ShowIPRouteVRFstarFile but check other file if it fails
-        #Read the file into one big string
-        $ShowRouteText = Get-Content -raw $ShowIPRouteVRFstarFile
-        if(!($ShowRouteText | Select-String "No IP Route Table for VRF").Matches.Success){#The show ip route vrf start is empty use show ip route file. 
-            if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
-
-                if($ShowIPRouteFile){#Maybe ShowIPRouteVRFstarFile is invalid. If so try show ip route.
-                    $ShowRouteText = Get-Content -raw $ShowIPRouteFile
-                    if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
-                        Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
-                        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
-
-                        return $device
-                    }
-                }else{#no show ip route file and show ip route vrf * is invalid so error and return.
-                    Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
-                    Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
-
-                    return $device
-                }
-            }
-            $UseShowIPRouteVRFstarFile=$true           
-        }
-        
-    }
-    if($UseShowIPRouteVRFstarFile -eq $false){#We just have normal show ip route.
-        #Read the file into one big string
-        $ShowRouteText = Get-Content -raw $ShowIPRouteFile
-        if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
-            Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
-            Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
-            return $device
-        }
-    }
-
-
-    if(($ShowRouteText | Select-String "IP Route Table for VRF `"default`"").Matches.Success){
-        Add-HostDebugText -HostObject $Device "This is a Nexus device"
-        #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
-        #Start Python process with TextFSM to convert the Text to a Object
-        if($UseShowIPRouteVRFstarFile){
-            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile  -ReturnArray $true -HostObject $Device
-       }else{
-
-            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile  -ReturnArray $true -HostObject $Device
-        }
-        if($Device.ProcessOutputObjects -eq "ERROR"){
-            if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
-                Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback."
-                $RouteObject=Create-RouteObject
-                $RouteObject.gateway=($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").matches.value -replace "Default gateway is ",''
-                $RouteObject.Subnet="0.0.0.0/0"
-                $RouteObject.RouteProtocol="Default gateway"
-                foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""}| where { $_.IntStatus -ne "down" -and $_.IntStatus -ne "down" })){
-                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
-                        $RouteObject.Interface=$Interface.Interface
-                        break
-                    }
-                }
-                Add-HostDebugText -HostObject $Device "Found default gateway:$($RouteObject)"
-                $device.RoutingTable+=$RouteObject
-                return $device
-            }else{
-                # If TextFSM failed AND there's no fallback, log the error and return the UNMODIFIED device.
-                Add-HostDebugText -HostObject $Device "Error processing show ip route file '$($ShowIPRouteFile)'. TextFSM returned an error or the file is empty/invalid." -BackgroundColor Red
-                return $device # CRUCIAL: Return the original object so the chain doesn't break.
-            }
-            Add-HostDebugText -HostObject $Device "Error with show ip route on Nexus routing." -BackgroundColor red
-            return $device
-        }
-        foreach ($Route in $Device.ProcessOutputObjects){
-            $RouteObject=Create-RouteObject
-            $RouteObject.VRF=$Route[0]
-            $RouteObject.RouteProtocol=$Route[1]
-            if($RouteObject.RouteProtocol -eq "hsrp" -and $GSkipHSRPRoutes){ #HSRP is not a routing protocol we want to have included.
-                continue
-            }
-            if($null -eq $RouteObject.RouteProtocol){ #something went wrong, we have a route without a routing protocol
-                Add-HostDebugText -HostObject $Device "Error No routing protocol:$($Route)" -BackgroundColor red
-                continue
-            }
-            if($Route[2] -ne "" -and $null -ne $Route[2]){
-                $RouteObject.RouteSubType=$Route[2]
-            }
-            $RouteObject.Subnet="$($Route[3])/$($Route[4])"
-            $RouteObject.DISTANCE=$Route[5]
-            $RouteObject.METRIC=$Route[6]
-            if(($Route[7] -eq "") -or ($null -eq $Route[7])){
-                #This is the case of Null0
-                $RouteObject.gateway=$Route[8]
-            }else{
-                $RouteObject.gateway=$Route[7]
-            }
-            $RouteObject.Interface=$Route[8]
-            
-            if( $RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
-                foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""} | where { $_.IntStatus -ne "down" } )){
-                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
-                        $RouteObject.Interface=$Interface.Interface
-                        break
-                    }
-                }
-            }
-            
-            $AllRouteObjects+=$RouteObject
-        }
-        $device.RoutingTable=$AllRouteObjects
-        return $device
-    }
-
-
-    #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
-    #Start Python process with TextFSM to convert the Text to a Object
-    if($UseShowIPRouteVRFstarFile){
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile -ReturnArray $true -HostObject $Device
-    }else{
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
-    }
-    if($Device.ProcessOutputObjects -eq "ERROR"){
-        if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
-            if($Device -eq $null){
-                write-host $ShowIPRouteFile
-            }
-            Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback." 
-            $RouteObject=Create-RouteObject
-            $RouteObject.gateway=($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").matches.value -replace "Default gateway is ",''
-            $RouteObject.Subnet="0.0.0.0/0"
-            $RouteObject.RouteProtocol="Default gateway"
-            foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""}| where { $_.IntStatus -ne "down" -and $_.IntStatus -ne "down" })){
-                if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
-                    $RouteObject.Interface=$Interface.Interface
-                    break
-                }
-            }
-            Add-HostDebugText -HostObject $Device "Found default gateway:$($RouteObject)"
-            $device.RoutingTable+=$RouteObject
-            return $device
-        }else {
-            # If TextFSM failed AND there's no fallback, log the error and return the UNMODIFIED device.
-            Add-HostDebugText -HostObject $Device "Error processing show ip route file '$($ShowIPRouteFile)'. TextFSM returned an error or the file is empty/invalid." -BackgroundColor Red
-            # CRUCIAL: Return the original object so the chain doesn't break.
-            return $device
-        }
-        Add-HostDebugText -HostObject $Device "Error with show ip route on IOS routing: $($Device.ProcessOutputObjects)" -BackgroundColor red
-        return $device
-    }
-    Add-HostDebugText -HostObject $Device "This is a IOS device"
-    foreach ($Route in $Device.ProcessOutputObjects){
-        $RouteObject=Create-RouteObject
-        if($Route[0]){
-            $RouteObject.vrf=$Route[0]
-        }
-        switch ($Route[1]){
-            C{$RouteObject.RouteProtocol="connected"}
-            L{$RouteObject.RouteProtocol="local"}
-            S{$RouteObject.RouteProtocol="static"}
-            R{$RouteObject.RouteProtocol="RIP"}
-            BGP{$RouteObject.RouteProtocol="BGP"}
-            D{$RouteObject.RouteProtocol="EIGRP"}
-            O{$RouteObject.RouteProtocol="OSPF"}
-            i{$RouteObject.RouteProtocol="IS-IS"}
-            default{#No idea lets just assign it.
-                $RouteObject.RouteProtocol=$Route[1]
-            }
-        }
-        if($Route[2] -ne "" -and $null -ne $Route[2]){
-            $RouteObject.RouteSubType=$Route[2]
-        }
-        $RouteObject.Subnet="$($Route[3])/$($Route[4])"
-        $RouteObject.DISTANCE=$Route[5]
-        $RouteObject.METRIC=$Route[6]
-        $RouteObject.gateway=$Route[7]
-        $RouteObject.Interface=$Route[8]
-        if($null -eq $RouteObject.RouteProtocol){
-            continue
-        }
-        if($RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
-            foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""} | where { $_.IntStatus -ne "down" -and $_.IntStatus -ne "down" })){
-                if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
-                    $RouteObject.Interface=$Interface.Interface
-                    break
-                }
-            }
-        }
-        $AllRouteObjects+=$RouteObject
-    }
-    Add-HostDebugText -HostObject $Device "$($AllRouteObjects.count) routes found"
-    $device.RoutingTable=$AllRouteObjects
-    return $device
-}
 
 #Note:To replace this function with a TextFSM template requires additional work in the TextFSM module.
 function Get-ShowSpanningTreeFromText(){
@@ -2103,5 +1899,560 @@ function Get-BGPNeighborsFromSummary {
 
     $device.BGPNeighbors = $AllBGPNeighbors
     Add-HostDebugText -HostObject $Device "  -> Populated $($AllBGPNeighbors.Count) BGP neighbors from summary file."
+    return $device
+}
+
+
+
+
+#Process the show IP arp file
+#Process the show IP arp file
+function Get-ShowIPArpText(){
+    param (
+        [parameter(Mandatory=$true)]
+        $ShowIPArpFile,
+        $Device
+    )
+    #Read the file into one big string
+    $ShowIPArpText = Get-Content -raw $ShowIPArpFile
+    if(($ShowIPArpText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
+        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+        return $device
+    }
+    if($Device.version.type -eq "NXOS"){
+        #Start Python process with TextFSM to convert the Text to a Object
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPArpTemplate -ShowFile $ShowIPArpFile  -ReturnArray $true -HostObject $Device
+        if($Device.ProcessOutputObjects -eq "ERROR"){
+            Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
+            return $device
+        }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }
+
+        # --- OPTIMIZATION START ---
+        # 1. Create a hashtable of available subnets for fast lookups.
+        $subnetLookup = @{}
+        $device.interfaces | Where-Object { $_.Cidr } | ForEach-Object { $subnetLookup[$_.Cidr] = $true }
+        # --- OPTIMIZATION END ---
+
+        $device.IPArpEntries = foreach ($IPArpEntry in $Device.ProcessOutputObjects){
+            $IPArpObject=Create-ShowIPArpObject
+            $IPArpObject.ipaddress    =$IPArpEntry[0].trim()
+            $IPArpObject.AGE          =$IPArpEntry[1].trim()
+            $IPArpObject.MAC          =$IPArpEntry[2].trim()
+            if($IPArpEntry[3].trim() -ne ""){#keep it as $null don't fill with a empty string.
+                $IPArpObject.INTERFACE    =$IPArpEntry[3].trim()
+            }
+            $MacInOtherFormat=($IPArpEntry[2].trim() -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
+            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
+                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
+            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
+                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
+            }else{
+                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
+            }
+            
+            # --- OPTIMIZATION START ---
+            # 2. Find the most specific subnet by checking from /32 down to /1.
+            for ($prefix = 32; $prefix -ge 1; $prefix--) {
+                $candidateCidr = (Get-IPv4Subnet -IPAddress $IPArpObject.ipaddress -PrefixLength $prefix).CIDRId
+                if ($subnetLookup.ContainsKey($candidateCidr)) {
+                    $IPArpObject.cidr = $candidateCidr
+                    break # Found the best match, exit the inner loop.
+                }
+            }
+            # --- OPTIMIZATION END ---
+
+            $IPArpObject # Output the object to the pipeline
+        }
+        return $device
+    }
+
+    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+        #Start Python process with TextFSM to convert the Text to a Object
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPArpTemplate -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
+        if($Device.ProcessOutputObjects -eq "ERROR"){
+            Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
+            return $device
+        }
+        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+            $tempArray = @()
+            $tempArray += ,$Device.ProcessOutputObjects
+            $Device.ProcessOutputObjects = $tempArray
+        }
+        
+        # --- OPTIMIZATION START ---
+        # 1. Create a hashtable of available subnets for fast lookups.
+        $subnetLookup = @{}
+        $device.interfaces | Where-Object { $_.Cidr } | ForEach-Object { $subnetLookup[$_.Cidr] = $true }
+        # --- OPTIMIZATION END ---
+
+        $device.IPArpEntries = foreach ($IPArpEntry in $Device.ProcessOutputObjects){
+            $IPArpObject=Create-ShowIPArpObject
+            $IPArpObject.PROTOCOL= $IPArpEntry[0].trim()
+            $IPArpObject.ipaddress=  $IPArpEntry[1].trim()
+            $IPArpObject.AGE=      $IPArpEntry[2].trim()
+            $IPArpObject.MAC=      $IPArpEntry[3].trim()
+            $IPArpObject.TYPE=     $IPArpEntry[4].trim()
+            $IPArpObject.INTERFACE=$IPArpEntry[5].trim()
+            $MacInOtherFormat=($IPArpObject.MAC -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
+            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
+                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
+            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
+                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
+            }else{
+                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
+            }
+            
+            # --- OPTIMIZATION START ---
+            # 2. Find the most specific subnet by checking from /32 down to /1.
+            for ($prefix = 32; $prefix -ge 1; $prefix--) {
+                $candidateCidr = (Get-IPv4Subnet -IPAddress $IPArpObject.ipaddress -PrefixLength $prefix).CIDRId
+                if ($subnetLookup.ContainsKey($candidateCidr)) {
+                    $IPArpObject.cidr = $candidateCidr
+                    break # Found the best match, exit the inner loop.
+                }
+            }
+            # --- OPTIMIZATION END ---
+
+            $IPArpObject # Output the object to the pipeline
+        }
+        return $device
+    }
+    Add-HostDebugText -HostObject $Device "Error with show ip arp. Unable to find device type"   -BackgroundColor  red
+    return $device
+}
+
+
+
+
+##Process the show ip route file
+#function Get-ShowIPRouteFromText(){
+#    param (
+#        [parameter(Mandatory=$true)]
+#        $ShowIPRouteFile,
+#        $ShowIPRouteVRFstarFile,
+#        $Device
+#    )
+#    $AllRouteObjects=@() #Array of routes(Create-RouteObject) that will be passed back to the host object.
+#    $UseShowIPRouteVRFstarFile=$false #should we use the $ShowIPRouteVRFstarFile file or not. Default no.
+#    if($ShowIPRouteVRFstarFile){#Always default to using ShowIPRouteVRFstarFile but check other file if it fails
+#        #Read the file into one big string
+#        $ShowRouteText = Get-Content -raw $ShowIPRouteVRFstarFile
+#        if(!($ShowRouteText | Select-String "No IP Route Table for VRF").Matches.Success){#The show ip route vrf start is empty use show ip route file. 
+#            if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
+#
+#                if($ShowIPRouteFile){#Maybe ShowIPRouteVRFstarFile is invalid. If so try show ip route.
+#                    $ShowRouteText = Get-Content -raw $ShowIPRouteFile
+#                    if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
+#                        Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
+#                        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+#
+#                        return $device
+#                    }
+#                }else{#no show ip route file and show ip route vrf * is invalid so error and return.
+#                    Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
+#                    Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+#
+#                    return $device
+#                }
+#            }
+#            $UseShowIPRouteVRFstarFile=$true           
+#        }
+#        
+#    }
+#    if($UseShowIPRouteVRFstarFile -eq $false){#We just have normal show ip route.
+#        #Read the file into one big string
+#        $ShowRouteText = Get-Content -raw $ShowIPRouteFile
+#        if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
+#            Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
+#            Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+#            return $device
+#        }
+#    }
+#
+#
+#    if(($ShowRouteText | Select-String "IP Route Table for VRF `"default`"").Matches.Success){
+#        Add-HostDebugText -HostObject $Device "This is a Nexus device"
+#        #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
+#        #Start Python process with TextFSM to convert the Text to a Object
+#        if($UseShowIPRouteVRFstarFile){
+#            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile  -ReturnArray $true -HostObject $Device
+#       }else{
+#
+#            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile  -ReturnArray $true -HostObject $Device
+#        }
+#        if($Device.ProcessOutputObjects -eq "ERROR"){
+#            if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
+#                Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback."
+#                $RouteObject=Create-RouteObject
+#                $RouteObject.gateway=($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").matches.value -replace "Default gateway is ",''
+#                $RouteObject.Subnet="0.0.0.0/0"
+#                $RouteObject.RouteProtocol="Default gateway"
+#                foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""}| where { $_.IntStatus -ne "down" -and $_.IntStatus -ne "down" })){
+#                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+#                        $RouteObject.Interface=$Interface.Interface
+#                        break
+#                    }
+#                }
+#                Add-HostDebugText -HostObject $Device "Found default gateway:$($RouteObject)"
+#                $device.RoutingTable+=$RouteObject
+#                return $device
+#            }else{
+#                # If TextFSM failed AND there's no fallback, log the error and return the UNMODIFIED device.
+#                Add-HostDebugText -HostObject $Device "Error processing show ip route file '$($ShowIPRouteFile)'. TextFSM returned an error or the file is empty/invalid." -BackgroundColor Red
+#                return $device # CRUCIAL: Return the original object so the chain doesn't break.
+#            }
+#            Add-HostDebugText -HostObject $Device "Error with show ip route on Nexus routing." -BackgroundColor red
+#            return $device
+#        }
+#        foreach ($Route in $Device.ProcessOutputObjects){
+#            $RouteObject=Create-RouteObject
+#            $RouteObject.VRF=$Route[0]
+#            $RouteObject.RouteProtocol=$Route[1]
+#            if($RouteObject.RouteProtocol -eq "hsrp" -and $GSkipHSRPRoutes){ #HSRP is not a routing protocol we want to have included.
+#                continue
+#            }
+#            if($null -eq $RouteObject.RouteProtocol){ #something went wrong, we have a route without a routing protocol
+#                Add-HostDebugText -HostObject $Device "Error No routing protocol:$($Route)" -BackgroundColor red
+#                continue
+#            }
+#            if($Route[2] -ne "" -and $null -ne $Route[2]){
+#                $RouteObject.RouteSubType=$Route[2]
+#            }
+#            $RouteObject.Subnet="$($Route[3])/$($Route[4])"
+#            $RouteObject.DISTANCE=$Route[5]
+#            $RouteObject.METRIC=$Route[6]
+#            if(($Route[7] -eq "") -or ($null -eq $Route[7])){
+#                #This is the case of Null0
+#                $RouteObject.gateway=$Route[8]
+#            }else{
+#                $RouteObject.gateway=$Route[7]
+#            }
+#            $RouteObject.Interface=$Route[8]
+#            
+#            if( $RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
+#                foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""} | where { $_.IntStatus -ne "down" } )){
+#                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+#                        $RouteObject.Interface=$Interface.Interface
+#                        break
+#                    }
+#                }
+#            }
+#            
+#            $AllRouteObjects+=$RouteObject
+#        }
+#        $device.RoutingTable=$AllRouteObjects
+#        return $device
+#    }
+#
+#
+#    #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
+#    #Start Python process with TextFSM to convert the Text to a Object
+#    if($UseShowIPRouteVRFstarFile){
+#        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile -ReturnArray $true -HostObject $Device
+#    }else{
+#        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
+#    }
+#    if($Device.ProcessOutputObjects -eq "ERROR"){
+#        if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
+#            if($Device -eq $null){
+#                write-host $ShowIPRouteFile
+#            }
+#            Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback." 
+#            $RouteObject=Create-RouteObject
+#            $RouteObject.gateway=($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").matches.value -replace "Default gateway is ",''
+#            $RouteObject.Subnet="0.0.0.0/0"
+#            $RouteObject.RouteProtocol="Default gateway"
+#            foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""}| where { $_.IntStatus -ne "down" -and $_.IntStatus -ne "down" })){
+#                if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+#                    $RouteObject.Interface=$Interface.Interface
+#                    break
+#                }
+#            }
+#            Add-HostDebugText -HostObject $Device "Found default gateway:$($RouteObject)"
+#            $device.RoutingTable+=$RouteObject
+#            return $device
+#        }else {
+#            # If TextFSM failed AND there's no fallback, log the error and return the UNMODIFIED device.
+#            Add-HostDebugText -HostObject $Device "Error processing show ip route file '$($ShowIPRouteFile)'. TextFSM returned an error or the file is empty/invalid." -BackgroundColor Red
+#            # CRUCIAL: Return the original object so the chain doesn't break.
+#            return $device
+#        }
+#        Add-HostDebugText -HostObject $Device "Error with show ip route on IOS routing: $($Device.ProcessOutputObjects)" -BackgroundColor red
+#        return $device
+#    }
+#    Add-HostDebugText -HostObject $Device "This is a IOS device"
+#    foreach ($Route in $Device.ProcessOutputObjects){
+#        $RouteObject=Create-RouteObject
+#        if($Route[0]){
+#            $RouteObject.vrf=$Route[0]
+#        }
+#        switch ($Route[1]){
+#            C{$RouteObject.RouteProtocol="connected"}
+#            L{$RouteObject.RouteProtocol="local"}
+#            S{$RouteObject.RouteProtocol="static"}
+#            R{$RouteObject.RouteProtocol="RIP"}
+#            BGP{$RouteObject.RouteProtocol="BGP"}
+#            D{$RouteObject.RouteProtocol="EIGRP"}
+#            O{$RouteObject.RouteProtocol="OSPF"}
+#            i{$RouteObject.RouteProtocol="IS-IS"}
+#            default{#No idea lets just assign it.
+#                $RouteObject.RouteProtocol=$Route[1]
+#            }
+#        }
+#        if($Route[2] -ne "" -and $null -ne $Route[2]){
+#            $RouteObject.RouteSubType=$Route[2]
+#        }
+#        $RouteObject.Subnet="$($Route[3])/$($Route[4])"
+#        $RouteObject.DISTANCE=$Route[5]
+#        $RouteObject.METRIC=$Route[6]
+#        $RouteObject.gateway=$Route[7]
+#        $RouteObject.Interface=$Route[8]
+#        if($null -eq $RouteObject.RouteProtocol){
+#            continue
+#        }
+#        if($RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
+#            foreach ($Interface in ($Device.interfaces|where {$null -ne $_.cidr} |where { $_.cidr -ne ""} | where { $_.IntStatus -ne "down" -and $_.IntStatus -ne "down" })){
+#                if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+#                    $RouteObject.Interface=$Interface.Interface
+#                    break
+#                }
+#            }
+#        }
+#        $AllRouteObjects+=$RouteObject
+#    }
+#    Add-HostDebugText -HostObject $Device "$($AllRouteObjects.count) routes found"
+#    $device.RoutingTable=$AllRouteObjects
+#    return $device
+#}
+#
+#
+
+
+#Process the show ip route file
+function Get-ShowIPRouteFromText(){
+    param (
+        [parameter(Mandatory=$true)]
+        $ShowIPRouteFile,
+        $ShowIPRouteVRFstarFile,
+        $Device
+    )
+
+    # AllRouteObjects is now initialized later, directly from the loop's output.
+    $UseShowIPRouteVRFstarFile=$false #should we use the $ShowIPRouteVRFstarFile file or not. Default no.
+    if($ShowIPRouteVRFstarFile){#Always default to using ShowIPRouteVRFstarFile but check other file if it fails
+        #Read the file into one big string
+        $ShowRouteText = Get-Content -raw $ShowIPRouteVRFstarFile
+        if(!($ShowRouteText | Select-String "No IP Route Table for VRF").Matches.Success){#The show ip route vrf start is empty use show ip route file. 
+            if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
+
+                if($ShowIPRouteFile){#Maybe ShowIPRouteVRFstarFile is invalid. If so try show ip route.
+                    $ShowRouteText = Get-Content -raw $ShowIPRouteFile
+                    if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
+                        Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
+                        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+
+                        return $device
+                    }
+                }else{#no show ip route file and show ip route vrf * is invalid so error and return.
+                    Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
+                    Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+
+                    return $device
+                }
+            }
+            $UseShowIPRouteVRFstarFile=$true            
+        }
+       
+    }
+    if($UseShowIPRouteVRFstarFile -eq $false){#We just have normal show ip route.
+        #Read the file into one big string
+        $ShowRouteText = Get-Content -raw $ShowIPRouteFile
+        if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
+            Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
+            Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
+            return $device
+        }
+    }
+
+
+    if(($ShowRouteText | Select-String "IP Route Table for VRF `"default`"").Matches.Success){
+        Add-HostDebugText -HostObject $Device "This is a Nexus device"
+        #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
+        #Start Python process with TextFSM to convert the Text to a Object
+        if($UseShowIPRouteVRFstarFile){
+            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile  -ReturnArray $true -HostObject $Device
+       }else{
+
+            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile  -ReturnArray $true -HostObject $Device
+        }
+        if($Device.ProcessOutputObjects -eq "ERROR"){
+            if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
+                Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback."
+                $RouteObject=Create-RouteObject
+                $RouteObject.gateway=($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").matches.value -replace "Default gateway is ",''
+                $RouteObject.Subnet="0.0.0.0/0"
+                $RouteObject.RouteProtocol="Default gateway"
+
+                # OPTIMIZATION: Filter interfaces ONCE
+                $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
+                foreach ($Interface in $ActiveInterfaces){
+                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+                        $RouteObject.Interface=$Interface.Interface
+                        break
+                    }
+                }
+                Add-HostDebugText -HostObject $Device "Found default gateway:$($RouteObject)"
+                $device.RoutingTable+=$RouteObject
+                return $device
+            }else{
+                # If TextFSM failed AND there's no fallback, log the error and return the UNMODIFIED device.
+                Add-HostDebugText -HostObject $Device "Error processing show ip route file '$($ShowIPRouteFile)'. TextFSM returned an error or the file is empty/invalid." -BackgroundColor Red
+                return $device # CRUCIAL: Return the original object so the chain doesn't break.
+            }
+            Add-HostDebugText -HostObject $Device "Error with show ip route on Nexus routing." -BackgroundColor red
+            return $device
+        }
+
+        # OPTIMIZATION: Filter interfaces ONCE before the loop
+        $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
+        
+        # OPTIMIZATION: Efficiently create the array by capturing the loop's output
+        $AllRouteObjects = foreach ($Route in $Device.ProcessOutputObjects){
+            $RouteObject=Create-RouteObject
+            $RouteObject.VRF=$Route[0]
+            $RouteObject.RouteProtocol=$Route[1]
+            if($RouteObject.RouteProtocol -eq "hsrp" -and $GSkipHSRPRoutes){ #HSRP is not a routing protocol we want to have included.
+                continue
+            }
+            if($null -eq $RouteObject.RouteProtocol){ #something went wrong, we have a route without a routing protocol
+                Add-HostDebugText -HostObject $Device "Error No routing protocol:$($Route)" -BackgroundColor red
+                continue
+            }
+            if($Route[2] -ne "" -and $null -ne $Route[2]){
+                $RouteObject.RouteSubType=$Route[2]
+            }
+            $RouteObject.Subnet="$($Route[3])/$($Route[4])"
+            $RouteObject.DISTANCE=$Route[5]
+            $RouteObject.METRIC=$Route[6]
+            if(($Route[7] -eq "") -or ($null -eq $Route[7])){
+                #This is the case of Null0
+                $RouteObject.gateway=$Route[8]
+            }else{
+                $RouteObject.gateway=$Route[7]
+            }
+            $RouteObject.Interface=$Route[8]
+           
+            if( $RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
+                # Iterate over the PRE-FILTERED list
+                foreach ($Interface in $ActiveInterfaces){
+                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+                        $RouteObject.Interface=$Interface.Interface
+                        break
+                    }
+                }
+            }
+           
+            # Output the object to be collected by $AllRouteObjects
+            $RouteObject
+        }
+        $device.RoutingTable=$AllRouteObjects
+        return $device
+    }
+
+
+    #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
+    #Start Python process with TextFSM to convert the Text to a Object
+    if($UseShowIPRouteVRFstarFile){
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile -ReturnArray $true -HostObject $Device
+    }else{
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
+    }
+    if($Device.ProcessOutputObjects -eq "ERROR"){
+        if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
+            if($Device -eq $null){
+                write-host $ShowIPRouteFile
+            }
+            Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback." 
+            $RouteObject=Create-RouteObject
+            $RouteObject.gateway=($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").matches.value -replace "Default gateway is ",''
+            $RouteObject.Subnet="0.0.0.0/0"
+            $RouteObject.RouteProtocol="Default gateway"
+            
+            # OPTIMIZATION: Filter interfaces ONCE
+            $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
+            foreach ($Interface in $ActiveInterfaces){
+                if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+                    $RouteObject.Interface=$Interface.Interface
+                    break
+                }
+            }
+            Add-HostDebugText -HostObject $Device "Found default gateway:$($RouteObject)"
+            $device.RoutingTable+=$RouteObject
+            return $device
+        }else {
+            # If TextFSM failed AND there's no fallback, log the error and return the UNMODIFIED device.
+            Add-HostDebugText -HostObject $Device "Error processing show ip route file '$($ShowIPRouteFile)'. TextFSM returned an error or the file is empty/invalid." -BackgroundColor Red
+            # CRUCIAL: Return the original object so the chain doesn't break.
+            return $device
+        }
+        Add-HostDebugText -HostObject $Device "Error with show ip route on IOS routing: $($Device.ProcessOutputObjects)" -BackgroundColor red
+        return $device
+    }
+    Add-HostDebugText -HostObject $Device "This is a IOS device"
+
+    # OPTIMIZATION: Filter interfaces ONCE before the loop
+    $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
+
+    # OPTIMIZATION: Efficiently create the array by capturing the loop's output
+    $AllRouteObjects = foreach ($Route in $Device.ProcessOutputObjects){
+        $RouteObject=Create-RouteObject
+        if($Route[0]){
+            $RouteObject.vrf=$Route[0]
+        }
+        switch ($Route[1]){
+            C{$RouteObject.RouteProtocol="connected"}
+            L{$RouteObject.RouteProtocol="local"}
+            S{$RouteObject.RouteProtocol="static"}
+            R{$RouteObject.RouteProtocol="RIP"}
+            BGP{$RouteObject.RouteProtocol="BGP"}
+            D{$RouteObject.RouteProtocol="EIGRP"}
+            O{$RouteObject.RouteProtocol="OSPF"}
+            i{$RouteObject.RouteProtocol="IS-IS"}
+            default{#No idea lets just assign it.
+                $RouteObject.RouteProtocol=$Route[1]
+            }
+        }
+        if($Route[2] -ne "" -and $null -ne $Route[2]){
+            $RouteObject.RouteSubType=$Route[2]
+        }
+        $RouteObject.Subnet="$($Route[3])/$($Route[4])"
+        $RouteObject.DISTANCE=$Route[5]
+        $RouteObject.METRIC=$Route[6]
+        $RouteObject.gateway=$Route[7]
+        $RouteObject.Interface=$Route[8]
+        if($null -eq $RouteObject.RouteProtocol){
+            continue
+        }
+        if($RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
+            # Iterate over the PRE-FILTERED list
+            foreach ($Interface in $ActiveInterfaces){
+                if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+                    $RouteObject.Interface=$Interface.Interface
+                    break
+                }
+            }
+        }
+        
+        # Output the object to be collected by $AllRouteObjects
+        $RouteObject
+    }
+    Add-HostDebugText -HostObject $Device "$($AllRouteObjects.count) routes found"
+    $device.RoutingTable=$AllRouteObjects
     return $device
 }

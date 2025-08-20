@@ -335,9 +335,14 @@ function Add-DrawioHostPhysical {
         $hardwareInfo = if ($Device.Version.Hardware -is [array]) { $Device.Version.Hardware[0] } else { $Device.Version.Hardware }
         $null = $hostTextElements.Add($hardwareInfo)
     }
+    if($Device.HostTypeIfCDPorLLDP){
+        $hostnametext = "$($Device.HostName) : $($Device.HostTypeIfCDPorLLDP)"
+    }else{
+        $hostnametext = "$($Device.HostName)"
+    }
     # Build the main text line including hostname and Spanning Tree mode.
     $stText = if ($Device.SpanningTree) {
-        $text = "$($Device.DeviceIdentifier) : $($Device.HostName) : $($Device.SpanningTree.SpanningTreeMode)"
+        $text = "$($Device.DeviceIdentifier) : $($hostnametext) : $($Device.SpanningTree.SpanningTreeMode)"
         # --- THIS IS THE FIX ---
         # If the list of VLANs for which this device is root is very long, format it with line breaks for better readability.
         if ($Device.SpanningTree.RootBridgeForVlans.count -gt 15) {
@@ -351,7 +356,7 @@ function Add-DrawioHostPhysical {
         $text
     }
     else {
-        "$($Device.DeviceIdentifier) : $($Device.HostName)"
+        "$($Device.DeviceIdentifier) : $($hostnametext)"
     }
     $null = $hostTextElements.Add($stText)
     # Combine all text elements and HTML-encode the result.

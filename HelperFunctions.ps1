@@ -143,68 +143,103 @@ function Get-Encoding{
 
 # This is used to run the python TextFSM library. It takes a paths to the various files and returns a json copy of the config or an error.
 # MODIFIED: This function now caches the output in a .json sub-folder. If a cached file exists, it loads it instead of re-processing.
+#function Execute-PythonTextFSM() {
+#    param (
+#        $TextFSTETemplate,
+#        $ShowFile,
+#        $ReturnArray,
+#        $HostObject
+#    )
+#	$HostObject.ProcessOutputObjects =@()
+#    #region --- Define Cache Paths ---
+#    # Construct the path for the cached JSON file in a '.json' subdirectory.
+#    $FileBaseName = [System.IO.Path]::GetFileNameWithoutExtension($ShowFile)
+#    $FileDirectory = Split-Path -Path $ShowFile -Parent
+#    $JsonCacheFolder = Join-Path -Path $FileDirectory -ChildPath ".json"
+#    $JsonCacheFile = Join-Path -Path $JsonCacheFolder -ChildPath "$($FileBaseName).json"
+#    #endregion
+#
+#    # Check if the JSON file already exists.
+#    if (Test-Path -Path $JsonCacheFile) {
+#        # If it exists, load the content from the file instead of re-processing.
+#        Add-HostDebugText -HostObject $HostObject   "Cache hit. Loading from: $JsonCacheFile"
+#        $Objects = Get-Content -Path $JsonCacheFile -Raw | ConvertFrom-Json -Depth 10
+#    }
+#    else {
+#        # If it does not exist, run the original processing logic.
+#        Add-HostDebugText -HostObject $HostObject   "Cache miss. Processing file: $($ShowFile)"
+#
+#        # Python doesn't like UTF-8, UTF16 or UTF16LE. Convert it to ASCII file.
+#        if ((Get-Encoding $ShowFile).encoding.EncodingName -ne "US-ASCII") {
+#            Add-HostDebugText -HostObject $HostObject   "Converting $($ShowFile) to Ascii"
+#            $TempFile = Get-Content $ShowFile | Where-Object { $_ -cmatch '[\x20-\x7F]' } #Trim out non-ascii Char's
+#            Set-Content -Value $TempFile -Encoding Ascii -Path $ShowFile #rewrite the file as Ascii.
+#        }
+#
+#        # Execute the Python TextFSM script.
+#        $ProcessOutput = & $GPathToPythonExe $GPathToPythonTextFSMScript $TextFSTETemplate $ShowFile
+#
+#        # Error handling for the script output.
+#        if (($ProcessOutput -like "Traceback*") -or ($ProcessOutput -like "An exception occurred*") -or ($ProcessOutput -eq "`[`]") -or ([string]::IsNullOrEmpty($ProcessOutput))) {
+#            Add-HostDebugText -HostObject $HostObject   "Error with TextFSM Processing $($ProcessOutput)."
+#			$HostObject.ProcessOutputObjects = "ERROR"
+#            return $HostObject
+#        }
+#
+#        # Convert the JSON output from the script into PowerShell objects.
+#        $Objects = $ProcessOutput | ConvertFrom-Json -Depth 10
+#
+#        #region --- Save to Cache ---
+#        # Ensure the .json directory exists before saving the file.
+#        if (-not (Test-Path -Path $JsonCacheFolder)) {
+#            Add-HostDebugText -HostObject $HostObject   "Creating cache directory: $JsonCacheFolder"
+#            New-Item -Path $JsonCacheFolder -ItemType Directory -Force | Out-Null
+#        }
+#
+#        # Convert the PowerShell object back to a formatted JSON string and write it to the cache file.
+#        # Using -Depth 10 to handle potentially nested objects.
+#        $Objects | ConvertTo-Json -Depth 10 | Out-File -FilePath $JsonCacheFile -Encoding utf8
+#        Add-HostDebugText -HostObject $HostObject   "Saved new cache file to: $JsonCacheFile"
+#        #endregion
+#    }
+#	$HostObject.ProcessOutputObjects = $Objects
+#	return $HostObject
+#}
+
+# This is used to run the python TextFSM library. It takes a paths to the various files and returns a json copy of the config or an error.
 function Execute-PythonTextFSM() {
-    param (
-        $TextFSTETemplate,
-        $ShowFile,
-        $ReturnArray,
-        $HostObject
-    )
-	$HostObject.ProcessOutputObjects =@()
-    #region --- Define Cache Paths ---
-    # Construct the path for the cached JSON file in a '.json' subdirectory.
-    $FileBaseName = [System.IO.Path]::GetFileNameWithoutExtension($ShowFile)
-    $FileDirectory = Split-Path -Path $ShowFile -Parent
-    $JsonCacheFolder = Join-Path -Path $FileDirectory -ChildPath ".json"
-    $JsonCacheFile = Join-Path -Path $JsonCacheFolder -ChildPath "$($FileBaseName).json"
-    #endregion
+    param (
+        $TextFSTETemplate,
+        $ShowFile,
+        $ReturnArray,
+        $HostObject
+    )
+    $HostObject.ProcessOutputObjects =@()
 
-    # Check if the JSON file already exists.
-    if (Test-Path -Path $JsonCacheFile) {
-        # If it exists, load the content from the file instead of re-processing.
-        Add-HostDebugText -HostObject $HostObject   "Cache hit. Loading from: $JsonCacheFile"
-        $Objects = Get-Content -Path $JsonCacheFile -Raw | ConvertFrom-Json -Depth 10
-    }
-    else {
-        # If it does not exist, run the original processing logic.
-        Add-HostDebugText -HostObject $HostObject   "Cache miss. Processing file: $($ShowFile)"
+    # Python doesn't like UTF-8, UTF16 or UTF16LE. Convert it to ASCII file.
+    if ((Get-Encoding $ShowFile).encoding.EncodingName -ne "US-ASCII") {
+        Add-HostDebugText -HostObject $HostObject   "Converting $($ShowFile) to Ascii"
+        $TempFile = Get-Content $ShowFile | Where-Object { $_ -cmatch '[\x20-\x7F]' } #Trim out non-ascii Char's
+        Set-Content -Value $TempFile -Encoding Ascii -Path $ShowFile #rewrite the file as Ascii.
+    }
 
-        # Python doesn't like UTF-8, UTF16 or UTF16LE. Convert it to ASCII file.
-        if ((Get-Encoding $ShowFile).encoding.EncodingName -ne "US-ASCII") {
-            Add-HostDebugText -HostObject $HostObject   "Converting $($ShowFile) to Ascii"
-            $TempFile = Get-Content $ShowFile | Where-Object { $_ -cmatch '[\x20-\x7F]' } #Trim out non-ascii Char's
-            Set-Content -Value $TempFile -Encoding Ascii -Path $ShowFile #rewrite the file as Ascii.
-        }
+    # Execute the Python TextFSM script.
+    $ProcessOutput = & $GPathToPythonExe $GPathToPythonTextFSMScript $TextFSTETemplate $ShowFile
 
-        # Execute the Python TextFSM script.
-        $ProcessOutput = & $GPathToPythonExe $GPathToPythonTextFSMScript $TextFSTETemplate $ShowFile
+    # Error handling for the script output.
+    if (($ProcessOutput -like "Traceback*") -or ($ProcessOutput -like "An exception occurred*") -or ($ProcessOutput -eq "`[`]") -or ([string]::IsNullOrEmpty($ProcessOutput))) {
+        Add-HostDebugText -HostObject $HostObject   "Error with TextFSM Processing $($ProcessOutput)."
+        $HostObject.ProcessOutputObjects = "ERROR"
+        return $HostObject
+    }
 
-        # Error handling for the script output.
-        if (($ProcessOutput -like "Traceback*") -or ($ProcessOutput -like "An exception occurred*") -or ($ProcessOutput -eq "`[`]") -or ([string]::IsNullOrEmpty($ProcessOutput))) {
-            Add-HostDebugText -HostObject $HostObject   "Error with TextFSM Processing $($ProcessOutput)."
-			$HostObject.ProcessOutputObjects = "ERROR"
-            return $HostObject
-        }
+    # Convert the JSON output from the script into PowerShell objects.
+    $Objects = $ProcessOutput | ConvertFrom-Json -Depth 10
 
-        # Convert the JSON output from the script into PowerShell objects.
-        $Objects = $ProcessOutput | ConvertFrom-Json -Depth 10
-
-        #region --- Save to Cache ---
-        # Ensure the .json directory exists before saving the file.
-        if (-not (Test-Path -Path $JsonCacheFolder)) {
-            Add-HostDebugText -HostObject $HostObject   "Creating cache directory: $JsonCacheFolder"
-            New-Item -Path $JsonCacheFolder -ItemType Directory -Force | Out-Null
-        }
-
-        # Convert the PowerShell object back to a formatted JSON string and write it to the cache file.
-        # Using -Depth 10 to handle potentially nested objects.
-        $Objects | ConvertTo-Json -Depth 10 | Out-File -FilePath $JsonCacheFile -Encoding utf8
-        Add-HostDebugText -HostObject $HostObject   "Saved new cache file to: $JsonCacheFile"
-        #endregion
-    }
-	$HostObject.ProcessOutputObjects = $Objects
-	return $HostObject
+    $HostObject.ProcessOutputObjects = $Objects
+    return $HostObject
 }
+
 
 #Import mac to vendor mapping or get the MAC address xml file from devtools360.com and make a hash table with it.
 function Get-MacAddressToVendorMapping(){
