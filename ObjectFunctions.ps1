@@ -132,8 +132,7 @@ function Create-SpanningTreeInterface(){
     $newObject = New-Object -TypeName PSObject
     $newObject| Add-Member -type NoteProperty -Name Interface  -value $null 
     $newObject| Add-Member -type NoteProperty -Name Role       -value $null
-    $newObject| Add-Member -type NoteProperty -Name Status     -value $null #This is incorrect and should be state TODO: Fix this. 
-
+    $newObject| Add-Member -type NoteProperty -Name Status     -value $null 
     $newObject| Add-Member -type NoteProperty -Name Cost       -value $null
     $newObject| Add-Member -type NoteProperty -Name PrioNbr    -value $null
     $newObject| Add-Member -type NoteProperty -Name Type       -value $null
@@ -159,6 +158,7 @@ function Create-SpanningTreeVlan(){
     $newObject| Add-Member -type NoteProperty -Name BridgeIDPriorityaddress       -value $null # MAC address of the local bridge
     $newObject| Add-Member -type NoteProperty -Name BridgeIDPriorityHelloTime     -value $null # Hello time of the local bridge
     $newObject| Add-Member -type NoteProperty -Name SpanningTreeInterfaces        -value @()  # Array of interface states for this spanning-tree instance
+    $newObject| Add-Member -type NoteProperty -Name Shape                    -value $null
     return $newObject
 }
 

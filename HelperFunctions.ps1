@@ -347,7 +347,7 @@ function Get-OrSet-PortChannelStyle {
     )
 
     # Check the global cache to see if we've already created a style for this channel.
-    if (-not $global:runtimePortChannelStyles.ContainsKey($channelNumber)) {
+    if (-not $GruntimePortChannelStyles.ContainsKey($channelNumber)) {
 
         # If not, generate a new random style object.
         $r = Get-Random -Minimum 30 -Maximum 200 # Avoid very bright/dark colors
@@ -356,14 +356,14 @@ function Get-OrSet-PortChannelStyle {
         $hexColor = Convert-RgbToHex -RgbString "rgb($r,$g,$b)"
 
         # Store the style object (color and width) in the global cache.
-        $global:runtimePortChannelStyles[$channelNumber] = @{
+        $GruntimePortChannelStyles[$channelNumber] = @{
             strokeColor = $hexColor
             strokeWidth = "5" # Use a consistent thick stroke for all Port-Channels
         }
     }
 
     # Return the style object from the cache.
-    return $global:runtimePortChannelStyles[$channelNumber]
+    return $GruntimePortChannelStyles[$channelNumber]
 }
 
 # Determines the connector style by calling the new central style function.

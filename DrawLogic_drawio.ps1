@@ -31,10 +31,8 @@ function Draw-AllNeighborsDrawio {
         $ArrayOfLLDPDeviceIDs
     )
 
-    # This hashtable will cache the randomly generated styles for each Port-Channel number.
-    # It is created here and passed by reference to the helper function.
-    # This ensures that all segments of the same Port-Channel have a consistent visual style (e.g., color, pattern).
-    $runtimePortChannelStyles = @{}
+
+
 
     # 1. Start the Diagram and Draw the Legend
     # Initializes a new Draw.io diagram page with a specific name for the physical layout.
@@ -593,3 +591,101 @@ function Draw-AllLayer3Drawio {
     End-DrawioDiagram
 }
 
+
+
+function Draw-SpanningTreeDiagram {
+    [CmdletBinding()]
+    param (
+        # An array of all parsed host objects with their Spanning Tree data.
+        [parameter(Mandatory = $true)]
+        $ArrayOfObjects
+    )
+
+    # 1. Initialize the diagram and a tracker for dummy hosts.
+    Start-DrawioDiagram -Name "Spanning-Tree"
+    $dummyHosts = @{} # Used to track created dummy root bridges to avoid duplicates.
+
+    # 2. Separate and draw the main devices.
+    $rootHosts = @($ArrayOfObjects | Where-Object { ($_.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true }).Count -gt 0 } | Sort-Object HostName)
+    $nonRootHosts = @($ArrayOfObjects | Where-Object { ($_.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true }).Count -eq 0 } | Sort-Object HostName)
+
+    # Layout coordinates
+    $horizontalPadding = 80
+    $verticalPadding = 150
+    $dummyRowY = 50 # New top row for unknown roots.
+    $topRowY = $dummyRowY + 100 + $verticalPadding # Main hosts are below dummies.
+    $bottomRowY = $topRowY + $GhostHeaderHeight + $GvlanSectionHeight + $verticalPadding
+    
+    # Draw Top Row (Root Hosts)
+    $currentX = 50
+    foreach ($device in $rootHosts) {
+        $dimensions = Add-DrawioSpanningTreeHost -Device $device -Location ([PSCustomObject]@{X = $currentX; Y = $topRowY})
+        if ($null -ne $dimensions) { $currentX += $dimensions.Width + $horizontalPadding }
+    }
+
+    # Draw Bottom Row (Non-Root Hosts)
+    $currentX = 50
+    foreach ($device in $nonRootHosts) {
+        $dimensions = Add-DrawioSpanningTreeHost -Device $device -Location ([PSCustomObject]@{X = $currentX; Y = $bottomRowY})
+        if ($null -ne $dimensions) { $currentX += $dimensions.Width + $horizontalPadding }
+    }
+
+    # 3. Connect all the non-root VLAN groups.
+    Write-Host "`n[DEBUG] === DRAWING CONNECTORS ==="
+    $dummyX = 50 # X-coordinate for placing new dummy hosts.
+    foreach ($device in $ArrayOfObjects) {
+        if (-not $device.SpanningTree) { continue }
+        
+        $nonRootGroups = $device.SpanningTree.SpanningTreeArray | Where-Object { -not $_.RootBridge } | Group-Object Address
+
+        foreach ($group in $nonRootGroups) {
+            $sourceShapeId = $group.Group[0].Shape
+            $rootBridgeId = $group.Name
+            
+            $connectorLabel = ($group.Group.RootBridgePort | Select-Object -Unique) -join ",`n"
+
+            $targetDevice = $null
+            $targetShapeId = $null
+            
+            foreach ($potentialTarget in $ArrayOfObjects) {
+                $foundRootVlan = $potentialTarget.SpanningTree.SpanningTreeArray | Where-Object { $_.Address -eq $rootBridgeId -and $_.RootBridge -eq $true } | Select-Object -First 1
+                if ($foundRootVlan) {
+                    $targetDevice = $potentialTarget
+                    $targetShapeId = $foundRootVlan.Shape
+                    break
+                }
+            }
+            
+            if (-not $targetDevice) {
+                Write-Host "[DEBUG]   - Root Bridge $($rootBridgeId) not found. Checking for/creating a dummy host." -ForegroundColor Yellow
+                if (-not $dummyHosts.ContainsKey($rootBridgeId)) {
+                    $dummy = Create-HostObject
+                    $dummy.HostName = $rootBridgeId
+                    $dummy.SpanningTree = Create-SpanningTreeObject
+                    $stpInstance = Create-SpanningTreeVlan
+                    $stpInstance.Address = $rootBridgeId
+                    $stpInstance.RootBridge = $true
+                    $dummy.SpanningTree.SpanningTreeArray += $stpInstance
+                    
+                    $dummyDimensions = Add-DrawioDummyRootHost -DummyDevice $dummy -Location ([PSCustomObject]@{X = $dummyX; Y = $dummyRowY})
+                    $dummyX += $dummyDimensions.Width + $horizontalPadding
+                    $dummyHosts[$rootBridgeId] = $dummy
+                }
+                $targetShapeId = $dummyHosts[$rootBridgeId].SpanningTree.SpanningTreeArray[0].Shape
+            }
+
+            if ($sourceShapeId -and $targetShapeId) {
+                Write-Host "[DEBUG]   - Drawing connector from $($device.HostName) to root $($rootBridgeId) with label: $($connectorLabel)" -ForegroundColor Green
+                
+                # This style ensures straight lines.
+                $style = "endArrow=classic;html=1;rounded=0;strokeColor=#4A148C;strokeWidth=2;dashed=1;whiteSpace=wrap;"
+                
+                Add-DrawioConnector -SourceId $sourceShapeId -TargetId $targetShapeId -Style $style -Text $connectorLabel
+            }
+        }
+    }
+    Write-Host "[DEBUG] =========================`n"
+
+    # 4. Finalize and save the file.
+    End-DrawioDiagram 
+}

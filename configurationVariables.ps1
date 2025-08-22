@@ -115,6 +115,11 @@ $GDrawLayer3RoutedLinksOnly=$true
 # Draw a Layer 3 diagram with only the routes. No VLANs and their links will be drawn.
 $GDrawLayer3RoutesOnly=$true
 
+
+#Draw spanning tree diagrams or not. 
+$GDrawSpanningTree=$true
+
+
 # Draws all of the ports of a switch. (DEPRECATED/UNUSED)
 #$GDrawEthernet=$false #Note this is quiet slow
 
@@ -285,5 +290,19 @@ $GDrawPortsWithMacs = 5
 # Keep this one for links that are not Port-Channels
 $GDefaultConnectorStyle = "endArrow=none;html=1;strokeWidth=2;strokeColor=#6c8ebf;"
 
-$global:runtimePortChannelStyles = @{}
+
+# This hashtable will cache the randomly generated styles for each Port-Channel number.
+# It is created here and passed by reference to the helper function.
+# This ensures that all segments of the same Port-Channel have a consistent visual style (e.g., color, pattern).
+$GruntimePortChannelStyles = @{}
+
+
+
+
+# Global variables for controlling the layout of Spanning Tree hosts.
+$GhostHeaderHeight = 80 # Reserved vertical space for the host text
+$GvlanSectionHeight = 60 # Reserved vertical space for the VLAN boxes section
+$GvlanBoxWidth = 180      # The width of a single VLAN group box
+$GvlanSpacing = 10        # The horizontal and vertical spacing between elements
+
 

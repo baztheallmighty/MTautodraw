@@ -825,3 +825,256 @@ function Add-DrawioMacAddressBubble {
 
     return $bubbleId
 }
+
+
+
+
+# Draws a simplified placeholder for a root bridge that was not found in the input files.
+function Add-DrawioDummyRootHost {
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory = $true)]
+        $DummyDevice,
+        [parameter(Mandatory = $true)]
+        [PSCustomObject]$Location
+    )
+
+    $hostWidth = 300
+    $hostHeight = 60
+    
+    # The text will display "Unknown Root" and the MAC address of that root.
+    $hostText = "<b>Unknown Root Bridge</b><br>$($DummyDevice.HostName)"
+    $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
+    
+    # A bright purple style to make it stand out.
+    $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;fontColor=#FFFFFF;strokeColor=#6A1B9A;fontSize=12;fontStyle=1;verticalAlign=middle;"
+    $hostId = "dummy-root-$($DummyDevice.HostName.Replace('.',''))"
+    
+    # Store the shape ID back on the object so connectors can find it.
+    $DummyDevice.SpanningTree.SpanningTreeArray[0].Shape = $hostId
+    
+    # Add the XML for the shape to the global variable.
+    $global:drawioXml += "         <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"1`">
+        <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
+    </mxCell>`n"
+    
+    return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
+}
+
+
+#function Add-DrawioSpanningTreeHost {
+#    [CmdletBinding()]
+#    param(
+#        [parameter(Mandatory = $true)]
+#        $Device,
+#        [parameter(Mandatory = $true)]
+#        [PSCustomObject]$Location
+#    )
+#
+#    if (-not $Device.SpanningTree -or $Device.SpanningTree.SpanningTreeArray.Count -eq 0) {
+#        Write-Warning "Device $($Device.HostName) has no valid spanning tree data. Skipping."
+#        return $null
+#    }
+#
+#    # --- Section 1: Data Aggregation & Layout Logic ---
+#    $vlanGroupsByRootBridge = $Device.SpanningTree.SpanningTreeArray | Group-Object -Property Address
+#    $isRootForAnyVlan = ($Device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true }).Count -gt 0
+#    
+#    Write-Host "[DEBUG] Processing Host: $($Device.HostName). Is Root for any VLAN: $($isRootForAnyVlan)"
+#
+#    # --- Section 2: DYNAMIC Sizing Calculation ---
+#    foreach ($group in $vlanGroupsByRootBridge) {
+#        $vlansInGroup = ($group.Group.VlanID) -join ", "
+#        $charMultiplier = 6.5
+#        $baseWidth = 140
+#        $dynamicWidth = [math]::Ceiling($vlansInGroup.Length * $charMultiplier)
+#        $calculatedWidth = $baseWidth + $dynamicWidth
+#        $group | Add-Member -NotePropertyName CalculatedWidth -NotePropertyValue $calculatedWidth
+#    }
+#
+#    $totalVlanBoxesWidth = ($vlanGroupsByRootBridge.CalculatedWidth | Measure-Object -Sum).Sum
+#    $hostWidth = $totalVlanBoxesWidth + (($vlanGroupsByRootBridge.Count + 1) * $GvlanSpacing)
+#    $hostWidth = [System.Math]::Max($hostWidth, 250)
+#    
+#    $hostHeight = $GhostHeaderHeight + $GvlanSectionHeight
+#    $vlanBoxesY = if ($isRootForAnyVlan) { $GhostHeaderHeight } else { 5 }
+#    $verticalAlign = if ($isRootForAnyVlan) { "top" } else { "bottom" }
+#    
+#    # FIX: Safely get the local bridge ID.
+#    $localBridgeId = if ($Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress) {
+#        $Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress
+#    } else {
+#        "N/A"
+#    }
+#    
+#    $hostText = "<b>$($Device.HostName)</b><br>Bridge ID: $($localBridgeId)<br>Mode: $($Device.SpanningTree.SpanningTreeMode)"
+#    $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
+#
+#    # --- Section 3: Draw the Host and VLAN Boxes ---
+#    $hostGroupId = "stphost-group-$((New-Guid).ToString().Substring(0,8))"
+#    $global:drawioXml += "         <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
+#        <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
+#    </mxCell>`n"
+#    
+#    $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=12;fontStyle=1;verticalAlign=$($verticalAlign);spacingTop=4;spacingBottom=4;"
+#    $hostId = "stphost-box-$((New-Guid).ToString().Substring(0,8))"
+#    $global:drawioXml += "         <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
+#        <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
+#    </mxCell>`n"
+#
+#    $currentVlanX = $GvlanSpacing
+#    foreach ($group in $vlanGroupsByRootBridge) {
+#        $vlansInGroup = ($group.Group.VlanID) -join ", "
+#        # FIX: The Root Bridge ID comes from the group's name.
+#        $rootBridgeId = $group.Name
+#        Write-Host "[DEBUG]   - Drawing VLAN group for root '$($rootBridgeId)' with VLANs: $($vlansInGroup)"
+#
+#        $fillColor = if ($group.Group[0].RootBridge) { "#FFCDD2" } else { "#BBDEFB" }
+#        $strokeColor = if ($group.Group[0].RootBridge) { "#B71C1C" } else { "#0D47A1" }
+#        
+#        $vlanBoxText = "<b>VLAN(s):</b> $($vlansInGroup)<br><b>Root:</b> $($rootBridgeId)"
+#        $encodedVlanBoxText = [System.Web.HttpUtility]::HtmlEncode($vlanBoxText)
+#        
+#        $vlanBoxStyle = "rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=$($fillColor);strokeColor=$($strokeColor);fontSize=11;verticalAlign=middle;align=left;spacingLeft=5;strokeWidth=2;"
+#        $vlanBoxId = "stp-vlan-$($Device.DeviceIdentifier)-$($rootBridgeId.Replace('.',''))"
+#        
+#        $vlanBoxFinalWidth = $group.CalculatedWidth
+#        
+#        $global:drawioXml += "         <mxCell id=`"$vlanBoxId`" value=`"$encodedVlanBoxText`" style=`"$vlanBoxStyle`" vertex=`"1`" parent=`"$hostId`">
+#            <mxGeometry x=`"$currentVlanX`" y=`"$vlanBoxesY`" width=`"$vlanBoxFinalWidth`" height=`"40`" as=`"geometry`" />
+#        </mxCell>`n"
+#
+#        # FIX: Ensure the 'Shape' property exists before setting it.
+#        $group.Group | ForEach-Object { 
+#            if ($_.PSObject.Properties.Name -notcontains 'Shape') {
+#                $_ | Add-Member -NotePropertyName Shape -NotePropertyValue $vlanBoxId
+#            } else {
+#                $_.Shape = $vlanBoxId 
+#            }
+#        }
+#        $currentVlanX += $vlanBoxFinalWidth + $GvlanSpacing
+#    }
+#    
+#    return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
+#}
+Colors are broken
+function Add-DrawioSpanningTreeHost {
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory = $true)]
+        $Device,
+        [parameter(Mandatory = $true)]
+        [PSCustomObject]$Location
+    )
+
+    if (-not $Device.SpanningTree -or $Device.SpanningTree.SpanningTreeArray.Count -eq 0) {
+        Write-Warning "Device $($Device.HostName) has no valid spanning tree data. Skipping."
+        return $null
+    }
+
+    # --- Section 1: Data Aggregation & Pre-calculation ---
+    $vlanGroupsByRootBridge = $Device.SpanningTree.SpanningTreeArray | Group-Object -Property Address
+    $isRootForAnyVlan = ($Device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true }).Count -gt 0
+    
+    Write-Host "[DEBUG] Processing Host: $($Device.HostName). Is Root for any VLAN: $($isRootForAnyVlan)"
+
+    $vlanBoxCalculations = @()
+
+    # First pass: Calculate dimensions for all VLAN boxes to determine the host container size
+    foreach ($group in $vlanGroupsByRootBridge) {
+        
+        $vlanArray = @($group.Group.VlanID)
+
+        $vlansPerLine = 15
+        $formattedVlanLines = @()
+        for ($i = 0; $i -lt $vlanArray.Count; $i += $vlansPerLine) {
+            $endIndex = [System.Math]::Min($i + $vlansPerLine - 1, $vlanArray.Count - 1)
+            $vlanChunk = $vlanArray[$i..$endIndex]
+            $formattedVlanLines += ($vlanChunk -join ", ")
+        }
+        
+        # --- START: Text Formatting Logic ---
+        # This section creates the requested format by combining the title with the first line.
+        $vlanTitleAndFirstLine = "<b>VLAN(s):</b> " + $formattedVlanLines[0]
+        $remainingVlanLines = if ($formattedVlanLines.Count -gt 1) { $formattedVlanLines[1..($formattedVlanLines.Count - 1)] } else { @() }
+        $multilineVlans = ($vlanTitleAndFirstLine + $remainingVlanLines) -join "<br>"
+        
+        $rootBridgeId = $group.Name
+        $vlanBoxText = "<b>Root:</b> $($rootBridgeId)<br><br>$($multilineVlans)"
+        # --- END: Text Formatting Logic ---
+
+        $baseHeight = 55 
+        $heightPerVlanLine = 18
+        $calculatedHeight = $baseHeight + (($formattedVlanLines.Count - 1) * $heightPerVlanLine)
+
+        $firstLineLength = ("VLAN(s): " + $formattedVlanLines[0]).Length
+        $otherLinesMaxLength = if ($remainingVlanLines.Count -gt 0) { ($remainingVlanLines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum } else { 0 }
+        $rootLineLength = "Root: $($rootBridgeId)".Length
+        $maxLength = @($rootLineLength, $firstLineLength, $otherLinesMaxLength) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+        $calculatedWidth = ($maxLength * 6.5) + 30
+
+        $vlanBoxCalculations += [PSCustomObject]@{
+            Group            = $group
+            Width            = $calculatedWidth
+            Height           = $calculatedHeight
+            EncodedText      = [System.Web.HttpUtility]::HtmlEncode($vlanBoxText)
+            Identifier       = "stp-vlan-$($Device.DeviceIdentifier)-$($rootBridgeId.Replace('.',''))"
+        }
+    }
+
+    # --- Section 2: Final Host Sizing for Horizontal Layout ---
+    $totalVlanBoxesWidth = ($vlanBoxCalculations.Width | Measure-Object -Sum).Sum
+    $maxVlanBoxHeight = if ($vlanBoxCalculations.Count -gt 0) { ($vlanBoxCalculations.Height | Measure-Object -Maximum).Maximum } else { 0 }
+    
+    $hostWidth = $totalVlanBoxesWidth + (($vlanBoxCalculations.Count + 1) * $GvlanSpacing)
+    $hostWidth = [System.Math]::Max($hostWidth, 300) 
+    $hostHeight = $GhostHeaderHeight + $maxVlanBoxHeight + ($GvlanSpacing * 2)
+
+    $localBridgeId = if ($Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress) {
+        $Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress
+    } else { "N/A" }
+    
+    $hostText = "<b>$($Device.HostName)</b><br>Bridge ID: $($localBridgeId)<br>Mode: $($Device.SpanningTree.SpanningTreeMode)"
+    $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
+
+    # --- Section 3: Draw the Host and VLAN Boxes ---
+    $hostGroupId = "stphost-group-$((New-Guid).ToString().Substring(0,8))"
+    $global:drawioXml += "        <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
+        <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
+    </mxCell>`n"
+    
+    $verticalAlign = if ($isRootForAnyVlan) { "top" } else { "bottom" }
+    $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=12;fontStyle=1;verticalAlign=$($verticalAlign);spacingTop=4;spacingBottom=4;"
+    $hostId = "stphost-box-$((New-Guid).ToString().Substring(0,8))"
+    $global:drawioXml += "        <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
+        <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
+    </mxCell>`n"
+
+    # Second pass: Draw the VLAN boxes horizontally
+    $currentVlanX = $GvlanSpacing
+    $vlanBoxesY = if ($isRootForAnyVlan) { $GhostHeaderHeight } else { $GvlanSpacing }
+
+    foreach ($calc in $vlanBoxCalculations) {
+        $group = $calc.Group
+        $fillColor = if ($group.Group[0].RootBridge) { "#FFCDD2" } else { "#BBDEFB" }
+        $strokeColor = if ($group.Group[0].RootBridge) { "#B71C1C" } else { "#0D47A1" }
+        
+        $vlanBoxStyle = "rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=$($fillColor);strokeColor=$($strokeColor);fontSize=11;verticalAlign=top;align=left;spacingLeft=5;spacingTop=5;strokeWidth=2;"
+        
+        $global:drawioXml += "        <mxCell id=`"$($calc.Identifier)`" value=`"$($calc.EncodedText)`" style=`"$vlanBoxStyle`" vertex=`"1`" parent=`"$hostId`">
+            <mxGeometry x=`"$currentVlanX`" y=`"$vlanBoxesY`" width=`"$($calc.Width)`" height=`"$($calc.Height)`" as=`"geometry`" />
+        </mxCell>`n"
+
+        $group.Group | ForEach-Object { 
+            if ($_.PSObject.Properties.Name -notcontains 'Shape') {
+                $_ | Add-Member -NotePropertyName Shape -NotePropertyValue $calc.Identifier
+            } else {
+                $_.Shape = $calc.Identifier
+            }
+        }
+        $currentVlanX += $calc.Width + $GvlanSpacing
+    }
+    
+    return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
+}
+

@@ -215,7 +215,9 @@ if($GDrawMultipleDevicesDiagram){
     if($GDrawLayer3RoutesOnly){
         Draw-AllLayer3Drawio -ArrayOfObjects $GArrayOfObjects -ArrayOfNetworks $GArrayOfNetworks -ArrayOfIPApr $GArrayOfIPApr -DiagramType "RoutesOnly" -NameOfPage "Layer 3 Routes Only" -ArrayofGatewayHosts $GArrayofGatewayHosts
     }
-
+    if($GDrawSpanningTree){
+        Draw-SpanningTreeDiagram -ArrayOfObjects $GArrayOfObjects
+    }
     Finalize-DrawioFile
     $multiDeviceFilePath = "$($GOutPutDirectory)MTAudotDraw-MultiDevice-$(get-date -Format yyyyMMdd-hhmm).drawio"
     Save-DrawioFile -Path $multiDeviceFilePath

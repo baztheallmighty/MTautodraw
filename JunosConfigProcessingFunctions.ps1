@@ -267,44 +267,44 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
     $thisMac = if ($thisMacNode) { $thisMacNode.'#text' } else { '' }
     $isRootBridge = ($rootMac -eq $thisMac -and $rootMac -ne '')
 
-    if($device.SpanningTree.SpanningTreeMode -eq "vstp"){
-        foreach ($vlan in $device.vlans) {
-            $stpVlanObject = Create-SpanningTreeVlan
-            
-            $stpVlanObject.VlanID = $vlan.number
-            $stpVlanObject.protocol = $device.SpanningTree.SpanningTreeMode
-            $stpVlanObject.RootBridge = $isRootBridge
-            
-            # Safely get node values for the loop
-            $rootPriorityNode = $cistParams.SelectSingleNode("j:root-bridge/j:bridge-priority", $namespaceManager)
-            $helloTimeNode = $cistParams.SelectSingleNode("j:hello-time-learned", $namespaceManager)
-            $maxAgeNode = $cistParams.SelectSingleNode("j:max-age-learned", $namespaceManager)
-            $bridgePriorityNode = $cistParams.SelectSingleNode("j:this-bridge/j:bridge-priority", $namespaceManager)
+   
+    foreach ($vlan in $device.vlans) {
+        $stpVlanObject = Create-SpanningTreeVlan
+        
+        $stpVlanObject.VlanID = $vlan.number
+        $stpVlanObject.protocol = $device.SpanningTree.SpanningTreeMode
+        $stpVlanObject.RootBridge = $isRootBridge
+        
+        # Safely get node values for the loop
+        $rootPriorityNode = $cistParams.SelectSingleNode("j:root-bridge/j:bridge-priority", $namespaceManager)
+        $helloTimeNode = $cistParams.SelectSingleNode("j:hello-time-learned", $namespaceManager)
+        $maxAgeNode = $cistParams.SelectSingleNode("j:max-age-learned", $namespaceManager)
+        $bridgePriorityNode = $cistParams.SelectSingleNode("j:this-bridge/j:bridge-priority", $namespaceManager)
 
-            # --- Root Bridge Information ---
-            $stpVlanObject.RootIDPriority = if ($rootPriorityNode) { $rootPriorityNode.'#text' } else { 'N/A' }
-            $stpVlanObject.Address = $rootMac
-            $stpVlanObject.RootBridgeHelloTime = if ($helloTimeNode) { $helloTimeNode.'#text' } else { 'N/A' }
-            $stpVlanObject.RootBridgeAgingTime = if ($maxAgeNode) { $maxAgeNode.'#text' } else { 'N/A' }
-            
-            # --- Local Bridge Information ---
-            $stpVlanObject.BridgeIDPriority = if ($bridgePriorityNode) { $bridgePriorityNode.'#text' } else { 'N/A' }
-            $stpVlanObject.BridgeIDPriorityaddress = $thisMac
-            
-            if (-not $isRootBridge) {
-                $rootCostNode = $cistParams.SelectSingleNode("j:root-cost", $namespaceManager)
-                $rootPortNode = $cistParams.SelectSingleNode("j:root-port", $namespaceManager)
+        # --- Root Bridge Information ---
+        $stpVlanObject.RootIDPriority = if ($rootPriorityNode) { $rootPriorityNode.'#text' } else { 'N/A' }
+        $stpVlanObject.Address = $rootMac
+        $stpVlanObject.RootBridgeHelloTime = if ($helloTimeNode) { $helloTimeNode.'#text' } else { 'N/A' }
+        $stpVlanObject.RootBridgeAgingTime = if ($maxAgeNode) { $maxAgeNode.'#text' } else { 'N/A' }
+        
+        # --- Local Bridge Information ---
+        $stpVlanObject.BridgeIDPriority = if ($bridgePriorityNode) { $bridgePriorityNode.'#text' } else { 'N/A' }
+        $stpVlanObject.BridgeIDPriorityaddress = $thisMac
+        
+        if (-not $isRootBridge) {
+            $rootCostNode = $cistParams.SelectSingleNode("j:root-cost", $namespaceManager)
+            $rootPortNode = $cistParams.SelectSingleNode("j:root-port", $namespaceManager)
 
-                $stpVlanObject.RootBridgeCost = if ($rootCostNode) { $rootCostNode.'#text' } else { '0' }
-                $stpVlanObject.RootBridgePort = if ($rootPortNode) { $rootPortNode.'#text' } else { 'N/A' }
-                $stpVlanObject.port = $stpVlanObject.RootBridgePort
-            }
-            
-            $device.SpanningTree.SpanningTreeArray += $stpVlanObject
+            $stpVlanObject.RootBridgeCost = if ($rootCostNode) { $rootCostNode.'#text' } else { '0' }
+            $stpVlanObject.RootBridgePort = if ($rootPortNode) { $rootPortNode.'#text' } else { 'N/A' }
+            $stpVlanObject.port = $stpVlanObject.RootBridgePort
         }
         
-        $device.SpanningTree.RootBridgeForVlans = $device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true } | Select-Object -ExpandProperty VlanID
+        $device.SpanningTree.SpanningTreeArray += $stpVlanObject
     }
+    
+    $device.SpanningTree.RootBridgeForVlans = $device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true } | Select-Object -ExpandProperty VlanID
+  
     return $device
 }
 
