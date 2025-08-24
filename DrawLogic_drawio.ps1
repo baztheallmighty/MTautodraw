@@ -50,30 +50,43 @@ function Draw-AllNeighborsDrawio {
         # Calls a helper function to draw the host's physical chassis and interfaces.
         # The function returns the width of the drawn host, which is used for horizontal positioning.
         $hostWidth = Add-DrawioHostPhysical -Device $device -Location ([PSCustomObject]@{X = $currentX; Y = 100})
+        #store where we put the object. 
+        $device.CPDHostLocation = ([PSCustomObject]@{X = $currentX; Y = 100})
         # Update the X coordinate for the next host, adding a fixed padding plus the width of the host just drawn.
         $currentX += 950 + $hostWidth
+        
     }
 
-    # Reset coordinates to draw the discovered CDP neighbor devices in a new row.
-    $currentX = 100
-    $currentY = 700
+    
+
+    
     # Iterate through each device discovered via CDP.
+    $currentNeighbor=$null
     foreach ($cdpDevice in ($ArrayOfCDPDeviceIDs | Sort-Object ParentObject)) {
+        if ($currentNeighbor -ne $cdpDevice.ParentObject){
+            # Reset coordinates to draw the discovered CDP neighbor devices in a new row.
+            $currentNeighbor=$cdpDevice.ParentObject
+            $currentY = 400
+        }
         # Calls a helper function to draw a simplified representation of a discovered neighbor.
-        Add-DrawioNeighborHost -Device $cdpDevice -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "CDPNeighbor"
+        $xlocation = 
+        Add-DrawioNeighborHost -Device $cdpDevice -Location ([PSCustomObject]@{X = ($GArrayOfObjects | where { $_.hostname -eq $cdpDevice.ParentObject}).CPDHostLocation.x; Y = $currentY}) -DrawType "CDPNeighbor"
         # Increment the X coordinate for the next discovered device.
-        $currentX += 950
+        $currenty += 300
     }
 
-    # Reset coordinates again to draw the discovered LLDP neighbor devices in a third row.
-    $currentX = 100
-    $currentY = 1300
+    $currentNeighbor=$null
     # Iterate through each device discovered via LLDP.
     foreach ($lldpDevice in ($ArrayOfLLDPDeviceIDs | Sort-Object ParentObject)) {
+        if ($currentNeighbor -ne $lldpDevice.ParentObject){
+            # Reset coordinates to draw the discovered CDP neighbor devices in a new row.
+            $currentNeighbor=$lldpDevice.ParentObject
+            $currentY = 400
+        }        
         # Draw the discovered LLDP neighbor.
-        Add-DrawioNeighborHost -Device $lldpDevice -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "LLDPNeighbor"
+        Add-DrawioNeighborHost -Device $lldpDevice -Location ([PSCustomObject]@{X = (($GArrayOfObjects | where { $_.hostname -eq $lldpDevice.ParentObject}).CPDHostLocation.x + 1000); Y = $currentY}) -DrawType "LLDPNeighbor"
         # Increment the X coordinate.
-        $currentX += 950
+        $currentY += 300
     }
 
     # ===================================================================

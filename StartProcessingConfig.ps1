@@ -172,7 +172,12 @@ function Create-FileHostObjects{
                 if($file.name -like "*show vlans detail*"){
                     $hostid.ShowVlansDetail=$file.fullname
                     break
-                }                
+                } 
+                if($file.name -like "*show asset all*"){
+                    $hostid.ShowAssetAll=$file.fullname
+                    break
+                } 
+
                 #if($file.name -like "*show interface*"){ #Checkpoint and cisco show interfaces
                 #    $hostid.ShowInterface=$file.fullname
                 #    break
@@ -388,21 +393,65 @@ function Start-ProcessingFiles(){
 	        }
 	    }
 	}
-    # 2. AGGREGATE RESULTS AND CHECK FOR DUPLICATES SEQUENTIALLY
-    # This part runs after all parallel jobs are finished.
-    $hostnameMap = @{} # Used for the duplicate check
-    
-    foreach ($device in ($processedDevices | Where-Object { $_ -ne $null })) {
-        # Duplicate hostname check 
-        if ($hostnameMap.ContainsKey($device.hostname)) {
-            write-HostDebugText "DUPLICATE HOSTNAME DETECTED: '$($device.hostname)'. Skipping this device. Fix your config files to ensure unique hostnames." -BackgroundColor Red
-            continue # Skip to the next device
-        }
-        $hostnameMap[$device.hostname] = $true
 
-        # Add the processed data to the main arrays
+    # 2. AGGREGATE RESULTS AND CHECK FOR DUPLICATES SEQUENTIALLY
+    # This part runs after all parallel jobs are finished and uses your array definitions.
+
+    $hostnameMap = @{} 
+
+    foreach ($device in ($processedDevices | Where-Object { $_ -ne $null })) {
+        
+        # --- Safety Check: Ensure the device has a hostname ---
+        if ([string]::IsNullOrEmpty($device.hostname)) {
+            Write-Warning "A device was found with no hostname. Skipping this entry."
+            continue
+        }
+
+        # Check if a device with this hostname has already been processed.
+        if ($hostnameMap.ContainsKey($device.hostname)) {
+            # A device with the same hostname exists. We must now check its serial number.
+            $originalDevice = $hostnameMap[$device.hostname]
+            
+            # --- Safety Check: Safely get the primary serial number from both devices ---
+            $originalSerial = if ($originalDevice.Version -and $originalDevice.Version.Serial.Count -gt 0) { 
+                $originalDevice.Version.Serial[0] 
+            } else { 
+                $null 
+            }
+            
+            $currentSerial = if ($device.Version -and $device.Version.Serial.Count -gt 0) { 
+                $device.Version.Serial[0] 
+            } else { 
+                $null 
+            }
+
+            # --- Compare Serial Numbers ---
+            if ($originalSerial -eq $currentSerial) {
+                Write-Host "DUPLICATE DEVICE: Skipping '$($device.hostname)' because a device with the same serial ('$($currentSerial)') already exists." -ForegroundColor Gray
+                continue
+            }
+            else {
+                if ([string]::IsNullOrEmpty($currentSerial)) {
+                    Write-Warning "DUPLICATE HOSTNAME: '$($device.hostname)'. The new device has no serial number, so a unique name cannot be generated. Skipping."
+                    continue
+                }
+                
+                $originalHostname = $device.hostname
+                $device.hostname = "$($originalHostname)_$($currentSerial)"
+                Write-Host "Duplicate hostname '$($originalHostname)' found with a different serial number. Renaming device to '$($device.hostname)'." -ForegroundColor Yellow
+            }
+        }
+        
+        # Add the unique device to the map for future checks.
+        $hostnameMap[$device.hostname] = $device
+
+        # Add the processed data to the main arrays using the += operator.
         $ArrayOfObjects += $device
-        $ArrayOfNetworks += $device.ArrayOfNetworks
+        
+        # Safety Check: Ensure the ArrayOfNetworks property exists before adding.
+        if ($null -ne $device.ArrayOfNetworks) {
+           $ArrayOfNetworks += $device.ArrayOfNetworks
+        }
     }
 	
     write-HostDebugText "Processing Arp Entries" -ForegroundColor green

@@ -42,32 +42,28 @@ function Process-CheckPointHostFiles{
      # Now that $Device is a valid object, we can log to it.
      Add-HostDebugText -HostObject $Device "Processing CheckPoint Host: $($Device.hostname)"
  
-        if($null -eq $Device.hostname ){
-            Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
-            return $null
-        }
-        foreach ($ExistingDevice in $ArrayOfObjects){
-            if($ExistingDevice.hostname -eq $Device.hostname){
-                Add-HostDebugText -HostObject $Device  "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
-                Add-HostDebugText -HostObject $Device  "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
-                Add-HostDebugText -HostObject $Device  "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
-                Add-HostDebugText -HostObject $Device  "$($ArrayOfObjects|ft hostname)"
-                if(!($SkipHostnameErrorCheck)){
-                    Add-HostDebugText -HostObject $Device  'Exiting please manually fix this error.'  -BackgroundColor red
-                    Start-CleanupAndExit
-                    
-                }
-            }
-        }
-        if($hostid.ShowInterface){#
-            Add-HostDebugText -HostObject $Device  "Processing checkpoint show interface:$($hostid.ShowInterface)"
-            $Device=Get-CheckPointShowInterfaceFromText -CheckPointInterfaceFile $hostid.ShowInterface -Device $Device
-        }
-        if($hostid.ShowRouteAll){
-            Add-HostDebugText -HostObject $Device  "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
-            $device=Get-CheckpointShowRouteFromText -device $device -ShowRouteFile $hostid.ShowRouteAll
-        }
-        return $device
+    if($null -eq $Device.hostname ){
+        Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
+        return $null
+    }
+
+    if($hostid.ShowAssetAll){#
+        Add-HostDebugText -HostObject $Device  "Processing checkpoint Show Asset All:$($hostid.ShowAssetAll)"
+        $Device=Get-CheckpointShowAssetAllFromText -ShowAssetAll $hostid.ShowAssetAll -Device $Device
+    }  
+    if($hostid.Version){#
+        Add-HostDebugText -HostObject $Device  "Processing checkpoint show version:$($hostid.ShowVersion)"
+        $Device=Get-CheckpointGaiaVersionFromText -Version $hostid.ShowVersion -Device $Device
+    }      
+    if($hostid.ShowInterface){#
+        Add-HostDebugText -HostObject $Device  "Processing checkpoint show interface:$($hostid.ShowInterface)"
+        $Device=Get-CheckPointShowInterfaceFromText -CheckPointInterfaceFile $hostid.ShowInterface -Device $Device
+    }
+    if($hostid.ShowRouteAll){
+        Add-HostDebugText -HostObject $Device  "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
+        $device=Get-CheckpointShowRouteFromText -device $device -ShowRouteFile $hostid.ShowRouteAll
+    }
+    return $device
 }
 
 
@@ -236,3 +232,115 @@ function Get-CheckpointShowRouteFromText(){
     $device.RoutingTable=$AllRouteObjects
     return $device
 }
+
+
+
+
+# Processes a Checkpoint config file to extract key version and hardware information.
+# Input: Checkpoint config file path.
+# Output: A device object with the populated .Version property.
+function Get-CheckpointShowAssetAllFromText {
+    [CmdletBinding()]
+    param (
+        [parameter(Mandatory=$true)]
+        [string]$ShowVersionFile,
+
+        [parameter(Mandatory=$false)]
+        $Device
+    )
+
+
+    # Read the entire file into a single string for validation.
+    $FileContentRaw = Get-Content -Path $ShowVersionFile -Raw
+
+    # --- CONTENT VALIDATION ---
+    # Check for common error strings in the command output.
+    $errorPattern = 'Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|not enabled'
+    if ($FileContentRaw | Select-String -Pattern $errorPattern -Quiet) {
+        # Using Write-Warning as a standard replacement for the custom Add-HostDebugText function.
+        Write-Warning "File '$ShowVersionFile' contains invalid data or error messages. Skipping parsing."
+        return $device
+    }
+    # --- END VALIDATION ---
+
+    # Create the object structure that will hold the parsed data.
+    $VersionObject = Create-ShowVersionObject
+    $VersionObject.Type = "Checkpoint" # Set the type to identify the device vendor.
+
+    # Use a hashtable for efficient key-value storage and lookup.
+    $parsedData = @{}
+    # Split the raw content by newline to process it line by line.
+    foreach ($line in $FileContentRaw.Split([System.Environment]::NewLine)) {
+        if ($line -match ':') {
+            # Split the line into a key and a value at the first colon.
+            $key, $value = $line.Split(':', 2)
+            # Add the cleaned key and value to the hashtable.
+            $parsedData[$key.Trim()] = $value.Trim()
+        }
+    }
+
+    # Map only the key identifying data from the hashtable to the PSCustomObject.
+    if ($parsedData.ContainsKey('Platform')) {
+        $VersionObject.Hardware += $parsedData['Platform']
+    }
+    if ($parsedData.ContainsKey('Model')) {
+        $VersionObject.Hardware += $parsedData['Model']
+    }
+    if ($parsedData.ContainsKey('Serial Number')) {
+        $VersionObject.Serial += $parsedData['Serial Number']
+    }
+    
+    # Assign the populated version object to the main device object.
+    $device.Version = $VersionObject
+    
+    # Return the updated device object.
+    return $device
+}
+
+
+
+# Processes a Checkpoint Gaia "show version" file to create or update the version object.
+function Get-CheckpointGaiaVersionFromText {
+    [CmdletBinding()]
+    param (
+        [parameter(Mandatory=$true)]
+        [string]$ShowVersionFile,
+
+        [parameter(Mandatory=$false)]
+        $Device
+    )
+
+
+
+    # --- NEW: CHECK AND CREATE LOGIC ---
+    # If the Version object does not exist, create it.
+    if (-not $device.Version) {
+        $device.Version = Create-ShowVersionObject
+    }
+
+    # Read the entire file into a single string.
+    $FileContentRaw = Get-Content -Path $ShowVersionFile -Raw
+
+    # Check for common error strings.
+    $errorPattern = 'Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:'
+    if ($FileContentRaw | Select-String -Pattern $errorPattern -Quiet) {
+        Write-Warning "File '$ShowVersionFile' contains invalid data. Update skipped."
+        return $device
+    }
+
+    # --- ALWAYS UPDATE THE OBJECT ---
+    # Update the Type and clear the OS field before parsing.
+    $device.Version.Type = "Checkpoint Gaia"
+    $device.Version.OS = $null # Clear previous value
+
+    # Use a single regex to find the line and capture the version (e.g., R80.30).
+    if ($FileContentRaw -match 'Product version .*?(R\d+\.\d+)') {
+        # Update the OS property directly on the device's Version object.
+        $device.Version.OS = $matches[1]
+    }
+    
+    # Return the updated device object.
+    return $device
+}
+
+

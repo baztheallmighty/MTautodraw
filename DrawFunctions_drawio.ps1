@@ -957,7 +957,8 @@ function Add-DrawioDummyRootHost {
 #    
 #    return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
 #}
-Colors are broken
+
+
 function Add-DrawioSpanningTreeHost {
     [CmdletBinding()]
     param(
