@@ -28,7 +28,10 @@ function Draw-AllNeighborsDrawio {
         $ArrayOfCDPDeviceIDs,
         # An array of PSObjects for devices discovered via LLDP but not part of the primary configured device set.
         [parameter(Mandatory = $true)]
-        $ArrayOfLLDPDeviceIDs
+        $ArrayOfLLDPDeviceIDs,
+        # Draw all nieghbors or not
+        [parameter(Mandatory = $true)]
+        $DrawAllNeighbors
     )
 
 
@@ -36,7 +39,11 @@ function Draw-AllNeighborsDrawio {
 
     # 1. Start the Diagram and Draw the Legend
     # Initializes a new Draw.io diagram page with a specific name for the physical layout.
-    Start-DrawioDiagram -Name "CDP-LLDP Physical"
+    if($DrawAllNeighbors){
+        Start-DrawioDiagram -Name "CDP-LLDP All"
+    }else{
+        Start-DrawioDiagram -Name "CDP-LLDP brief"
+    }
     # Adds a pre-defined interface legend to the diagram at a specified X/Y coordinate.
     Add-DrawioInterfaceLegend -Location ([PSCustomObject]@{X = -500; Y = 1400})
 
@@ -49,46 +56,46 @@ function Draw-AllNeighborsDrawio {
         $hostWidth = $null
         # Calls a helper function to draw the host's physical chassis and interfaces.
         # The function returns the width of the drawn host, which is used for horizontal positioning.
-        $hostWidth = Add-DrawioHostPhysical -Device $device -Location ([PSCustomObject]@{X = $currentX; Y = 100})
-        #store where we put the object. 
+        $hostWidth = Add-DrawioHostPhysical -Device $device -Location ([PSCustomObject]@{X = $currentX; Y = 100}) -DrawAllNeighbors $DrawAllNeighbors
+        #store where we put the object.
         $device.CPDHostLocation = ([PSCustomObject]@{X = $currentX; Y = 100})
         # Update the X coordinate for the next host, adding a fixed padding plus the width of the host just drawn.
         $currentX += 950 + $hostWidth
-        
+
     }
 
-    
 
-    
-    # Iterate through each device discovered via CDP.
-    $currentNeighbor=$null
-    foreach ($cdpDevice in ($ArrayOfCDPDeviceIDs | Sort-Object ParentObject)) {
-        if ($currentNeighbor -ne $cdpDevice.ParentObject){
-            # Reset coordinates to draw the discovered CDP neighbor devices in a new row.
-            $currentNeighbor=$cdpDevice.ParentObject
-            $currentY = 400
+
+    if($DrawAllNeighbors){ #do we draw all the CDP nieghbors we have if false just the ones with config. 
+        # Iterate through each device discovered via CDP.
+        $currentNeighbor=$null
+        foreach ($cdpDevice in ($ArrayOfCDPDeviceIDs | Sort-Object ParentObject)) {
+            if ($currentNeighbor -ne $cdpDevice.ParentObject){
+                # Reset coordinates to draw the discovered CDP neighbor devices in a new row.
+                $currentNeighbor=$cdpDevice.ParentObject
+                $currentY = 400
+            }
+            # Calls a helper function to draw a simplified representation of a discovered neighbor.
+            $xlocation =
+            Add-DrawioNeighborHost -Device $cdpDevice -Location ([PSCustomObject]@{X = ($GArrayOfObjects | where { $_.hostname -eq $cdpDevice.ParentObject}).CPDHostLocation.x; Y = $currentY}) -DrawType "CDPNeighbor"
+            # Increment the X coordinate for the next discovered device.
+            $currenty += 300
         }
-        # Calls a helper function to draw a simplified representation of a discovered neighbor.
-        $xlocation = 
-        Add-DrawioNeighborHost -Device $cdpDevice -Location ([PSCustomObject]@{X = ($GArrayOfObjects | where { $_.hostname -eq $cdpDevice.ParentObject}).CPDHostLocation.x; Y = $currentY}) -DrawType "CDPNeighbor"
-        # Increment the X coordinate for the next discovered device.
-        $currenty += 300
-    }
 
-    $currentNeighbor=$null
-    # Iterate through each device discovered via LLDP.
-    foreach ($lldpDevice in ($ArrayOfLLDPDeviceIDs | Sort-Object ParentObject)) {
-        if ($currentNeighbor -ne $lldpDevice.ParentObject){
-            # Reset coordinates to draw the discovered CDP neighbor devices in a new row.
-            $currentNeighbor=$lldpDevice.ParentObject
-            $currentY = 400
-        }        
-        # Draw the discovered LLDP neighbor.
-        Add-DrawioNeighborHost -Device $lldpDevice -Location ([PSCustomObject]@{X = (($GArrayOfObjects | where { $_.hostname -eq $lldpDevice.ParentObject}).CPDHostLocation.x + 1000); Y = $currentY}) -DrawType "LLDPNeighbor"
-        # Increment the X coordinate.
-        $currentY += 300
+        $currentNeighbor=$null
+        # Iterate through each device discovered via LLDP.
+        foreach ($lldpDevice in ($ArrayOfLLDPDeviceIDs | Sort-Object ParentObject)) {
+            if ($currentNeighbor -ne $lldpDevice.ParentObject){
+                # Reset coordinates to draw the discovered CDP neighbor devices in a new row.
+                $currentNeighbor=$lldpDevice.ParentObject
+                $currentY = 400
+            }
+            # Draw the discovered LLDP neighbor.
+            Add-DrawioNeighborHost -Device $lldpDevice -Location ([PSCustomObject]@{X = (($GArrayOfObjects | where { $_.hostname -eq $lldpDevice.ParentObject}).CPDHostLocation.x + 1000); Y = $currentY}) -DrawType "LLDPNeighbor"
+            # Increment the X coordinate.
+            $currentY += 300
+        }
     }
-
     # ===================================================================
     # 3. --- Connect all the shapes with custom styling ---
     # ===================================================================
@@ -290,8 +297,6 @@ function Draw-SinglesLayer3Drawio {
 }
 
 
-
-
 # This function creates a physical diagram for a single host, leveraging pre-processed neighbor references.
 function Draw-SingleHostPhysicalDrawio {
     [CmdletBinding()]
@@ -314,9 +319,9 @@ function Draw-SingleHostPhysicalDrawio {
     Start-DrawioDiagram -Name "$($Device.hostname) Physical"
     Add-DrawioInterfaceLegend -Location ([PSCustomObject]@{X = 100; Y = 1300})
     $drawnNeighbors = @{}
-    
+
     # 2. Draw the primary host in a central location.
-    Add-DrawioHostPhysical -Device $Device -Location ([PSCustomObject]@{X = 800; Y = 100})
+    Add-DrawioHostPhysical -Device $Device -Location ([PSCustomObject]@{X = 800; Y = 100}) -DrawAllNeighbors $true
 
     # 3. Initialize layout for neighbor devices.
     $currentX = 100
@@ -325,107 +330,310 @@ function Draw-SingleHostPhysicalDrawio {
 
     # 4. Process all CDP Neighbors.
     if ($Device.CDPNeighbors) {
+        Write-Host "--- Processing CDP neighbors for $($Device.HostName) ---" -ForegroundColor Magenta
         foreach ($cdpNeighbor in $Device.CDPNeighbors) {
+            Write-Host "  -> Attempting connection for CDP neighbor '$($cdpNeighbor.DeviceID)' on local port $($cdpNeighbor.InterfaceLocalDevice)" -ForegroundColor Cyan
             $partnerHost = $null
-            $partnerInterface = $null
-            
+            $partnerInterface_physical = $null
+
             # Check the pre-populated reference to determine neighbor type.
             if ($cdpNeighbor.PartnerEthernetInterface -and $cdpNeighbor.PartnerEthernetInterface.Value) {
                 # --- This is a CONFIGURED Neighbor ---
-                $partnerInterface = $cdpNeighbor.PartnerEthernetInterface.Value
-                # Find the parent Host Object for this interface.
-                $partnerHost = $ArrayOfObjects | Where-Object { $_.interfaces -contains $partnerInterface } | Select-Object -First 1
-                
-                if (-not $partnerHost) { continue } # Should not happen if pre-processing is correct.
+                $partnerInterface_physical = $cdpNeighbor.PartnerEthernetInterface.Value
+                $partnerHost = $ArrayOfObjects | Where-Object { $_.interfaces -contains $partnerInterface_physical } | Select-Object -First 1
+
+                if (-not $partnerHost) {
+                    Write-Host "    - SKIPPING: Could not find configured partner host object." -ForegroundColor Yellow
+                    continue
+                }
 
                 if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
-                    $neighborWidth = Add-DrawioHostPhysical -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY})
+                    $neighborWidth = Add-DrawioHostPhysical -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY})  -DrawAllNeighbors $true
                     $drawnNeighbors[$partnerHost.HostName] = $partnerHost
                     $currentX += $neighborWidth + $horizontalPadding
                 }
             } else {
                 # --- This is a DISCOVERED-ONLY Neighbor ---
                 $partnerHost = $ArrayOfCDPDeviceIDs | Where-Object { $_.HostName -eq $cdpNeighbor.DeviceID } | Select-Object -First 1
-                
-                if (-not $partnerHost) { 
-					Write-Host "WARNING [SingleHost]: Could not find a discovered CDP device with DeviceID '$($cdpNeighbor.DeviceID)'. Skipping connector." -ForegroundColor DarkYellow
-					continue 
-				} # Discovered device object was not created.
+
+                if (-not $partnerHost) {
+                    Write-Host "    - SKIPPING: Could not find discovered CDP device with DeviceID '$($cdpNeighbor.DeviceID)'." -ForegroundColor DarkYellow
+                    continue
+                }
 
                 if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
                     Add-DrawioNeighborHost -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "CDPNeighbor"
                     $drawnNeighbors[$partnerHost.HostName] = $partnerHost
-                    $currentX += 800 + $horizontalPadding # Use an estimated width for discovered hosts
+                    $currentX += 800 + $horizontalPadding
                 }
-                # Find the specific interface object on the discovered host.
-                $partnerInterface = $partnerHost.interfaces | Where-Object { $_.interface -eq $cdpNeighbor.InterfaceRemoteDevice } | Select-Object -First 1
+                $partnerInterface_physical = $partnerHost.interfaces | Where-Object { $_.interface -eq $cdpNeighbor.InterfaceRemoteDevice } | Select-Object -First 1
             }
 
             # --- Draw the Connector ---
-            $fromInterface = $Device.interfaces | Where-Object { $_.Interface -eq $cdpNeighbor.InterfaceLocalDevice } | Select-Object -First 1
-            if ($fromInterface -and $fromInterface.PhysicalDrawioId -and $partnerInterface -and $partnerInterface.PhysicalDrawioId) {
-                $style = Get-ConnectorStyle -fromInterface $fromInterface
-                Add-DrawioConnector -SourceId $fromInterface.PhysicalDrawioId -TargetId $partnerInterface.PhysicalDrawioId -Style $style
+            $fromInterface_physical = $Device.interfaces | Where-Object { $_.Interface -eq $cdpNeighbor.InterfaceLocalDevice } | Select-Object -First 1
+            Write-Host "    - Found Local Physical Interface: $($fromInterface_physical.Interface)"
+            Write-Host "    - Found Remote Physical Interface: $($partnerInterface_physical.Interface) on Host: $($partnerHost.HostName)"
+            
+            ## PORT-CHANNEL FIX START ##
+            $fromInterface_for_connector = $fromInterface_physical
+            if ($fromInterface_physical -and $fromInterface_physical.ChannelGroup) {
+                $portChannelName = "Port-channel" + $fromInterface_physical.ChannelGroup
+                $fromInterface_for_connector = $Device.interfaces | Where-Object { $_.Interface -eq $portChannelName } | Select-Object -First 1
+                Write-Host "    - Resolved Local Interface to Port-Channel: $($fromInterface_for_connector.Interface)"
+            }
+
+            $toInterface_for_connector = $partnerInterface_physical
+            if ($partnerInterface_physical -and $partnerInterface_physical.ChannelGroup -and $partnerHost) {
+                $portChannelName = "Port-channel" + $partnerInterface_physical.ChannelGroup
+                $toInterface_for_connector = $partnerHost.interfaces | Where-Object { $_.Interface -eq $portChannelName } | Select-Object -First 1
+                Write-Host "    - Resolved Remote Interface to Port-Channel: $($toInterface_for_connector.Interface)"
+            }
+            ## PORT-CHANNEL FIX END ##
+
+            if ($fromInterface_for_connector -and $fromInterface_for_connector.PhysicalDrawioId -and $toInterface_for_connector -and $toInterface_for_connector.PhysicalDrawioId) {
+                Write-Host "    - SUCCESS: Connecting $($fromInterface_for_connector.Interface) to $($toInterface_for_connector.Interface)" -ForegroundColor Green
+                $style = Get-ConnectorStyle -fromInterface $fromInterface_for_connector
+                Add-DrawioConnector -SourceId $fromInterface_for_connector.PhysicalDrawioId -TargetId $toInterface_for_connector.PhysicalDrawioId -Style $style
+            } else {
+                Write-Host "    - FAILURE: Could not create connector. Missing interface object or DrawioId." -ForegroundColor Red
+                if (-not ($fromInterface_for_connector -and $fromInterface_for_connector.PhysicalDrawioId)) { Write-Host "      - Check: Source Interface '$($fromInterface_for_connector.Interface)'" -ForegroundColor Yellow }
+                if (-not ($toInterface_for_connector -and $toInterface_for_connector.PhysicalDrawioId)) { Write-Host "      - Check: Target Interface '$($toInterface_for_connector.Interface)'" -ForegroundColor Yellow }
             }
         }
     }
 
     # 5. Process all LLDP Neighbors (using the same logic as CDP).
     if ($Device.LLDPNeighbors) {
+        Write-Host "--- Processing LLDP neighbors for $($Device.HostName) ---" -ForegroundColor Magenta
         foreach ($lldpNeighbor in ($Device.LLDPNeighbors | Where-Object { -not $_.HasCDPNeighborEntry })) {
+            Write-Host "  -> Attempting connection for LLDP neighbor '$($lldpNeighbor.HostName)' on local port $($lldpNeighbor.InterfaceLocalDevice)" -ForegroundColor Cyan
             $partnerHost = $null
-            $partnerInterface = $null
-            
+            $partnerInterface_physical = $null
+
             if ($lldpNeighbor.PartnerEthernetInterface -and $lldpNeighbor.PartnerEthernetInterface.Value) {
-                # --- CONFIGURED Neighbor ---
-                $partnerInterface = $lldpNeighbor.PartnerEthernetInterface.Value
-                $partnerHost = $ArrayOfObjects | Where-Object { $_.interfaces -contains $partnerInterface } | Select-Object -First 1
-                
-                if (-not $partnerHost) { continue }
+                # --- This is a CONFIGURED Neighbor ---
+                $partnerInterface_physical = $lldpNeighbor.PartnerEthernetInterface.Value
+                $partnerHost = $ArrayOfObjects | Where-Object { $_.interfaces -contains $partnerInterface_physical } | Select-Object -First 1
+
+                if (-not $partnerHost) {
+                    Write-Host "    - SKIPPING: Could not find configured partner host object." -ForegroundColor Yellow
+                    continue
+                }
 
                 if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
-                    $neighborWidth = Add-DrawioHostPhysical -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY})
+                    $neighborWidth = Add-DrawioHostPhysical -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY})  -DrawAllNeighbors $true
                     $drawnNeighbors[$partnerHost.HostName] = $partnerHost
                     $currentX += $neighborWidth + $horizontalPadding
                 }
             } else {
-                # --- DISCOVERED-ONLY Neighbor ---
-                $neighborId = $lldpNeighbor.HostName
-                $chassisId = $lldpNeighbor.ChassisID
- 				# --- MODIFICATION START ---
- 				# Clean the hostname to handle FQDN vs. short name mismatches.
- 				$cleanedNeighborHostName = if (-not [string]::IsNullOrEmpty($neighborId)) {
- 					($neighborId -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
- 				}
- 				# Also clean the chassis ID.
- 				$cleanedChassisId = if (-not [string]::IsNullOrEmpty($chassisId)) {
- 					($chassisId -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
- 				}
- 				# Check against cleaned/original hostname AND cleaned/original chassis ID.
- 				$partnerHost = $ArrayOfLLDPDeviceIDs | Where-Object { $_.HostName -eq $cleanedNeighborHostName -or $_.HostName -eq $neighborId -or $_.HostName -eq $cleanedChassisId -or $_.HostName -eq $chassisId } | Select-Object -First 1
- 				# --- MODIFICATION END ---
-                if (-not $partnerHost) { continue }
-
-                if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
-                    Add-DrawioNeighborHost -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "LLDPNeighbor"
-                    $drawnNeighbors[$partnerHost.HostName] = $partnerHost
-                    $currentX += 800 + $horizontalPadding
+                # --- This is a DISCOVERED-ONLY Neighbor ---
+                :outer foreach ($discoveredDevice in $ArrayOfLLDPDeviceIDs) {
+                    $cleanedNeighborHostName = if (-not [string]::IsNullOrEmpty($lldpNeighbor.HostName)) {
+                        ($lldpNeighbor.HostName -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+                    }
+                    $cleanedChassisId = if (-not [string]::IsNullOrEmpty($lldpNeighbor.ChassisID)) {
+                        ($lldpNeighbor.ChassisID -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+                    }
+                    if (($discoveredDevice.hostname -eq $cleanedNeighborHostName) -or ($discoveredDevice.hostname -eq $lldpNeighbor.HostName) -or ($discoveredDevice.hostname -eq $cleanedChassisId) -or ($discoveredDevice.hostname -eq $lldpNeighbor.ChassisID)) {
+                        $partnerHost = $discoveredDevice
+                        if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
+                            Add-DrawioNeighborHost -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "LLDPNeighbor"
+                            $drawnNeighbors[$partnerHost.HostName] = $partnerHost
+                            $currentX += 800 + $horizontalPadding
+                        }
+                        foreach ($remoteInterface in $partnerHost.interfaces) {
+                            if ($remoteInterface.Interface -eq $lldpNeighbor.InterfaceRemoteDevice) {
+                                $partnerInterface_physical = $remoteInterface
+                                break outer
+                            }
+                        }
+                    }
                 }
-                $partnerInterface = $partnerHost.interfaces | Where-Object { $_.interface -eq $lldpNeighbor.InterfaceRemoteDevice } | Select-Object -First 1
+
+                if (-not $partnerInterface_physical) {
+                    Write-Host "    - SKIPPING: Could not find a matching discovered LLDP device for neighbor '$($lldpNeighbor.HostName)' on interface '$($lldpNeighbor.InterfaceRemoteDevice)'." -ForegroundColor DarkYellow
+                    continue
+                }
             }
 
             # --- Draw the Connector ---
-            $fromInterface = $Device.interfaces | Where-Object { $_.Interface -eq $lldpNeighbor.InterfaceLocalDevice } | Select-Object -First 1
-            if ($fromInterface -and $fromInterface.PhysicalDrawioId -and $partnerInterface -and $partnerInterface.PhysicalDrawioId) {
-                $style = Get-ConnectorStyle -fromInterface $fromInterface
-                Add-DrawioConnector -SourceId $fromInterface.PhysicalDrawioId -TargetId $partnerInterface.PhysicalDrawioId -Style $style
+            $fromInterface_physical = $Device.interfaces | Where-Object { $_.Interface -eq $lldpNeighbor.InterfaceLocalDevice } | Select-Object -First 1
+            Write-Host "    - Found Local Physical Interface: $($fromInterface_physical.Interface)"
+            Write-Host "    - Found Remote Physical Interface: $($partnerInterface_physical.Interface) on Host: $($partnerHost.HostName)"
+            
+            ## PORT-CHANNEL FIX START ##
+            $fromInterface_for_connector = $fromInterface_physical
+            if ($fromInterface_physical -and $fromInterface_physical.ChannelGroup) {
+                $portChannelName = "Port-channel" + $fromInterface_physical.ChannelGroup
+                $fromInterface_for_connector = $Device.interfaces | Where-Object { $_.Interface -eq $portChannelName } | Select-Object -First 1
+                Write-Host "    - Resolved Local Interface to Port-Channel: $($fromInterface_for_connector.Interface)"
+            }
+
+            $toInterface_for_connector = $partnerInterface_physical
+            if ($partnerInterface_physical -and $partnerInterface_physical.ChannelGroup -and $partnerHost) {
+                $portChannelName = "Port-channel" + $partnerInterface_physical.ChannelGroup
+                $toInterface_for_connector = $partnerHost.interfaces | Where-Object { $_.Interface -eq $portChannelName } | Select-Object -First 1
+                Write-Host "    - Resolved Remote Interface to Port-Channel: $($toInterface_for_connector.Interface)"
+            }
+            ## PORT-CHANNEL FIX END ##
+
+            if ($fromInterface_for_connector -and $fromInterface_for_connector.PhysicalDrawioId -and $toInterface_for_connector -and $toInterface_for_connector.PhysicalDrawioId) {
+                Write-Host "    - SUCCESS: Connecting $($fromInterface_for_connector.Interface) to $($toInterface_for_connector.Interface)" -ForegroundColor Green
+                $style = Get-ConnectorStyle -fromInterface $fromInterface_for_connector
+                Add-DrawioConnector -SourceId $fromInterface_for_connector.PhysicalDrawioId -TargetId $toInterface_for_connector.PhysicalDrawioId -Style $style
+            } else {
+                Write-Host "    - FAILURE: Could not create connector. Missing interface object or DrawioId." -ForegroundColor Red
+                if (-not ($fromInterface_for_connector -and $fromInterface_for_connector.PhysicalDrawioId)) { Write-Host "      - Check: Source Interface '$($fromInterface_for_connector.Interface)'" -ForegroundColor Yellow }
+                if (-not ($toInterface_for_connector -and $toInterface_for_connector.PhysicalDrawioId)) { Write-Host "      - Check: Target Interface '$($toInterface_for_connector.Interface)'" -ForegroundColor Yellow }
             }
         }
     }
-
     # 6. Finalize the diagram page.
     End-DrawioDiagram
 }
+
+## This function creates a physical diagram for a single host, leveraging pre-processed neighbor references.
+#function Draw-SingleHostPhysicalDrawio {
+#    [CmdletBinding()]
+#    param (
+#        # The primary device object to be the center of the diagram.
+#        [parameter(Mandatory = $true)]
+#        $Device,
+#        # The full array of all configured device objects.
+#        [parameter(Mandatory = $true)]
+#        $ArrayOfObjects,
+#        # An array of PSObjects for devices discovered only via CDP.
+#        [parameter(Mandatory = $true)]
+#        $ArrayOfCDPDeviceIDs,
+#        # An array of PSObjects for devices discovered only via LLDP.
+#        [parameter(Mandatory = $true)]
+#        $ArrayOfLLDPDeviceIDs
+#    )
+#
+#    # 1. Initialize the diagram page and layout variables.
+#    Start-DrawioDiagram -Name "$($Device.hostname) Physical"
+#    Add-DrawioInterfaceLegend -Location ([PSCustomObject]@{X = 100; Y = 1300})
+#    $drawnNeighbors = @{}
+#
+#    # 2. Draw the primary host in a central location.
+#    Add-DrawioHostPhysical -Device $Device -Location ([PSCustomObject]@{X = 800; Y = 100}) -DrawAllNeighbors $true
+#
+#    # 3. Initialize layout for neighbor devices.
+#    $currentX = 100
+#    $currentY = 700
+#    $horizontalPadding = 200 # The fixed space between neighbor shapes.
+#
+#    # 4. Process all CDP Neighbors.
+#    if ($Device.CDPNeighbors) {
+#        foreach ($cdpNeighbor in $Device.CDPNeighbors) {
+#            $partnerHost = $null
+#            $partnerInterface = $null
+#
+#            # Check the pre-populated reference to determine neighbor type.
+#            if ($cdpNeighbor.PartnerEthernetInterface -and $cdpNeighbor.PartnerEthernetInterface.Value) {
+#                # --- This is a CONFIGURED Neighbor ---
+#                $partnerInterface = $cdpNeighbor.PartnerEthernetInterface.Value
+#                # Find the parent Host Object for this interface.
+#                $partnerHost = $ArrayOfObjects | Where-Object { $_.interfaces -contains $partnerInterface } | Select-Object -First 1
+#
+#                if (-not $partnerHost) { continue } # Should not happen if pre-processing is correct.
+#
+#                if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
+#                    $neighborWidth = Add-DrawioHostPhysical -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY})  -DrawAllNeighbors $true
+#                    $drawnNeighbors[$partnerHost.HostName] = $partnerHost
+#                    $currentX += $neighborWidth + $horizontalPadding
+#                }
+#            } else {
+#                # --- This is a DISCOVERED-ONLY Neighbor ---
+#                $partnerHost = $ArrayOfCDPDeviceIDs | Where-Object { $_.HostName -eq $cdpNeighbor.DeviceID } | Select-Object -First 1
+#
+#                if (-not $partnerHost) {
+#					Write-Host "WARNING [SingleHost]: Could not find a discovered CDP device with DeviceID '$($cdpNeighbor.DeviceID)'. Skipping connector." -ForegroundColor DarkYellow
+#					continue
+#				} # Discovered device object was not created.
+#
+#                if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
+#                    Add-DrawioNeighborHost -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "CDPNeighbor"
+#                    $drawnNeighbors[$partnerHost.HostName] = $partnerHost
+#                    $currentX += 800 + $horizontalPadding # Use an estimated width for discovered hosts
+#                }
+#                # Find the specific interface object on the discovered host.
+#                $partnerInterface = $partnerHost.interfaces | Where-Object { $_.interface -eq $cdpNeighbor.InterfaceRemoteDevice } | Select-Object -First 1
+#            }
+#
+#            # --- Draw the Connector ---
+#            $fromInterface = $Device.interfaces | Where-Object { $_.Interface -eq $cdpNeighbor.InterfaceLocalDevice } | Select-Object -First 1
+#            if ($fromInterface -and $fromInterface.PhysicalDrawioId -and $partnerInterface -and $partnerInterface.PhysicalDrawioId) {
+#                $style = Get-ConnectorStyle -fromInterface $fromInterface
+#                Add-DrawioConnector -SourceId $fromInterface.PhysicalDrawioId -TargetId $partnerInterface.PhysicalDrawioId -Style $style
+#            }
+#        }
+#    }
+#
+#    # 5. Process all LLDP Neighbors (using the same logic as CDP).
+#    if ($Device.LLDPNeighbors) {
+#        foreach ($lldpNeighbor in ($Device.LLDPNeighbors | Where-Object { -not $_.HasCDPNeighborEntry })) {
+#            $partnerHost = $null
+#            $partnerInterface = $null
+#
+#            if ($lldpNeighbor.PartnerEthernetInterface -and $lldpNeighbor.PartnerEthernetInterface.Value) {
+#                # --- This is a CONFIGURED Neighbor ---
+#                $partnerInterface = $lldpNeighbor.PartnerEthernetInterface.Value
+#                # Find the parent Host Object for this interface.
+#                $partnerHost = $ArrayOfObjects | Where-Object { $_.interfaces -contains $partnerInterface } | Select-Object -First 1
+#
+#                if (-not $partnerHost) { continue } # Should not happen if pre-processing is correct.
+#
+#                if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
+#                    $neighborWidth = Add-DrawioHostPhysical -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY})  -DrawAllNeighbors $true
+#                    $drawnNeighbors[$partnerHost.HostName] = $partnerHost
+#                    $currentX += $neighborWidth + $horizontalPadding
+#                }
+#            } else {
+#                # --- This is a DISCOVERED-ONLY Neighbor ---
+#                $toInterface = $null # Reset for each neighbor
+#                :outer foreach ($discoveredDevice in $ArrayOfLLDPDeviceIDs) {
+#                    $cleanedNeighborHostName = if (-not [string]::IsNullOrEmpty($lldpNeighbor.HostName)) {
+#                        ($lldpNeighbor.HostName -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+#                    }
+#                    $cleanedChassisId = if (-not [string]::IsNullOrEmpty($lldpNeighbor.ChassisID)) {
+#                        ($lldpNeighbor.ChassisID -replace "\(.*?\)", '' -replace "(.*?)\..*", '$1').trim()
+#                    }
+#                    if (($discoveredDevice.hostname -eq $cleanedNeighborHostName) -or ($discoveredDevice.hostname -eq $lldpNeighbor.HostName) -or ($discoveredDevice.hostname -eq $cleanedChassisId) -or ($discoveredDevice.hostname -eq $lldpNeighbor.ChassisID)) {
+#                        # This is the correct discovered device object.
+#                        $partnerHost = $discoveredDevice
+#                        if (-not $drawnNeighbors.ContainsKey($partnerHost.HostName)) {
+#                            Add-DrawioNeighborHost -Device $partnerHost -Location ([PSCustomObject]@{X = $currentX; Y = $currentY}) -DrawType "LLDPNeighbor"
+#                            $drawnNeighbors[$partnerHost.HostName] = $partnerHost
+#                            $currentX += 800 + $horizontalPadding
+#                        }
+#                        # Now find the specific remote interface on that discovered device.
+#                        foreach ($remoteInterface in $partnerHost.interfaces) {
+#                            if ($remoteInterface.Interface -eq $lldpNeighbor.InterfaceRemoteDevice) {
+#                                $partnerInterface = $remoteInterface # We found the exact interface object.
+#                                break outer # Exit both loops since the target has been found.
+#                            }
+#                        }
+#                    }
+#                }
+#
+#                if (-not $partnerInterface) {
+#                    Write-Host "WARNING [SingleHost]: Could not find a matching discovered LLDP device for neighbor '$($lldpNeighbor.HostName)' on interface '$($lldpNeighbor.InterfaceRemoteDevice)'. Skipping connector." -ForegroundColor DarkYellow
+#                    continue
+#                }
+#            }
+#
+#            # --- Draw the Connector ---
+#            $fromInterface = $Device.interfaces | Where-Object { $_.Interface -eq $lldpNeighbor.InterfaceLocalDevice } | Select-Object -First 1
+#            if ($fromInterface -and $fromInterface.PhysicalDrawioId -and $partnerInterface -and $partnerInterface.PhysicalDrawioId) {
+#                $style = Get-ConnectorStyle -fromInterface $fromInterface
+#                Add-DrawioConnector -SourceId $fromInterface.PhysicalDrawioId -TargetId $partnerInterface.PhysicalDrawioId -Style $style
+#            }
+#        }
+#    }
+#    # 6. Finalize the diagram page.
+#    End-DrawioDiagram
+#}
 
 
 function Draw-AllLayer3Drawio {
@@ -462,20 +670,20 @@ function Draw-AllLayer3Drawio {
             $currentX += 700 + $hostWidth
         }
     }
-    
+   
     if ($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly") {
-        $currentY = 50 
+        $currentY = 50
         foreach ($network in $ArrayOfNetworks) {
             if ($DiagramType -eq "LinksOnly" -and $network.NumberOfRoutedConnectors -eq 0) { continue }
             $netId = Add-DrawioNetworkSegment -Network $network -Location ([PSCustomObject]@{X = 100; Y = $currentY})
             $drawableNetworksOnPage[$network.cidr] = $network
             if ($GDrawAprEntries -and $network.ARPEntries) {
-                $arpId = Add-DrawioArpBubble -Network $network -Location ([PSCustomObject]@{X = 400; Y = $currentY}) 
-                if ($netId -and $arpId) { 
+                $arpId = Add-DrawioArpBubble -Network $network -Location ([PSCustomObject]@{X = 400; Y = $currentY})
+                if ($netId -and $arpId) {
                     Add-DrawioConnector -SourceId $netId -TargetId $arpId -Style "endArrow=none;dashed=1;strokeColor=#9E9E9E;strokeWidth=2;" -Text "ARP"
                 }
             }
-            $currentY += ($GDrawioVlanHeight + 50) 
+            $currentY += ($GDrawioVlanHeight + 50)
         }
     }
 
@@ -486,7 +694,7 @@ function Draw-AllLayer3Drawio {
     foreach ($device in $allDrawableHosts) {
         foreach ($interface in ($device.interfaces | Where-Object { $_.ipaddress -and (-not $_.shutdown) })) {
             if (($DiagramType -eq "Normal" -or $DiagramType -eq "LinksOnly")) {
-                 
+                
                 $targetNetwork = $drawableNetworksOnPage[$interface.cidr]
 
                 if ($interface.LogicalDrawioId -and $targetNetwork -and $targetNetwork.LogicalDrawioId) {
@@ -506,7 +714,7 @@ function Draw-AllLayer3Drawio {
                         if ($foundPrimaryInterface) {
                             $targetInterfaces += ($foundPrimaryInterface | Select-Object -First 1)
                             $connectionType = "Primary"
-                            break 
+                            break
                         }
                     }
 
@@ -547,17 +755,17 @@ function Draw-AllLayer3Drawio {
                             elseif ($protocols -like "*static*") { $primaryProtocol = "static" }
 
                             switch -wildcard ($primaryProtocol) {
-                                "static" { $color = "rgb(0,107,60)" } 
-                                "RIP" { $color = "rgb(179,89,0)" } 
-                                "BGP" { $color = "rgb(0,0,179)" } 
-                                "BGP-*" { $color = "rgb(0,0,179)" } 
-                                "B" { $color = "rgb(0,0,179)" } 
-                                "EIGRP" { $color = "rgb(160,32,240)" } 
-                                "OSPF" { $color = "rgb(255,255,51)" } 
-                                "OSPF-*" { $color = "rgb(255,255,51)" } 
-                                "IS-IS" { $color = "rgb(204,238,255)" } 
-                                "Default gateway" { $color = "rgb(0,107,60)" } 
-                                default { $color = "#000000" } 
+                                "static" { $color = "rgb(0,107,60)" }
+                                "RIP" { $color = "rgb(179,89,0)" }
+                                "BGP" { $color = "rgb(0,0,179)" }
+                                "BGP-*" { $color = "rgb(0,0,179)" }
+                                "B" { $color = "rgb(0,0,179)" }
+                                "EIGRP" { $color = "rgb(160,32,240)" }
+                                "OSPF" { $color = "rgb(255,255,51)" }
+                                "OSPF-*" { $color = "rgb(255,255,51)" }
+                                "IS-IS" { $color = "rgb(204,238,255)" }
+                                "Default gateway" { $color = "rgb(0,107,60)" }
+                                default { $color = "#000000" }
                             }
 
                             if (($group.Group | select subnet).count -gt 30) {
@@ -574,17 +782,17 @@ function Draw-AllLayer3Drawio {
                             }
 
                             if ($text -like "*0.0.0.0/0*") {
-                                $dashed = "0" 
+                                $dashed = "0"
                             }
                             else {
-                                $dashed = "1" 
+                                $dashed = "1"
                             }
 
                             if ($connectionType -eq "StandbyFallback") {
-                                $text = "Standby: " + $text 
-                                $color = "#FF8C00" 
-                                $strokeWidth = "2" 
-                                $dashed = "1" 
+                                $text = "Standby: " + $text
+                                $color = "#FF8C00"
+                                $strokeWidth = "2"
+                                $dashed = "1"
                             }
 
                             $style = "endArrow=$endArrow;html=1;strokeWidth=$strokeWidth;strokeColor=$color;endSize=$endArrowSize;"
@@ -596,11 +804,11 @@ function Draw-AllLayer3Drawio {
                         }
                         else {
                         }
-                    } 
-                } 
+                    }
+                }
             }
-        } 
-    } 
+        }
+    }
     End-DrawioDiagram
 }
 
@@ -628,7 +836,7 @@ function Draw-SpanningTreeDiagram {
     $dummyRowY = 50 # New top row for unknown roots.
     $topRowY = $dummyRowY + 100 + $verticalPadding # Main hosts are below dummies.
     $bottomRowY = $topRowY + $GhostHeaderHeight + $GvlanSectionHeight + $verticalPadding
-    
+
     # Draw Top Row (Root Hosts)
     $currentX = 50
     foreach ($device in $rootHosts) {
@@ -648,18 +856,18 @@ function Draw-SpanningTreeDiagram {
     $dummyX = 50 # X-coordinate for placing new dummy hosts.
     foreach ($device in $ArrayOfObjects) {
         if (-not $device.SpanningTree) { continue }
-        
+
         $nonRootGroups = $device.SpanningTree.SpanningTreeArray | Where-Object { -not $_.RootBridge } | Group-Object Address
 
         foreach ($group in $nonRootGroups) {
             $sourceShapeId = $group.Group[0].Shape
             $rootBridgeId = $group.Name
-            
+
             $connectorLabel = ($group.Group.RootBridgePort | Select-Object -Unique) -join ",`n"
 
             $targetDevice = $null
             $targetShapeId = $null
-            
+
             foreach ($potentialTarget in $ArrayOfObjects) {
                 $foundRootVlan = $potentialTarget.SpanningTree.SpanningTreeArray | Where-Object { $_.Address -eq $rootBridgeId -and $_.RootBridge -eq $true } | Select-Object -First 1
                 if ($foundRootVlan) {
@@ -668,7 +876,7 @@ function Draw-SpanningTreeDiagram {
                     break
                 }
             }
-            
+
             if (-not $targetDevice) {
                 Write-Host "[DEBUG]   - Root Bridge $($rootBridgeId) not found. Checking for/creating a dummy host." -ForegroundColor Yellow
                 if (-not $dummyHosts.ContainsKey($rootBridgeId)) {
@@ -679,7 +887,7 @@ function Draw-SpanningTreeDiagram {
                     $stpInstance.Address = $rootBridgeId
                     $stpInstance.RootBridge = $true
                     $dummy.SpanningTree.SpanningTreeArray += $stpInstance
-                    
+
                     $dummyDimensions = Add-DrawioDummyRootHost -DummyDevice $dummy -Location ([PSCustomObject]@{X = $dummyX; Y = $dummyRowY})
                     $dummyX += $dummyDimensions.Width + $horizontalPadding
                     $dummyHosts[$rootBridgeId] = $dummy
@@ -689,10 +897,10 @@ function Draw-SpanningTreeDiagram {
 
             if ($sourceShapeId -and $targetShapeId) {
                 Write-Host "[DEBUG]   - Drawing connector from $($device.HostName) to root $($rootBridgeId) with label: $($connectorLabel)" -ForegroundColor Green
-                
+
                 # This style ensures straight lines.
                 $style = "endArrow=classic;html=1;rounded=0;strokeColor=#4A148C;strokeWidth=2;dashed=1;whiteSpace=wrap;"
-                
+
                 Add-DrawioConnector -SourceId $sourceShapeId -TargetId $targetShapeId -Style $style -Text $connectorLabel
             }
         }
@@ -700,5 +908,5 @@ function Draw-SpanningTreeDiagram {
     Write-Host "[DEBUG] =========================`n"
 
     # 4. Finalize and save the file.
-    End-DrawioDiagram 
+    End-DrawioDiagram
 }

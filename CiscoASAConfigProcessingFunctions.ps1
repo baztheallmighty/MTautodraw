@@ -36,10 +36,10 @@ function Process-CiscoASAHostFiles{
             Write-host "File doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun)"
             return $null
         }
-    
+
         # Now that $Device is a valid object, we can log to it.
         Add-HostDebugText -HostObject $Device "Processing Cisco ASA Host: $($Device.hostname)"
-    
+
         if($null -eq $Device.hostname ){
             Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
             return $null
@@ -55,7 +55,7 @@ function Process-CiscoASAHostFiles{
                 if(!($SkipHostnameErrorCheck)){
                     Add-HostDebugText -HostObject $Device 'Exiting please manually fix this error.'  -BackgroundColor red
                     Start-CleanupAndExit
-                    
+
                 }
             }
         }
@@ -67,12 +67,12 @@ function Process-CiscoASAHostFiles{
             Add-HostDebugText -HostObject $Device "Processing Cisco ASA show show route:$($hostid.CiscoASAShowRoute)"
             $device=Get-CiscoASAShowRouteFromText -device $device -ShowRouteFile $hostid.CiscoASAShowRoute
         }
-        
+
         if($hostid.ShowIPBGPSummary){
             Add-HostDebugText -HostObject $Device "Processing Cisco ASA show bgp summary:$($hostid.ShowIPBGPSummary)"
             $Device=Get-BGPSummaryFromText -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
         }
-        
+
         return $device
 }
 
@@ -152,7 +152,7 @@ function Get-CiscoASAShowInterfaceFromText(){
         $tempArray = @()
         $tempArray += ,$Device.ProcessOutputObjects
         $Device.ProcessOutputObjects = $tempArray
-    }    
+    }
     foreach ($int in $Device.ProcessOutputObjects){
         $interfaceObject = Create-InterfaceObject
         $interfaceObject.Interface=$int[0]
@@ -239,7 +239,7 @@ function Get-CiscoASAShowRouteFromText(){
         $tempArray = @()
         $tempArray += ,$Device.ProcessOutputObjects
         $Device.ProcessOutputObjects = $tempArray
-    }    
+    }
 
     foreach ($Route in $Device.ProcessOutputObjects){
         $RouteObject=Create-RouteObject

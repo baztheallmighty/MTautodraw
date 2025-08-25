@@ -126,13 +126,13 @@ function Create-RouteObject(){
 #Spanning tree port array
 #Interface           Role Sts Cost      Prio.Nbr Type
 #------------------- ---- --- --------- -------- --------------------------------
-#Po1                 Root FWD 3         128.1281 P2p 
-#Po2                 Desg FWD 3         128.1282 P2p 
+#Po1                 Root FWD 3         128.1281 P2p
+#Po2                 Desg FWD 3         128.1282 P2p
 function Create-SpanningTreeInterface(){
     $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name Interface  -value $null 
+    $newObject| Add-Member -type NoteProperty -Name Interface  -value $null
     $newObject| Add-Member -type NoteProperty -Name Role       -value $null
-    $newObject| Add-Member -type NoteProperty -Name Status     -value $null 
+    $newObject| Add-Member -type NoteProperty -Name Status     -value $null
     $newObject| Add-Member -type NoteProperty -Name Cost       -value $null
     $newObject| Add-Member -type NoteProperty -Name PrioNbr    -value $null
     $newObject| Add-Member -type NoteProperty -Name Type       -value $null
@@ -180,7 +180,7 @@ function Create-FileObject(){
     $newObject| Add-Member -type NoteProperty -Name ShowVersion -value $null
     $newObject| Add-Member -type NoteProperty -Name ShowIPArp -value $null
     $newObject| Add-Member -type NoteProperty -Name ShowInterface -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceDetail -value $null  #This is used by Junos devices at the time of writing. 
+    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceDetail -value $null  #This is used by Junos devices at the time of writing.
     $newObject| Add-Member -type NoteProperty -Name ShowRouteAll -value $null
     $newObject| Add-Member -type NoteProperty -Name CiscoASAShowRoute -value $null
     $newObject| Add-Member -type NoteProperty -Name ShowSpanningTreeInterface -value $null
@@ -259,8 +259,8 @@ function Create-InterfaceObject(){
     $newObject| Add-Member -type NoteProperty -Name Standbyip -value $null                  #Standby address of interface. This is used to store the HSRP address of the interface.
     $newObject| Add-Member -type NoteProperty -Name StandbyNumber -value $null              #Standby address of interface. This is used to store the HSRP address of the interface.
     $newObject| Add-Member -type NoteProperty -Name StandbyPriority -value $null            #Standby Priority. This is used to determined which one is active.
-    $newObject| Add-Member -type NoteProperty -Name macaddress -value $null                 #This is the MacAddress used by this interface. These are not the mac addresses in the show mac address table command. These are the addresses attached to this interface for either ip addresses or LACP. 
-    $newObject| Add-Member -type NoteProperty -Name ClusterIP -value $null                  #Standby address of interface. This is the cluster ip address of a checkpoint device. 
+    $newObject| Add-Member -type NoteProperty -Name macaddress -value $null                 #This is the MacAddress used by this interface. These are not the mac addresses in the show mac address table command. These are the addresses attached to this interface for either ip addresses or LACP.
+    $newObject| Add-Member -type NoteProperty -Name ClusterIP -value $null                  #Standby address of interface. This is the cluster ip address of a checkpoint device.
     $newObject| Add-Member -type NoteProperty -Name HardwareType -value $null               #The hardware type returned by the show interface command Python textfsm reference. HARDWARE_TYPE
     $newObject| Add-Member -type NoteProperty -Name MediaType -value $null                  #The media type is the type of hardware interface e.g. 1000BaseT. This is from the show interface command and the pythong textfsm reference is MEDIA_TYPE.
     $newObject| Add-Member -type NoteProperty -Name HasCPDNieghbor -value $false            #If there is a cdpneighbor attach to this interface set to true
@@ -269,8 +269,8 @@ function Create-InterfaceObject(){
     $newObject| Add-Member -type NoteProperty -Name RoutesForInterface -value @()         #A list of all the routes that flow out of this interface.
     $newObject| Add-Member -type NoteProperty -Name ShapeColor -value $null                 #Add colors for better representation of port-channels etc
     $newObject| Add-Member -type NoteProperty -Name VRFColor -value $null                   #Add colors for better representation of VRF's etc
-    $newObject| Add-Member -type NoteProperty -Name Physicalshape -value $null              #The shape object associated with this interface. This is the dot we connect the lines to. 
-    $newObject| Add-Member -type NoteProperty -Name PhysicalshapeGroup -value $null         #The shape object associated with this interface. This is a group of shapes that make up the interface.  
+    $newObject| Add-Member -type NoteProperty -Name Physicalshape -value $null              #The shape object associated with this interface. This is the dot we connect the lines to.
+    $newObject| Add-Member -type NoteProperty -Name PhysicalshapeGroup -value $null         #The shape object associated with this interface. This is a group of shapes that make up the interface.
     $newObject| Add-Member -type NoteProperty -Name Logicalshape -value $null               #The shape object associated with this interface.
     $newObject| Add-Member -type NoteProperty -Name ConnectedLayer3 -value $false           #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
     $newObject| Add-Member -type NoteProperty -Name ConnectedCDPnieghbors -value $false     #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
@@ -329,7 +329,7 @@ function Create-NetworkObject(){
     $newObject| Add-Member -type NoteProperty -Name NumberOfRoutedConnectors -value 0
     # --- Shape with a specific Drawio ID property ---
     $newObject| Add-Member -type NoteProperty -Name LogicalDrawioId -value $null
-    return $newObject    
+    return $newObject
     return $newObject
 }
 
@@ -368,12 +368,12 @@ function Create-HostObject(){
     $newObject| Add-Member -type NoteProperty -Name Capabilities -value $null                #This is used for CDP information and contains the platform that is pulled from cdp neighbors
     $newObject| Add-Member -type NoteProperty -Name DeviceIdentifier  -value $null           #Part of the file name used to identify this device.
     $newObject| Add-Member -type NoteProperty -Name Shape -value $null                       #Shape object used to hold the shape information for drawing in visio
-    $newObject| Add-Member -type NoteProperty -Name BGP_AS_Number -value $null                #store the bgp AS 
+    $newObject| Add-Member -type NoteProperty -Name BGP_AS_Number -value $null                #store the bgp AS
     $newObject| Add-Member -type NoteProperty -Name BGPNeighbors -value @()                   #Array of BGP neighbor objects
-    $newObject| Add-Member -type NoteProperty -Name DebugLog -value @()                       #debug logs created when processing config files. 
+    $newObject| Add-Member -type NoteProperty -Name DebugLog -value @()                       #debug logs created when processing config files.
 	$newObject| Add-Member -type NoteProperty -Name ProcessOutputObjects -value @()                       #Stores raw objects after processing of Execute-PythonTextFSM
     $newObject| Add-Member -type NoteProperty -Name HostTypeIfCDPorLLDP -value @()                       #If this device is a lldp or cdp neighbor and it's name is a mac address we store it's make here. e.g HP or Dell or whatever
-    $newObject| Add-Member -type NoteProperty -Name CPDHostLocation -value $null              #The location on the diagram where this object is drawn. 
+    $newObject| Add-Member -type NoteProperty -Name CPDHostLocation -value $null              #The location on the diagram where this object is drawn.
     return $newObject
 }
 

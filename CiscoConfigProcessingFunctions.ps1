@@ -39,17 +39,17 @@ function Process-CiscoHostFiles{
             Write-host "File doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun)"
             return $null
         }
-    
-  
-    
+
+
+
         if ($null -eq $Device -or [string]::IsNullOrEmpty($Device.hostname) -or $Device.hostname -like "*NoHostNameFound*") {
             Write-host "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
             return $null
         }
-        
+
         # Now that $Device is a valid object, we can begin logging.
-        Add-HostDebugText -HostObject $Device "Processing Cisco Host: $($Device.hostname)" 
-        
+        Add-HostDebugText -HostObject $Device "Processing Cisco Host: $($Device.hostname)"
+
         foreach ($ExistingDevice in $ArrayOfObjects){
             if($ExistingDevice.hostname -eq $Device.hostname){
                 Add-HostDebugText -HostObject $Device "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
@@ -89,7 +89,7 @@ function Process-CiscoHostFiles{
                 $Device=Get-ShowInterfaceStatusFromText -ShowInterfaceStatusFile $hostid.ShowInterfaceStatus -Device $Device
             }
         }
-        
+
         # Check if ANY BGP neighbor file property has been populated for this host
         if ($hostid.ShowIPBGPNeighbors -or $hostid.ShowIPBGPVPNv4Neighbors) {
            # Check the OS type determined from 'show version'
@@ -134,7 +134,7 @@ function Process-CiscoHostFiles{
                Add-HostDebugText -HostObject $Device "BGP Summary file is also invalid, skipping." -BackgroundColor Red
            }
         }
-        
+
         if($hostid.ShowSpanningTree){
            Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree"
            $Device=Get-ShowSpanningTreeFromText -ShowSpanningTreeFile $hostid.ShowSpanningTree -Device $Device
@@ -186,7 +186,7 @@ function Get-ShowInterfaceFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         $UpdateOnly=$false #This is used to ensure we don't add duplicate interfaces due to naming differences between show run and show interface.
         foreach ($int in $Device.ProcessOutputObjects){
             $Interface = $Device.interfaces | where { $_.interface -eq $int[0] }
@@ -215,7 +215,7 @@ function Get-ShowInterfaceFromText(){
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
-                }                 
+                }
             }else{
                 if($UpdateOnly){ #We are only updating. Skip. This should really never happen.
                     Add-HostDebugText -HostObject $Device "Tried to create a interface we can't find in show run skipping." -BackgroundColor red
@@ -252,7 +252,7 @@ function Get-ShowInterfaceFromText(){
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
-                } 
+                }
                 if($int[18] -like "*802.1Q*" -or $Interface.IPAddress){
                     $Interface.RoutedVlan = $true
                 }
@@ -260,7 +260,7 @@ function Get-ShowInterfaceFromText(){
                 $AllInterfaces+=$interface
             }
         }
-        if($UpdateOnly){ 
+        if($UpdateOnly){
             return $device
         }else{
             $device.interfaces=$AllInterfaces
@@ -304,7 +304,7 @@ function Get-ShowInterfaceFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         $UpdateOnly=$false #This is used to ensure we don't add duplicate interfaces due to naming differences between show run and show interface.
         foreach ($int in $Device.ProcessOutputObjects){
 
@@ -337,7 +337,7 @@ function Get-ShowInterfaceFromText(){
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
-                }                
+                }
             }else{
                 if($UpdateOnly){ #We are only updating. Skip. This should really never happen.
                     Add-HostDebugText -HostObject $Device "Tried to create a interface we can't find in show run skipping."
@@ -378,7 +378,7 @@ function Get-ShowInterfaceFromText(){
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
-                }                
+                }
                 if($int[14] -like "*802.1Q*" -or $Interface.IPAddress){
                     $Interface.RoutedVlan = $true
                 }
@@ -386,7 +386,7 @@ function Get-ShowInterfaceFromText(){
                 $AllInterfaces+=$interface
             }
         }
-        if($UpdateOnly){ 
+        if($UpdateOnly){
             return $device
         }else{
             $device.interfaces=$AllInterfaces
@@ -456,106 +456,6 @@ function Get-ShowInterfaceFromText(){
 
 }
 
-#Process the show IP arp file
-#function Get-ShowIPArpText(){
-#    param (
-#        [parameter(Mandatory=$true)]
-#        $ShowIPArpFile,
-#        $Device
-#    )
-#    #Read the file into one big string
-#    $ShowIPArpText = Get-Content -raw $ShowIPArpFile
-#    if(($ShowIPArpText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
-#        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
-#        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
-#        return $device
-#    }
-#    if($Device.version.type -eq "NXOS"){
-#        #Start Python process with TextFSM to convert the Text to a Object
-#        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPArpTemplate -ShowFile $ShowIPArpFile  -ReturnArray $true -HostObject $Device
-#        if($Device.ProcessOutputObjects -eq "ERROR"){
-#            Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
-#            return $device
-#        }
-#        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
-#            $tempArray = @()
-#            $tempArray += ,$Device.ProcessOutputObjects
-#            $Device.ProcessOutputObjects = $tempArray
-#        }
-#
-#        # OPTIMIZATION: Pre-filter and sort interfaces with a CIDR once before the loop.
-#        $routableInterfaces = $device.interfaces | Where-Object { $_.Cidr } | Sort-Object Cidr -Descending
-#        
-#        # OPTIMIZATION: Let the pipeline build the array instead of using +=
-#        $device.IPArpEntries = foreach ($IPArpEntry in $Device.ProcessOutputObjects){
-#            $IPArpObject=Create-ShowIPArpObject
-#            $IPArpObject.ipaddress    =$IPArpEntry[0].trim()
-#            $IPArpObject.AGE          =$IPArpEntry[1].trim()
-#            $IPArpObject.MAC          =$IPArpEntry[2].trim()
-#            if($IPArpEntry[3].trim() -ne ""){#keep it as $null don't fill with a empty string.
-#                $IPArpObject.INTERFACE    =$IPArpEntry[3].trim()
-#            }
-#            $MacInOtherFormat=($IPArpEntry[2].trim() -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
-#            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
-#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
-#            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
-#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
-#            }else{
-#                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
-#            }
-#            
-#            # OPTIMIZATION: Search the much smaller, pre-filtered list instead of the full list.
-#            $IPArpObject.cidr = ($routableInterfaces | where {(Find-Subnet -addr1 $_.Cidr -addr2 $IPArpObject.ipaddress).condition } | Select-Object -ExpandProperty Cidr -First 1)
-#
-#            $IPArpObject # Output the object to the pipeline
-#        }
-#        return $device
-#    }
-#
-#    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
-#        #Start Python process with TextFSM to convert the Text to a Object
-#        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPArpTemplate -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
-#        if($Device.ProcessOutputObjects -eq "ERROR"){
-#            Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
-#            return $device
-#        }
-#        if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
-#            $tempArray = @()
-#            $tempArray += ,$Device.ProcessOutputObjects
-#            $Device.ProcessOutputObjects = $tempArray
-#        }
-#        
-#        # OPTIMIZATION: Pre-filter and sort interfaces with a CIDR once before the loop.
-#        $routableInterfaces = $device.interfaces | Where-Object { $_.Cidr } | Sort-Object Cidr -Descending
-#
-#        # OPTIMIZATION: Let the pipeline build the array instead of using +=
-#        $device.IPArpEntries = foreach ($IPArpEntry in $Device.ProcessOutputObjects){
-#            $IPArpObject=Create-ShowIPArpObject
-#            $IPArpObject.PROTOCOL= $IPArpEntry[0].trim()
-#            $IPArpObject.ipaddress=  $IPArpEntry[1].trim()
-#            $IPArpObject.AGE=      $IPArpEntry[2].trim()
-#            $IPArpObject.MAC=      $IPArpEntry[3].trim()
-#            $IPArpObject.TYPE=     $IPArpEntry[4].trim()
-#            $IPArpObject.INTERFACE=$IPArpEntry[5].trim()
-#            $MacInOtherFormat=($IPArpObject.MAC -replace '\.','').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
-#            if($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]){
-#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,8)]
-#            }elseif($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]){
-#                $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0,5)]
-#            }else{
-#                $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
-#            }
-#            
-#            # OPTIMIZATION: Search the much smaller, pre-filtered list.
-#            $IPArpObject.cidr = ($routableInterfaces | where {(Find-Subnet -addr1 $_.Cidr -addr2 $IPArpObject.ipaddress).condition } | Select-Object -ExpandProperty Cidr -First 1)
-#            
-#            $IPArpObject # Output the object to the pipeline
-#        }
-#        return $device
-#    }
-#    Add-HostDebugText -HostObject $Device "Error with show ip arp. Unable to find device type"   -BackgroundColor  red
-#    return $device
-#}
 
 
 ##Process the show version file
@@ -588,7 +488,7 @@ function Get-ShowLLDPNeighborsText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         foreach ($LLDPNeighbor in $Device.ProcessOutputObjects){
             if($GSkipCDPLLDPPhones){
                 if(($LLDPNeighbor[2].trim()) -like "*T*"){
@@ -664,7 +564,7 @@ function Get-ShowLLDPDetailsFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }          
+        }
         foreach ($LLDPNeighbor in $Device.ProcessOutputObjects){
             $LLDPObject=$null
             if($GSkipCDPLLDPPhones){
@@ -698,7 +598,7 @@ function Get-ShowLLDPDetailsFromText(){
 
             $LLDPObject.SystemDescription=$LLDPNeighbor[5].trim()
             $LLDPObject.ChassisID=$LLDPNeighbor[1].trim()
-            #TODO: Fix junos to cisco naming. Probably get ge-0/1/1.0 which should be ge-0/1/1. Convention is to remove all .0 from junos interfaces. 
+            #TODO: Fix junos to cisco naming. Probably get ge-0/1/1.0 which should be ge-0/1/1. Convention is to remove all .0 from junos interfaces.
             if(($LLDPObject.InterfaceRemoteDevice -eq "") -or ($null -eq $LLDPObject.InterfaceRemoteDevice)){
                 $LLDPObject.InterfaceRemoteDevice="Unknown Interface"
             }
@@ -736,7 +636,7 @@ function Get-ShowLLDPDetailsFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }          
+        }
         foreach ($LLDPNeighbor in $Device.ProcessOutputObjects){
             $LLDPObject=Create-LLDPNeighborObject
             $LLDPObject.SystemDescription=$LLDPNeighbor[5].trim()
@@ -852,83 +752,6 @@ function Get-ShowVersionFromText(){
 }
 
 
-#function Get-ShowSpanningTreeFromText(){
-#    param (
-#        [parameter(Mandatory=$true)]
-#        $ShowSpanningTreeFile,
-#        $Device
-#    )
-#    $ShowSpanningTreeText = Get-Content -raw $ShowSpanningTreeFile
-#    #$ShowSpanningTreeText = Get-Content -raw '.\172.24.30.36.show spanning-tree.txt'
-#    $Device.SpanningTree.SpanningTreeArray=@()
-#    if(($ShowSpanningTreeText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
-#        Add-HostDebugText -HostObject $Device "$($ShowSpanningTreeText)" -BackgroundColor Magenta
-#        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
-#        return $device
-#    }
-#    $ShowSpanningTreeText=$ShowSpanningTreeText -replace "(?smi)^(VLAN\d+)",'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA$1'
-#    $SpanningTreeVlans = ([regex]::split($ShowSpanningTreeText,"(?smi)^AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")).trim()
-#    foreach ($vlan in $SpanningTreevlans){
-#        if(($vlan -eq "") -or ($null -eq $vlan)){
-#            continue
-#        }
-#        if(!($vlan | Select-String "^vlan.*").matches){
-#            continue
-#        }
-#        $Interfaces=$null
-#        $SpanningTreevlanObject=Create-SpanningTreevlan
-#        $SpanningTreevlanObject.vlanID = [int](($vlan | Select-String "^vlan.*").matches.value -replace "vlan",'')
-#        if(($vlan| Select-String "This bridge is the root").Matches.Success){
-#            $SpanningTreevlanObject.RootBridge = $true
-#        }
-#        if(($vlan| Select-String "Spanning tree enabled").Matches.Success){
-#            $SpanningTreevlanObject.protocol = ($vlan | Select-String "Spanning tree enabled(.+)").matches.value -replace "Spanning tree enabled\s+protocol\s+",''
-#        }
-#        if(($vlan| Select-String "\s+Port.*").Matches.Success){
-#            $SpanningTreevlanObject.port = (($vlan | Select-String "\s+Port.*").matches.value -replace "\s+Port",'').trim()
-#        }
-#        $SpanningTreevlanObject.RootIDPriority = (($vlan | Select-String "Root\s+ID\s+Priority.+").matches.value) -replace "Root\s+ID\s+Priority\s+",''
-#        $SpanningTreevlanObject.BridgeIDPriority = (($vlan | Select-String "Bridge\s+ID\s+Priority.+").matches.value) -replace "Bridge\s+ID\s+Priority\s+",''
-#        $SpanningTreevlanObject.SpanningTreeInterfaces =@()
-#        $Interfaces=([regex]::split($vlan,"(?smi)^\-+")[1] -replace "-",'').trim()
-#        $Interfaces=$Interfaces -split "\n"
-#        foreach ($interface in $Interfaces){
-#            $interface=$interface -replace '\(vPC peer-link\) Network P2p','vPCpeer-linkNetworkP2p'
-#            $interface=$interface -replace '\(vPC\) P2p Peer\(STP\)','vPCP2pPeerSTP'
-#            $interface=$interface -replace '\(vPC\) P2p','vPCP2p'
-#            $SpanningTreeInterface=Create-SpanningTreeInterface
-#            $TextArray=''
-#            $TextArray = $interface.trim() -split "\s+"
-#
-#            $SpanningTreeInterface.Interface = Replace-InterfaceShortName -string $TextArray[0]
-#            $SpanningTreeInterface.Role = $TextArray[1]
-#            $SpanningTreeInterface.Status = $TextArray[2]
-#            $SpanningTreeInterface.cost = $TextArray[3]
-#            $SpanningTreeInterface.PrioNbr = $TextArray[4]
-#            $SpanningTreeInterface.Type = $TextArray[5]
-#            $SpanningTreevlanObject.SpanningTreeInterfaces+=$SpanningTreeInterface
-#            #Spanning tree information for each port.
-#            foreach ($DeviceInterface in ($Device.interfaces | where { $SpanningTreeInterface.Interface -eq $_.interface -or (($SpanningTreeInterface.Interface -replace "port-channel",'') -eq $_.ChannelGroup)} )){
-#                Switch ($SpanningTreeInterface.Role){
-#                    Root{
-#                        $DeviceInterface.STRootInterfaceForvlans+=,$SpanningTreevlanObject.vlanID
-#                    }
-#                    Desg{
-#                        $DeviceInterface.STDesgnInterfaceForvlans+=,$SpanningTreevlanObject.vlanID
-#                    }
-#                    Altn{
-#                        $DeviceInterface.STALTnInterfaceForvlans+=,$SpanningTreevlanObject.vlanID
-#                    }
-#                }
-#                $DeviceInterface.STState=$SpanningTreeInterface.Status
-#                $DeviceInterface.STRole=$SpanningTreeInterface.Role
-#            }
-#        }
-#        $Device.SpanningTree.SpanningTreeArray+=$SpanningTreevlanObject
-#    }
-#    return $Device
-#}
-
 function Get-ShowMacAddressTableFromText(){
     param (
         [parameter(Mandatory=$true)]
@@ -981,16 +804,16 @@ function Get-ShowMacAddressTableFromText(){
             if($Mac[3] -eq ""){
 
                 continue
-            } 
-            if("3333.0000.000d" -eq $MacAddressobject.MacAddress){ #IPv6 all-nodes multicast. skip this.  
+            }
+            if("3333.0000.000d" -eq $MacAddressobject.MacAddress){ #IPv6 all-nodes multicast. skip this.
                 continue
-            }            
+            }
             if($Mac[3] -eq "CPU" -or $Mac[3] -eq "switch" -or $Mac[3] -eq "sup-Ethernet1(R)"){
-            
+
                 continue #Skip switch and CPU interfaces.
             }
             $MacAddressobject.Interface = (Replace-InterfaceShortName -string $Mac[3] )
-            
+
             if(!(Check-InterfaceType -string $MacAddressobject.Interface)){
 
                 continue #Skip if we don't have a valid interface.
@@ -1024,7 +847,7 @@ function Get-ShowMacAddressTableFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         foreach ($Mac in $Device.ProcessOutputObjects){
             $DeviceInterface=$null
             $MacAddressobject=Create-MacAddressObject
@@ -1035,25 +858,25 @@ function Get-ShowMacAddressTableFromText(){
             if($Mac[6] -eq ""){
 
                 continue
-            } 
+            }
             if($Mac[6] -eq "CPU" -or $Mac[6] -eq "switch" -or $Mac[6] -eq "sup-Ethernet1(R)"){
-            
+
                 continue #Skip switch and CPU interfaces.
             }
             $MacAddressobject.MacAddress = ($Mac[1]).trim()
-            if("3333.0000.000d" -eq $MacAddressobject.MacAddress){ #IPv6 all-nodes multicast. skip this.  
+            if("3333.0000.000d" -eq $MacAddressobject.MacAddress){ #IPv6 all-nodes multicast. skip this.
                 continue
-            }            
+            }
             $MacAddressobject.Interface = ( Replace-InterfaceShortName -string $Mac[6])
             if($MacAddressobject.Interface -eq "CPU" -or $MacAddressobject.Interface -eq "switch" -or $MacAddressobject.Interface -eq "sup-Ethernet1(R)"){
-            
+
                 continue #Skip switch and CPU interfaces.
-            }            
+            }
             if(!(Check-InterfaceType -string $MacAddressobject.Interface)){
 
                 continue #Skip if we don't have a valid interface.
             }
-            
+
             $MacAddressobject.type = ($Mac[2]).trim()
             $MacAddressobject.vlan = ($Mac[0]).trim()
             $MacInOtherFormat=($MacAddressobject.MacAddress -replace "\.",'').insert(2,":").insert(5,":").insert(8,":").insert(11,":").insert(14,":")
@@ -1081,7 +904,7 @@ function Get-ShowMacAddressTableFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         foreach ($Mac in $Device.ProcessOutputObjects){
             $DeviceInterface=$null
             $MacAddressobject=Create-MacAddressObject
@@ -1092,21 +915,21 @@ function Get-ShowMacAddressTableFromText(){
             if($Mac[4] -eq ""){
 
                 continue
-            }  
+            }
             if($Mac[4] -eq "CPU" -or $Mac[4] -eq "switch" -or $Mac[4] -eq "sup-Ethernet1(R)"){
-            
-                continue #Skip switch and CPU interfaces.
-            }            
-            $MacAddressobject.MacAddress = ($Mac[1]).trim()
-            if("3333.0000.000d" -eq $MacAddressobject.MacAddress){ #IPv6 all-nodes multicast. skip this.  
-                continue
-            }             
-            $MacAddressobject.Interface = (Replace-InterfaceShortName -string $Mac[4] )
-            if($MacAddressobject.Interface -eq "CPU" -or $MacAddressobject.Interface -eq "switch" -or $MacAddressobject.Interface -eq "sup-Ethernet1(R)"){
-            
+
                 continue #Skip switch and CPU interfaces.
             }
-           
+            $MacAddressobject.MacAddress = ($Mac[1]).trim()
+            if("3333.0000.000d" -eq $MacAddressobject.MacAddress){ #IPv6 all-nodes multicast. skip this.
+                continue
+            }
+            $MacAddressobject.Interface = (Replace-InterfaceShortName -string $Mac[4] )
+            if($MacAddressobject.Interface -eq "CPU" -or $MacAddressobject.Interface -eq "switch" -or $MacAddressobject.Interface -eq "sup-Ethernet1(R)"){
+
+                continue #Skip switch and CPU interfaces.
+            }
+
             $MacAddressobject.type = ($Mac[2]).trim()
             $MacAddressobject.vlan = ($Mac[0]).trim()
             $MacAddressobject.protocols= ($Mac[3]).trim()
@@ -1156,7 +979,7 @@ function Get-ShowIPInterfaceBriefFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         foreach ($int in $Device.ProcessOutputObjects){
             $int[0]=Replace-InterfaceShortName -string $int[0]
             $Interface = $Device.interfaces | where { $_.interface -eq $int[0]} | select -first 1
@@ -1193,7 +1016,7 @@ function Get-ShowIPInterfaceBriefFromText(){
     return $device
 }
 
-#TODO: Replace with TextFSM and ensure that media type comes from this. We can't get media type from show interfaces so it needs to come from here. 
+#TODO: Replace with TextFSM and ensure that media type comes from this. We can't get media type from show interfaces so it needs to come from here.
 function Get-ShowInterfaceStatusFromText(){
     param (
         [parameter(Mandatory=$true)]
@@ -1212,12 +1035,12 @@ function Get-ShowInterfaceStatusFromText(){
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show Interface status IOS or XE-IOS."
             return $device
-        }  
+        }
         if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         foreach ($int in $Device.ProcessOutputObjects){
             $int[0]=Replace-InterfaceShortName -string $int[0]
             $Interface = $Device.interfaces | where { $_.interface -eq $int[0]} | select -first 1
@@ -1235,8 +1058,8 @@ function Get-ShowInterfaceStatusFromText(){
             }else{
                 Add-HostDebugText -HostObject $Device "$($int) not found in list of interfaces $($int[0]). Replace-InterfaceShortName is probably the cause."
             }
-        }    
-       
+        }
+
         #PORT     $int[0]
         #NAME     $int[1]
         #STATUS   $int[2]
@@ -1250,7 +1073,7 @@ function Get-ShowInterfaceStatusFromText(){
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show Interface status NXOS."
             return $device
-        }  
+        }
         foreach ($int in $Device.ProcessOutputObjects){
             $int[0]=Replace-InterfaceShortName -string $int[0]
             $Interface = $Device.interfaces | where { $_.interface -eq $int[0]} | select -first 1
@@ -1268,20 +1091,20 @@ function Get-ShowInterfaceStatusFromText(){
             }else{
                 Add-HostDebugText -HostObject $Device "$($int) not found in list of interfaces $($int[0]). Replace-InterfaceShortName is probably the cause."
             }
-        }    
+        }
     #PORT    $int[0]
     #NAME    $int[1]
     #STATUS  $int[2]
     #VLAN    $int[3]
     #DUPLEX  $int[4]
     #SPEED   $int[5]
-    #TYPE    $int[6] 
+    #TYPE    $int[6]
 
     }else{
         Add-HostDebugText -HostObject $Device "Unknown device type"
-        
-    }   
-return $Device    
+
+    }
+return $Device
 }
 
 
@@ -1306,7 +1129,7 @@ function Get-CdpNeighborsFromText(){
         #Add-HostDebugText -HostObject $Device "This is a  NXOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-		
+
         $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowCDPNeighborsDetailsTemplate -ShowFile $CdpNeighborFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show cdp neighbors details on IOS or XE-IOS."
@@ -1316,7 +1139,7 @@ function Get-CdpNeighborsFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         #We only have 1 CDP neighbor so and it doesn't come back as array.
         #Convert it to an array of arrays.
         if($Device.ProcessOutputObjects[0].GetType().name -eq "string"){
@@ -1325,7 +1148,7 @@ function Get-CdpNeighborsFromText(){
             $Device.ProcessOutputObjects=$array
         }
         foreach ( $neighbor in $Device.ProcessOutputObjects){
-           
+
             if($GSkipCDPLLDPPhones){
                 if($neighbor[6] -like "*phone*" ){
                     continue
@@ -1359,7 +1182,7 @@ function Get-CdpNeighborsFromText(){
             $tempArray = @()
             $tempArray += ,$Device.ProcessOutputObjects
             $Device.ProcessOutputObjects = $tempArray
-        }        
+        }
         #We only have 1 CDP neighbor so and it doesn't come back as array.
         #Convert it to an array of arrays.
         if($Device.ProcessOutputObjects[0].GetType().name -eq "string"){
@@ -1641,12 +1464,12 @@ function Get-ShowRunFromText(){
         }
         $vlans+= $vlanObject
     }
-    
+
     $BGPSection = ($Lconfig | Select-String -Pattern '(?smi)^router bgp.*?(?=^!|^\S)' -AllMatches).Matches.Value
     if ($BGPSection) {
         $HostObject.BGP_AS_Number = (($BGPSection | Select-String 'router bgp \d+').Matches.Value -replace 'router bgp\s+','' -replace '\s.*','').Trim()
     }
-    
+
     $HostObject.vlans = $vlans
     $HostObject.interfaces = $interfaces
     $HostObject.vrfs = $vrfs
@@ -1706,7 +1529,7 @@ function Get-BGPNeighborsFromText(){
         $NeighborObject.REMOTE_PORT        = $NeighborData[10]
         $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[11]
         $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[12]
-        
+
         $AllBGPNeighbors += $NeighborObject
     }
 
@@ -1735,7 +1558,7 @@ function Get-BGPNeighborsStandardFromText(){
     }
 
     # Start with any neighbors that may have already been added (e.g., from VPNv4)
-    $AllBGPNeighbors = $Device.BGPNeighbors 
+    $AllBGPNeighbors = $Device.BGPNeighbors
 
     # Use the standard IOS BGP Neighbors template
     $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPBGPNeighborsTemplate -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
@@ -1766,7 +1589,7 @@ function Get-BGPNeighborsStandardFromText(){
         $NeighborObject.REMOTE_PORT        = $NeighborData[8]
         $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[9]
         $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[10]
-        
+
         $AllBGPNeighbors += $NeighborObject
     }
 
@@ -1871,7 +1694,7 @@ function Get-BGPNeighborsFromSummary {
     # Process each summary entry, creating BGPNeighborObjects
     foreach ($SummaryData in $Device.ProcessOutputObjects) {
         $NeighborObject = Create-BGPNeighborObject
-        
+
         if ($Device.version.type -eq "NXOS") {
             $NeighborObject.NEIGHBOR    = $SummaryData[3]
             $NeighborObject.REMOTE_AS   = $SummaryData[4]
@@ -2029,7 +1852,134 @@ function Get-ShowIPArpText(){
 
 
 
-#Process the show ip route file
+function Get-ShowSpanningTreeFromText(){
+    param (
+        [parameter(Mandatory=$true)]
+        $ShowSpanningTreeFile,
+        $Device
+    )
+    $ShowSpanningTreeText = Get-Content -raw $ShowSpanningTreeFile
+    $Device.SpanningTree.SpanningTreeArray=@()
+
+    if (($ShowSpanningTreeText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowSpanningTreeText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor Red
+        return $device
+    }
+
+    if ($ShowSpanningTreeText -match "No spanning tree instances exist") {
+        Add-HostDebugText -HostObject $Device "No spanning tree instances found." -BackgroundColor Yellow
+        return $Device
+    }
+
+    $ShowSpanningTreeText = $ShowSpanningTreeText -replace "(?smi)^(VLAN\d+)",'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA$1'
+    $SpanningTreeVlans = ([regex]::split($ShowSpanningTreeText,"(?smi)^AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")).trim()
+
+    foreach ($vlan in $SpanningTreeVlans) {
+        if ([string]::IsNullOrWhiteSpace($vlan)) {
+            continue
+        }
+        if (-not ($vlan | Select-String "^vlan.*").matches) {
+            continue
+        }
+
+        $SpanningTreevlanObject = Create-SpanningTreeVlan
+        $SpanningTreevlanObject.vlanID = [int](($vlan | Select-String "^vlan\s*(\d+)").Matches.Groups[1].Value)
+
+        # Capture the Root ID block
+        $rootIDBlock = ($vlan | Select-String -Pattern '(?smi)Root ID\s+Priority.+?(?=Bridge ID)' -AllMatches).Matches.Value
+        if ($rootIDBlock) {
+            $SpanningTreevlanObject.RootIDPriority = ($rootIDBlock | Select-String 'Priority\s+(\S+)').Matches.Groups[1].Value
+            $SpanningTreevlanObject.Address = ($rootIDBlock | Select-String 'Address\s+(\S+)').Matches.Groups[1].Value
+            $SpanningTreevlanObject.RootBridgeHelloTime = ($rootIDBlock | Select-String 'Hello Time\s+(\S+)').Matches.Groups[1].Value
+
+            # --- FIX: Check if Cost and Port exist before assigning ---
+            $costMatch = $rootIDBlock | Select-String 'Cost\s+(\S+)'
+            if ($costMatch) {
+                $SpanningTreevlanObject.RootBridgeCost = $costMatch.Matches.Groups[1].Value
+            }
+            $portMatch = $rootIDBlock | Select-String 'Port\s+(\S+)\s+\((.+?)\)'
+            if ($portMatch) {
+                $SpanningTreevlanObject.RootBridgePort = $portMatch.Matches.Groups[2].Value
+            }
+        }
+
+        # Capture the Bridge ID block
+        $bridgeIDBlock = ($vlan | Select-String -Pattern '(?smi)Bridge ID\s+Priority.+?(?=Interface\s+Role|Interface\s+----)' -AllMatches).Matches.Value
+        if ($bridgeIDBlock) {
+            $SpanningTreevlanObject.BridgeIDPriority = ($bridgeIDBlock | Select-String 'Priority\s+(\S+)').Matches.Groups[1].Value
+            $SpanningTreevlanObject.BridgeIDPriorityAddress = ($bridgeIDBlock | Select-String 'Address\s+(\S+)').Matches.Groups[1].Value
+            $SpanningTreevlanObject.BridgeIDPriorityHelloTime = ($bridgeIDBlock | Select-String 'Hello Time\s+(\S+)').Matches.Groups[1].Value
+
+            # --- FIX: Check if Aging Time exists before assigning ---
+            $agingTimeMatch = $bridgeIDBlock | Select-String 'Aging Time\s+(\S+)'
+            if ($agingTimeMatch) {
+                $SpanningTreevlanObject.RootBridgeAgingTime = $agingTimeMatch.Matches.Groups[1].Value
+            }
+        }
+
+        # Check for Root Bridge status
+        if (($vlan | Select-String "This bridge is the root").Matches.Success) {
+            $SpanningTreevlanObject.RootBridge = $true
+            $SpanningTreevlanObject.RootIDPriority = $SpanningTreevlanObject.BridgeIDPriority
+            $SpanningTreevlanObject.Address = $SpanningTreevlanObject.BridgeIDPriorityAddress
+            $SpanningTreevlanObject.RootBridgeHelloTime = $SpanningTreevlanObject.BridgeIDPriorityHelloTime
+        }
+
+        if (($vlan | Select-String "Spanning tree enabled").Matches.Success) {
+            $SpanningTreevlanObject.protocol = ($vlan | Select-String "Spanning tree enabled(.+)").matches.value -replace "Spanning tree enabled\s+protocol\s+",''
+        }
+
+        $SpanningTreevlanObject.SpanningTreeInterfaces = @()
+        $interfaceBlock = ([regex]::split($vlan, "(?smi)^\-+"))[1] -replace "-", ''
+
+        if (-not [string]::IsNullOrWhiteSpace($interfaceBlock)) {
+            $Interfaces = $interfaceBlock.Trim().Split([Environment]::NewLine, [StringSplitOptions]::RemoveEmptyEntries)
+            foreach ($interfaceLine in $Interfaces) {
+                if ([string]::IsNullOrWhiteSpace($interfaceLine)) { continue }
+
+                $SpanningTreeInterface = Create-SpanningTreeInterface
+                $TextArray = $interfaceLine.Trim() -split '\s+'
+
+                $SpanningTreeInterface.Interface = $TextArray[0]
+                $SpanningTreeInterface.Role = $TextArray[1]
+                $SpanningTreeInterface.Status = $TextArray[2]
+                $SpanningTreeInterface.Cost = $TextArray[3]
+                $SpanningTreeInterface.PrioNbr = $TextArray[4]
+
+                if ($TextArray.Length -gt 5) {
+                    $SpanningTreeInterface.Type = ($TextArray[5..($TextArray.Length - 1)]) -join " "
+                }
+
+                $SpanningTreevlanObject.SpanningTreeInterfaces += $SpanningTreeInterface
+
+                # Spanning tree information for each port
+                $currentInterface = $SpanningTreeInterface.Interface
+                $foundInterfaces = $Device.interfaces | Where-Object {
+                    $_.interface -eq $currentInterface -or
+                    ($_.ChannelGroup -and ("port-channel" + $_.ChannelGroup) -eq $currentInterface)
+                }
+                foreach ($DeviceInterface in $foundInterfaces) {
+                    Switch ($SpanningTreeInterface.Role) {
+                        Root { $DeviceInterface.STRootInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        Desg { $DeviceInterface.STDesgnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        Altn { $DeviceInterface.STALTnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                    }
+                    $DeviceInterface.STState = $SpanningTreeInterface.Status
+                    $DeviceInterface.STRole = $SpanningTreeInterface.Role
+                }
+            }
+        }
+        $Device.SpanningTree.SpanningTreeArray += $SpanningTreevlanObject
+    }
+    return $Device
+}
+
+
+
+write-warning "broken code:foreach ($Interface in $ActiveInterfaces) it's slow.'"
+
+##Process the show ip route file
 function Get-ShowIPRouteFromText(){
     param (
         [parameter(Mandatory=$true)]
@@ -2043,7 +1993,7 @@ function Get-ShowIPRouteFromText(){
     if($ShowIPRouteVRFstarFile){#Always default to using ShowIPRouteVRFstarFile but check other file if it fails
         #Read the file into one big string
         $ShowRouteText = Get-Content -raw $ShowIPRouteVRFstarFile
-        if(!($ShowRouteText | Select-String "No IP Route Table for VRF").Matches.Success){#The show ip route vrf start is empty use show ip route file. 
+        if(!($ShowRouteText | Select-String "No IP Route Table for VRF").Matches.Success){#The show ip route vrf start is empty use show ip route file.
             if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
 
                 if($ShowIPRouteFile){#Maybe ShowIPRouteVRFstarFile is invalid. If so try show ip route.
@@ -2061,9 +2011,9 @@ function Get-ShowIPRouteFromText(){
                     return $device
                 }
             }
-            $UseShowIPRouteVRFstarFile=$true            
+            $UseShowIPRouteVRFstarFile=$true
         }
-       
+
     }
     if($UseShowIPRouteVRFstarFile -eq $false){#We just have normal show ip route.
         #Read the file into one big string
@@ -2116,7 +2066,7 @@ function Get-ShowIPRouteFromText(){
 
         # OPTIMIZATION: Filter interfaces ONCE before the loop
         $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
-        
+
         # OPTIMIZATION: Efficiently create the array by capturing the loop's output
         $AllRouteObjects = foreach ($Route in $Device.ProcessOutputObjects){
             $RouteObject=Create-RouteObject
@@ -2142,7 +2092,7 @@ function Get-ShowIPRouteFromText(){
                 $RouteObject.gateway=$Route[7]
             }
             $RouteObject.Interface=$Route[8]
-           
+
             if( $RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
                 # Iterate over the PRE-FILTERED list
                 foreach ($Interface in $ActiveInterfaces){
@@ -2152,7 +2102,7 @@ function Get-ShowIPRouteFromText(){
                     }
                 }
             }
-           
+
             # Output the object to be collected by $AllRouteObjects
             $RouteObject
         }
@@ -2173,12 +2123,12 @@ function Get-ShowIPRouteFromText(){
             if($Device -eq $null){
                 write-host $ShowIPRouteFile
             }
-            Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback." 
+            Add-HostDebugText -HostObject $Device "TextFSM failed for routing table, but found a default gateway as a fallback."
             $RouteObject=Create-RouteObject
             $RouteObject.gateway=($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").matches.value -replace "Default gateway is ",''
             $RouteObject.Subnet="0.0.0.0/0"
             $RouteObject.RouteProtocol="Default gateway"
-            
+
             # OPTIMIZATION: Filter interfaces ONCE
             $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
             foreach ($Interface in $ActiveInterfaces){
@@ -2243,7 +2193,7 @@ function Get-ShowIPRouteFromText(){
                 }
             }
         }
-        
+
         # Output the object to be collected by $AllRouteObjects
         $RouteObject
     }
@@ -2251,131 +2201,3 @@ function Get-ShowIPRouteFromText(){
     $device.RoutingTable=$AllRouteObjects
     return $device
 }
-
-
-
-
-function Get-ShowSpanningTreeFromText(){
-    param (
-        [parameter(Mandatory=$true)]
-        $ShowSpanningTreeFile,
-        $Device
-    )
-    $ShowSpanningTreeText = Get-Content -raw $ShowSpanningTreeFile
-    $Device.SpanningTree.SpanningTreeArray=@()
-
-    if (($ShowSpanningTreeText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowSpanningTreeText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor Red
-        return $device
-    }
-
-    if ($ShowSpanningTreeText -match "No spanning tree instances exist") {
-        Add-HostDebugText -HostObject $Device "No spanning tree instances found." -BackgroundColor Yellow
-        return $Device
-    }
-
-    $ShowSpanningTreeText = $ShowSpanningTreeText -replace "(?smi)^(VLAN\d+)",'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA$1'
-    $SpanningTreeVlans = ([regex]::split($ShowSpanningTreeText,"(?smi)^AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")).trim()
-
-    foreach ($vlan in $SpanningTreeVlans) {
-        if ([string]::IsNullOrWhiteSpace($vlan)) {
-            continue
-        }
-        if (-not ($vlan | Select-String "^vlan.*").matches) {
-            continue
-        }
-
-        $SpanningTreevlanObject = Create-SpanningTreeVlan
-        $SpanningTreevlanObject.vlanID = [int](($vlan | Select-String "^vlan\s*(\d+)").Matches.Groups[1].Value)
-
-        # Capture the Root ID block
-        $rootIDBlock = ($vlan | Select-String -Pattern '(?smi)Root ID\s+Priority.+?(?=Bridge ID)' -AllMatches).Matches.Value
-        if ($rootIDBlock) {
-            $SpanningTreevlanObject.RootIDPriority = ($rootIDBlock | Select-String 'Priority\s+(\S+)').Matches.Groups[1].Value
-            $SpanningTreevlanObject.Address = ($rootIDBlock | Select-String 'Address\s+(\S+)').Matches.Groups[1].Value
-            $SpanningTreevlanObject.RootBridgeHelloTime = ($rootIDBlock | Select-String 'Hello Time\s+(\S+)').Matches.Groups[1].Value
-            
-            # --- FIX: Check if Cost and Port exist before assigning ---
-            $costMatch = $rootIDBlock | Select-String 'Cost\s+(\S+)'
-            if ($costMatch) {
-                $SpanningTreevlanObject.RootBridgeCost = $costMatch.Matches.Groups[1].Value
-            }
-            $portMatch = $rootIDBlock | Select-String 'Port\s+(\S+)\s+\((.+?)\)'
-            if ($portMatch) {
-                $SpanningTreevlanObject.RootBridgePort = $portMatch.Matches.Groups[2].Value
-            }
-        }
-
-        # Capture the Bridge ID block
-        $bridgeIDBlock = ($vlan | Select-String -Pattern '(?smi)Bridge ID\s+Priority.+?(?=Interface\s+Role|Interface\s+----)' -AllMatches).Matches.Value
-        if ($bridgeIDBlock) {
-            $SpanningTreevlanObject.BridgeIDPriority = ($bridgeIDBlock | Select-String 'Priority\s+(\S+)').Matches.Groups[1].Value
-            $SpanningTreevlanObject.BridgeIDPriorityAddress = ($bridgeIDBlock | Select-String 'Address\s+(\S+)').Matches.Groups[1].Value
-            $SpanningTreevlanObject.BridgeIDPriorityHelloTime = ($bridgeIDBlock | Select-String 'Hello Time\s+(\S+)').Matches.Groups[1].Value
-            
-            # --- FIX: Check if Aging Time exists before assigning ---
-            $agingTimeMatch = $bridgeIDBlock | Select-String 'Aging Time\s+(\S+)'
-            if ($agingTimeMatch) {
-                $SpanningTreevlanObject.RootBridgeAgingTime = $agingTimeMatch.Matches.Groups[1].Value
-            }
-        }
-
-        # Check for Root Bridge status
-        if (($vlan | Select-String "This bridge is the root").Matches.Success) {
-            $SpanningTreevlanObject.RootBridge = $true
-            $SpanningTreevlanObject.RootIDPriority = $SpanningTreevlanObject.BridgeIDPriority
-            $SpanningTreevlanObject.Address = $SpanningTreevlanObject.BridgeIDPriorityAddress
-            $SpanningTreevlanObject.RootBridgeHelloTime = $SpanningTreevlanObject.BridgeIDPriorityHelloTime
-        }
-
-        if (($vlan | Select-String "Spanning tree enabled").Matches.Success) {
-            $SpanningTreevlanObject.protocol = ($vlan | Select-String "Spanning tree enabled(.+)").matches.value -replace "Spanning tree enabled\s+protocol\s+",''
-        }
-
-        $SpanningTreevlanObject.SpanningTreeInterfaces = @()
-        $interfaceBlock = ([regex]::split($vlan, "(?smi)^\-+"))[1] -replace "-", ''
-        
-        if (-not [string]::IsNullOrWhiteSpace($interfaceBlock)) {
-            $Interfaces = $interfaceBlock.Trim().Split([Environment]::NewLine, [StringSplitOptions]::RemoveEmptyEntries)
-            foreach ($interfaceLine in $Interfaces) {
-                if ([string]::IsNullOrWhiteSpace($interfaceLine)) { continue }
-
-                $SpanningTreeInterface = Create-SpanningTreeInterface
-                $TextArray = $interfaceLine.Trim() -split '\s+'
-
-                $SpanningTreeInterface.Interface = $TextArray[0]
-                $SpanningTreeInterface.Role = $TextArray[1]
-                $SpanningTreeInterface.Status = $TextArray[2]
-                $SpanningTreeInterface.Cost = $TextArray[3]
-                $SpanningTreeInterface.PrioNbr = $TextArray[4]
-
-                if ($TextArray.Length -gt 5) {
-                    $SpanningTreeInterface.Type = ($TextArray[5..($TextArray.Length - 1)]) -join " "
-                }
-                
-                $SpanningTreevlanObject.SpanningTreeInterfaces += $SpanningTreeInterface
-
-                # Spanning tree information for each port
-                $currentInterface = $SpanningTreeInterface.Interface
-                $foundInterfaces = $Device.interfaces | Where-Object {
-                    $_.interface -eq $currentInterface -or
-                    ($_.ChannelGroup -and ("port-channel" + $_.ChannelGroup) -eq $currentInterface)
-                }
-                foreach ($DeviceInterface in $foundInterfaces) {
-                    Switch ($SpanningTreeInterface.Role) {
-                        Root { $DeviceInterface.STRootInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
-                        Desg { $DeviceInterface.STDesgnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
-                        Altn { $DeviceInterface.STALTnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
-                    }
-                    $DeviceInterface.STState = $SpanningTreeInterface.Status
-                    $DeviceInterface.STRole = $SpanningTreeInterface.Role
-                }
-            }
-        }
-        $Device.SpanningTree.SpanningTreeArray += $SpanningTreevlanObject
-    }
-    return $Device
-}
-
-

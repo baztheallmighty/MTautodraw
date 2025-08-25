@@ -27,7 +27,7 @@ Param(
     [Parameter(Mandatory = $false)]
     [string] $GPathToScript,
     [Parameter(Mandatory = $true)]
-    [string] $GOutPutDirectory   
+    [string] $GOutPutDirectory
 )
 
 function write-HostDebugText(){
@@ -85,9 +85,9 @@ $global:GLapTime=$global:GLastExecutionTime.ElapsedMilliseconds
 
 $GLibrariesToLoad=@(
     "ObjectFunctions.ps1",
-    "DrawFunctions_drawio.ps1", 
+    "DrawFunctions_drawio.ps1",
     "CiscoConfigProcessingFunctions.ps1",
-    "DrawLogic_drawio.ps1",    
+    "DrawLogic_drawio.ps1",
     "HelperFunctions.ps1",
     "configurationVariables.ps1",
     "CheckPointConfigProcessingFunctions.ps1",
@@ -146,14 +146,14 @@ if($GPathToPythonExe){
         return
     }
 }else{
-    
+
     if ((get-childitem env:path).value -split ";" | where { $_ -like "*python*" } |select -First 1){
        $GPathToPythonExe="$((get-childitem env:path).value -split ";" | where { $_ -like "*python*" } |select -First 1)python.exe"
     }
     if(!(test-path $GPathToPythonExe)){
         write-HostDebugText "Python.exe location not defined. $($GPathToPythonExe) is required. Cannot continue. exiting."
         return
-    }    
+    }
 }
 
 ###############################################    MAIN     ###############################################
@@ -202,10 +202,13 @@ if($GExportData){
 if($GDrawMultipleDevicesDiagram){
     write-HostDebugText "Initializing Multi-Device Draw.io file..." -ForegroundColor Cyan
     Initialize-DrawioFile
-    
-    if($GDrawCDP){
-        Draw-AllNeighborsDrawio -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs
+
+    if($GDrawCDPALL){
+        Draw-AllNeighborsDrawio -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs -DrawAllNeighbors $true
     }
+    if($GDrawCDP){
+        Draw-AllNeighborsDrawio -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs -DrawAllNeighbors $False
+    }    
     if($GDrawLayer3){
         Draw-AllLayer3Drawio -ArrayOfObjects $GArrayOfObjects -ArrayOfNetworks $GArrayOfNetworks -ArrayOfIPApr $GArrayOfIPApr -DiagramType "Normal" -NameOfPage "Layer 3 All"
     }
@@ -234,10 +237,11 @@ if($GdrawSingles){
         if($GDrawLayer3){
             Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
         }
-        
+
         # ADD THIS BLOCK to draw the physical diagram for the device if enabled
         # Assumes a global variable $GDrawPhysical exists.
         if($GDrawPhysical){
+            write-warning "singles lldp neighbors are not being linked correctly copy and paste code from multi diagrams to singles. "
             Draw-SingleHostPhysicalDrawio -Device $Device -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs
         }
     }

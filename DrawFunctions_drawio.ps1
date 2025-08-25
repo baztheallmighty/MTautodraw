@@ -35,14 +35,14 @@ function Add-DrawioInterfaceLegend {
     $boxHeight = $contentHeight + (2 * $padding)
     # --- Create the main group to hold all legend parts ---
     # A group allows all elements of the legend to be moved together in the Draw.io editor.
-    $legendGroupId = "legend-group-$((New-Guid).ToString().Substring(0,8))"
+    $legendGroupId = "legend-group-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$legendGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">`n            <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$boxWidth`" height=`"$boxHeight`" as=`"geometry`" />`n        </mxCell>`n"
     # --- Create the background rectangle for the legend ---
-    $backgroundId = "legend-bg-$((New-Guid).ToString().Substring(0,8))"
+    $backgroundId = "legend-bg-$((New-Guid).ToString())"
     # This cell is the visible box with a white fill and shadow effect. It is a child of the group cell.
     $global:drawioXml += "        <mxCell id=`"$backgroundId`" value=`"`" style=`"rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#36393d;shadow=1;`" vertex=`"1`" parent=`"$legendGroupId`">`n            <mxGeometry width=`"$boxWidth`" height=`"$boxHeight`" as=`"geometry`" />`n        </mxCell>`n"
     # --- Add Title and Header ---
-    $currentY = $padding; $titleId = "legend-title-$((New-Guid).ToString().Substring(0,8))"; $headerId = "legend-header-$((New-Guid).ToString().Substring(0,8))"
+    $currentY = $padding; $titleId = "legend-title-$((New-Guid).ToString())"; $headerId = "legend-header-$((New-Guid).ToString())"
     # HTML-encode the title text to ensure it's valid XML.
     $titleValue = [System.Web.HttpUtility]::HtmlEncode("<div style=`"font-size: 14px; font-weight: bold;`">$Title</div>")
     $global:drawioXml += "        <mxCell id=`"$titleId`" value=`"$titleValue`" style=`"text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];`" vertex=`"1`" parent=`"$legendGroupId`">`n            <mxGeometry y=`"$currentY`" width=`"$boxWidth`" height=`"20`" as=`"geometry`" />`n        </mxCell>`n"
@@ -62,10 +62,10 @@ function Add-DrawioInterfaceLegend {
         if ($interfaceFamily -eq "RJ45-SFP") { $strokeWidth = $GDrawioInterfaceLegend_LineWidth; $strokeColor = $GDrawioInterfaceLegend_LineColorSFP_RJ45 }
         elseif ($interfaceFamily -eq "Fibre") { $strokeWidth = $GDrawioInterfaceLegend_LineWidth; $strokeColor = $GDrawioInterfaceLegend_LineColorSFP }
         # Create the small colored rectangle (the "swatch").
-        $swatchId = "swatch-$((New-Guid).ToString().Substring(0,8))"; $swatchStyle = "rounded=0;whiteSpace=wrap;html=1;fillColor=$fillColorHex;strokeColor=$strokeColor;strokeWidth=$strokeWidth;"
+        $swatchId = "swatch-$((New-Guid).ToString())"; $swatchStyle = "rounded=0;whiteSpace=wrap;html=1;fillColor=$fillColorHex;strokeColor=$strokeColor;strokeWidth=$strokeWidth;"
         $global:drawioXml += "        <mxCell id=`"$swatchId`" value=`"`" style=`"$swatchStyle`" vertex=`"1`" parent=`"$legendGroupId`">`n            <mxGeometry x=`"$padding`" y=`"$currentY`" width=`"$GDrawioInterfaceLegend_SwatchWidth`" height=`"$GDrawioInterfaceLegend_SwatchHeight`" as=`"geometry`" />`n        </mxCell>`n"
         # Create the text label next to the color swatch.
-        $labelId = "label-$((New-Guid).ToString().Substring(0,8))"; $labelValue = [System.Web.HttpUtility]::HtmlEncode($interfaceName); $labelX = $padding + $GDrawioInterfaceLegend_SwatchWidth + 10
+        $labelId = "label-$((New-Guid).ToString())"; $labelValue = [System.Web.HttpUtility]::HtmlEncode($interfaceName); $labelX = $padding + $GDrawioInterfaceLegend_SwatchWidth + 10
         $global:drawioXml += "        <mxCell id=`"$labelId`" value=`"$labelValue`" style=`"text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];`" vertex=`"1`" parent=`"$legendGroupId`">`n            <mxGeometry x=`"$labelX`" y=`"$currentY`" width=`"220`" height=`"$GDrawioInterfaceLegend_SwatchHeight`" as=`"geometry`" />`n        </mxCell>`n"
         # Move Y-coordinate down for the next legend entry.
         $currentY += $lineHeight
@@ -208,7 +208,7 @@ function Add-DrawioPhysicalInterface {
         if ($Interface.STALTnInterfaceForVlans -or $Interface.STRole -eq "BACKUP") {
             $currentY -= $GDrawioPhysicalHostInterfaceOffsetY # Move shape up
             $currentHeight += $GDrawioSpanningTreeInterfaceSize
-        }        
+        }
     }
 
     # --- END OF CHANGES ---
@@ -265,7 +265,7 @@ function Add-DrawioPhysicalInterface {
     # 4. Generate XML
     # =================================================
     # Generate a unique ID for this interface shape.
-    $interfaceId = "iface-$((New-Guid).ToString().Substring(0,8))"
+    $interfaceId = "iface-$((New-Guid).ToString())"
     # Store the generated ID back onto the PowerShell object for later reference (e.g., for drawing connectors).
     $Interface.PhysicalDrawioId = $interfaceId
     # Append the final XML for the interface cell to the global XML string.
@@ -273,11 +273,11 @@ function Add-DrawioPhysicalInterface {
 
     # Add a visual "X" overlay if the port is in an STP blocking state.
     if ($DrawType -eq "neighbors" -and $Interface.STState -eq "BLK") {
-        $crossId = "cross-$((New-Guid).ToString().Substring(0,8))"
+        $crossId = "cross-$((New-Guid).ToString())"
         # Increased strokeWidth to make the cross bolder.
         $crossStyle = "shape=mxgraph.basic.cross;strokeColor=#D32F2F;strokeWidth=4;rotation=20;"
         # This cross shape is a child of the interface shape and is positioned relatively within it.
-        $global:drawioXml += "        <mxCell id=`"$crossId`" value=`"`" style=`"$crossStyle`" vertex=`"1`" parent=`"$interfaceId`">`n              <mxGeometry x=`"0.125`" y=`"0.125`" width=`"30`" height=`"30`" relative=`"1`" as=`"geometry`" />`n        </mxCell>`n"
+        $global:drawioXml += "        <mxCell id=`"$crossId`" value=`"`" style=`"$crossStyle`" vertex=`"1`" parent=`"$interfaceId`">`n              <mxGeometry x=`"0.125`" y=`"0.125`" width=`"90`" height=`"90`" relative=`"1`" as=`"geometry`" />`n        </mxCell>`n"
     }
     return $interfaceId
 }
@@ -291,18 +291,48 @@ function Add-DrawioHostPhysical {
         $Device,
         # A PSCustomObject with .X and .Y for the top-left corner of the entire host group.
         [parameter(Mandatory = $true)]
-        [PSCustomObject]$Location
+        [PSCustomObject]$Location,
+        # This parameter is used to see if which interfaces we need to draw. 
+        [parameter(Mandatory = $true)]
+        $DrawAllNeighbors
     )
 
-    # --- Section 1: Identify Interfaces to Draw and Calculate Total Width ---
-    # First, select high-priority interfaces: those with CDP/LLDP neighbors or important STP roles.
-    # Exclude non-physical interfaces and those that are shutdown.
-   $neighborAndStpInterfaces = @($Device.interfaces | Where-Object {
-       (
-           $_.HasCPDNieghbor -or
-           $_.HasLLDPNeighbor -or
-           ($_.STRole -eq 'Root' -or $_.STRole -eq 'ALT' )) -and ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown))
-   })
+
+    if($DrawAllNeighbors){
+        # --- Section 1: Identify Interfaces to Draw and Calculate Total Width ---
+        # First, select high-priority interfaces: those with CDP/LLDP neighbors or important STP roles.
+        # Exclude non-physical interfaces and those that are shutdown.
+        $neighborAndStpInterfaces = @($Device.interfaces | Where-Object {
+            (
+                $_.HasCPDNieghbor -or
+                $_.HasLLDPNeighbor -or
+                ($_.STRole -eq 'Root' -or $_.STRole -eq 'ALT' )) -and ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown))
+        })
+    }else{
+        # --- STEP 1: Get the names of local interfaces connected to configured CDP neighbors. ---
+        # The 'PartnerEthernetInterface' property confirms the neighbor is in $GArrayOfObjects.
+        $cdpLinkedInterfaceNames = $device.CDPNeighbors |
+            Where-Object { $_.PartnerEthernetInterface -and $_.PartnerEthernetInterface.Value } |
+            Select-Object -ExpandProperty InterfaceLocalDevice
+
+        # --- STEP 2: Get the names of local interfaces connected to configured LLDP neighbors. ---
+        $lldpLinkedInterfaceNames = $device.LLDPNeighbors |
+            Where-Object { $_.PartnerEthernetInterface -and $_.PartnerEthernetInterface.Value } |
+            Select-Object -ExpandProperty InterfaceLocalDevice
+
+        # --- STEP 3: Combine the names into a single, unique list. ---
+        $allLinkedInterfaceNames = $cdpLinkedInterfaceNames + $lldpLinkedInterfaceNames | Select-Object -Unique
+
+        # --- STEP 4: Select the full interface objects that match the names and are physical/active. ---
+        $neighborAndStpInterfaces = @($device.interfaces | Where-Object {
+            $_.Interface -in $allLinkedInterfaceNames -and
+            $_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and
+            (-not $_.shutdown)
+        })
+    }
+    
+    
+
 
 
     # Optionally, also select interfaces that have a significant number of MAC addresses learned.
@@ -380,13 +410,13 @@ function Add-DrawioHostPhysical {
 
     # --- Section 4: Draw the Shapes with Dynamic Height ---
     # Create the main group cell that will contain the host and all its interfaces.
-    $hostGroupId = "host-group-$((New-Guid).ToString().Substring(0,8))"
+    $hostGroupId = "host-group-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
         <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$groupHeight`" as=`"geometry`" />
     </mxCell>`n"
     # Create the visible host box itself, with a green color scheme.
     $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=$($GDrawioHostFontSize);fontStyle=1;verticalAlign=top;spacingTop=4;"
-    $hostId = "host-box-$((New-Guid).ToString().Substring(0,8))"
+    $hostId = "host-box-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
         <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
     </mxCell>`n"
@@ -492,7 +522,7 @@ function Add-DrawioNeighborHost {
     $hostHeight = $GDrawioHostPhysicalHeight + 20 # Add extra height for more text compared to a configured host.
 
     # 3. Create the top-level group to contain the host box and its interfaces.
-    $hostGroupId = "host-group-$((New-Guid).ToString().Substring(0,8))"
+    $hostGroupId = "host-group-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
             <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$($hostHeight + $GDrawioPhysicalInterfaceHeight + 20)`" as=`"geometry`" />
         </mxCell>`n"
@@ -509,7 +539,7 @@ function Add-DrawioNeighborHost {
     else {
         $hostStyle += "fillColor=#fff9c4;strokeColor=#fbc02d;" # Yellow scheme for LLDP-discovered neighbors.
     }
-    $hostId = "host-box-$((New-Guid).ToString().Substring(0,8))"
+    $hostId = "host-box-$((New-Guid).ToString())"
 
     $global:drawioXml += "        <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
             <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
@@ -601,7 +631,7 @@ function Add-DrawioLogicalInterface {
     }
 
     # 3. Generate XML
-    $interfaceId = "l3-iface-$((New-Guid).ToString().Substring(0,8))"
+    $interfaceId = "l3-iface-$((New-Guid).ToString())"
     # Store the generated ID on the object for creating connectors later.
     $Interface.LogicalDrawioId = $interfaceId
     $encodedText = [System.Web.HttpUtility]::HtmlEncode($textElements -join "<br>")
@@ -645,13 +675,13 @@ function Add-DrawioHostLayer3 {
     $hostWidth = ($interfaceCount * $GDrawioLogicalInterfaceWidth) + (($interfaceCount + 1) * $GDrawioEthernetSpacingLogical)
     $hostWidth = [System.Math]::Max($hostWidth, $GDrawioLayer3HostFormWidth) # Enforce minimum width.
     # Create the main group cell.
-    $hostGroupId = "l3-host-group-$((New-Guid).ToString().Substring(0,8))"
+    $hostGroupId = "l3-host-group-$((New-Guid).ToString())"
     $global:drawioXml += "         <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
     <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$($GDrawioLayer3HostFormHeight + $GDrawioLogicalInterfaceHeight + 40)`" as=`"geometry`" />
     </mxCell>`n"
     # Style the host box based on its type.
     $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fontSize=$($GCDPHostFontSize);fontStyle=1;strokeWidth=2;"
-    
+
     # Prepare the local AS Number text if it exists on the device.
     $asNumberText = ""
     if ($Device.BGP_AS_Number) {
@@ -670,13 +700,13 @@ function Add-DrawioHostLayer3 {
     }
     $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
     # Create the visible host box cell.
-    $hostId = "l3-host-box-$((New-Guid).ToString().Substring(0,8))"
+    $hostId = "l3-host-box-$((New-Guid).ToString())"
     $global:drawioXml += "         <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
     <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$GDrawioLayer3HostFormHeight`" as=`"geometry`" />
     </mxCell>`n"
     # If it's a gateway host, add a small router icon for visual distinction.
     if ($HostType -eq "GatewayHost") {
-        $iconId = "icon-$((New-Guid).ToString().Substring(0,8))"
+        $iconId = "icon-$((New-Guid).ToString())"
         $iconStyle = "shape=mxgraph.cisco.routers.router;fillColor=#FFFFFF;strokeColor=none;"
         $global:drawioXml += "         <mxCell id=`"$iconId`" value=`"`" style=`"$iconStyle`" vertex=`"1`" parent=`"$hostGroupId`">
             <mxGeometry x=`"10`" y=`"-20`" width=`"50`" height=`"35`" as=`"geometry`" />
@@ -712,7 +742,7 @@ function Add-DrawioNetworkSegment {
     # Use the network's pre-defined color for the fill.
     $style += "fillColor=$(Convert-RgbToHex -RgbString $network.color);strokeColor=#424242;"
 
-    $networkId = "net-$((New-Guid).ToString().Substring(0,8))"
+    $networkId = "net-$((New-Guid).ToString())"
     # Store the generated ID on the network object for later use in creating connectors.
     $Network.LogicalDrawioId = $networkId
 
@@ -760,7 +790,7 @@ function Add-DrawioArpBubble {
     $lineCount = ($finalText -split '<br>').Count
     $height = 60 + ($lineCount * 15) # Base height + 15px per line
 
-    $bubbleId = "arp-$((New-Guid).ToString().Substring(0,8))"
+    $bubbleId = "arp-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$bubbleId`" value=`"$encodedText`" style=`"$style`" vertex=`"1`" parent=`"1`">
             <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$GDrawioArpWidth`" height=`"$height`" as=`"geometry`" />
         </mxCell>`n"
@@ -818,7 +848,7 @@ function Add-DrawioMacAddressBubble {
     $height = 30 + ($lineCount * 12)
 
     # 4. Generate the XML for the bubble.
-    $bubbleId = "mac-bubble-$((New-Guid).ToString().Substring(0,8))"
+    $bubbleId = "mac-bubble-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$bubbleId`" value=`"$encodedText`" style=`"$style`" vertex=`"1`" parent=`"$ParentId`">
             <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$width`" height=`"$height`" as=`"geometry`" />
         </mxCell>`n"
@@ -841,122 +871,27 @@ function Add-DrawioDummyRootHost {
 
     $hostWidth = 300
     $hostHeight = 60
-    
+
     # The text will display "Unknown Root" and the MAC address of that root.
     $hostText = "<b>Unknown Root Bridge</b><br>$($DummyDevice.HostName)"
     $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
-    
+
     # A bright purple style to make it stand out.
     $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;fontColor=#FFFFFF;strokeColor=#6A1B9A;fontSize=12;fontStyle=1;verticalAlign=middle;"
     $hostId = "dummy-root-$($DummyDevice.HostName.Replace('.',''))"
-    
+
     # Store the shape ID back on the object so connectors can find it.
     $DummyDevice.SpanningTree.SpanningTreeArray[0].Shape = $hostId
-    
+
     # Add the XML for the shape to the global variable.
     $global:drawioXml += "         <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"1`">
         <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
     </mxCell>`n"
-    
+
     return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
 }
 
 
-#function Add-DrawioSpanningTreeHost {
-#    [CmdletBinding()]
-#    param(
-#        [parameter(Mandatory = $true)]
-#        $Device,
-#        [parameter(Mandatory = $true)]
-#        [PSCustomObject]$Location
-#    )
-#
-#    if (-not $Device.SpanningTree -or $Device.SpanningTree.SpanningTreeArray.Count -eq 0) {
-#        Write-Warning "Device $($Device.HostName) has no valid spanning tree data. Skipping."
-#        return $null
-#    }
-#
-#    # --- Section 1: Data Aggregation & Layout Logic ---
-#    $vlanGroupsByRootBridge = $Device.SpanningTree.SpanningTreeArray | Group-Object -Property Address
-#    $isRootForAnyVlan = ($Device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true }).Count -gt 0
-#    
-#    Write-Host "[DEBUG] Processing Host: $($Device.HostName). Is Root for any VLAN: $($isRootForAnyVlan)"
-#
-#    # --- Section 2: DYNAMIC Sizing Calculation ---
-#    foreach ($group in $vlanGroupsByRootBridge) {
-#        $vlansInGroup = ($group.Group.VlanID) -join ", "
-#        $charMultiplier = 6.5
-#        $baseWidth = 140
-#        $dynamicWidth = [math]::Ceiling($vlansInGroup.Length * $charMultiplier)
-#        $calculatedWidth = $baseWidth + $dynamicWidth
-#        $group | Add-Member -NotePropertyName CalculatedWidth -NotePropertyValue $calculatedWidth
-#    }
-#
-#    $totalVlanBoxesWidth = ($vlanGroupsByRootBridge.CalculatedWidth | Measure-Object -Sum).Sum
-#    $hostWidth = $totalVlanBoxesWidth + (($vlanGroupsByRootBridge.Count + 1) * $GvlanSpacing)
-#    $hostWidth = [System.Math]::Max($hostWidth, 250)
-#    
-#    $hostHeight = $GhostHeaderHeight + $GvlanSectionHeight
-#    $vlanBoxesY = if ($isRootForAnyVlan) { $GhostHeaderHeight } else { 5 }
-#    $verticalAlign = if ($isRootForAnyVlan) { "top" } else { "bottom" }
-#    
-#    # FIX: Safely get the local bridge ID.
-#    $localBridgeId = if ($Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress) {
-#        $Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress
-#    } else {
-#        "N/A"
-#    }
-#    
-#    $hostText = "<b>$($Device.HostName)</b><br>Bridge ID: $($localBridgeId)<br>Mode: $($Device.SpanningTree.SpanningTreeMode)"
-#    $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
-#
-#    # --- Section 3: Draw the Host and VLAN Boxes ---
-#    $hostGroupId = "stphost-group-$((New-Guid).ToString().Substring(0,8))"
-#    $global:drawioXml += "         <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
-#        <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
-#    </mxCell>`n"
-#    
-#    $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=12;fontStyle=1;verticalAlign=$($verticalAlign);spacingTop=4;spacingBottom=4;"
-#    $hostId = "stphost-box-$((New-Guid).ToString().Substring(0,8))"
-#    $global:drawioXml += "         <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
-#        <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
-#    </mxCell>`n"
-#
-#    $currentVlanX = $GvlanSpacing
-#    foreach ($group in $vlanGroupsByRootBridge) {
-#        $vlansInGroup = ($group.Group.VlanID) -join ", "
-#        # FIX: The Root Bridge ID comes from the group's name.
-#        $rootBridgeId = $group.Name
-#        Write-Host "[DEBUG]   - Drawing VLAN group for root '$($rootBridgeId)' with VLANs: $($vlansInGroup)"
-#
-#        $fillColor = if ($group.Group[0].RootBridge) { "#FFCDD2" } else { "#BBDEFB" }
-#        $strokeColor = if ($group.Group[0].RootBridge) { "#B71C1C" } else { "#0D47A1" }
-#        
-#        $vlanBoxText = "<b>VLAN(s):</b> $($vlansInGroup)<br><b>Root:</b> $($rootBridgeId)"
-#        $encodedVlanBoxText = [System.Web.HttpUtility]::HtmlEncode($vlanBoxText)
-#        
-#        $vlanBoxStyle = "rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=$($fillColor);strokeColor=$($strokeColor);fontSize=11;verticalAlign=middle;align=left;spacingLeft=5;strokeWidth=2;"
-#        $vlanBoxId = "stp-vlan-$($Device.DeviceIdentifier)-$($rootBridgeId.Replace('.',''))"
-#        
-#        $vlanBoxFinalWidth = $group.CalculatedWidth
-#        
-#        $global:drawioXml += "         <mxCell id=`"$vlanBoxId`" value=`"$encodedVlanBoxText`" style=`"$vlanBoxStyle`" vertex=`"1`" parent=`"$hostId`">
-#            <mxGeometry x=`"$currentVlanX`" y=`"$vlanBoxesY`" width=`"$vlanBoxFinalWidth`" height=`"40`" as=`"geometry`" />
-#        </mxCell>`n"
-#
-#        # FIX: Ensure the 'Shape' property exists before setting it.
-#        $group.Group | ForEach-Object { 
-#            if ($_.PSObject.Properties.Name -notcontains 'Shape') {
-#                $_ | Add-Member -NotePropertyName Shape -NotePropertyValue $vlanBoxId
-#            } else {
-#                $_.Shape = $vlanBoxId 
-#            }
-#        }
-#        $currentVlanX += $vlanBoxFinalWidth + $GvlanSpacing
-#    }
-#    
-#    return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
-#}
 
 
 function Add-DrawioSpanningTreeHost {
@@ -976,14 +911,14 @@ function Add-DrawioSpanningTreeHost {
     # --- Section 1: Data Aggregation & Pre-calculation ---
     $vlanGroupsByRootBridge = $Device.SpanningTree.SpanningTreeArray | Group-Object -Property Address
     $isRootForAnyVlan = ($Device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true }).Count -gt 0
-    
+
     Write-Host "[DEBUG] Processing Host: $($Device.HostName). Is Root for any VLAN: $($isRootForAnyVlan)"
 
     $vlanBoxCalculations = @()
 
     # First pass: Calculate dimensions for all VLAN boxes to determine the host container size
     foreach ($group in $vlanGroupsByRootBridge) {
-        
+
         $vlanArray = @($group.Group.VlanID)
 
         $vlansPerLine = 15
@@ -993,18 +928,18 @@ function Add-DrawioSpanningTreeHost {
             $vlanChunk = $vlanArray[$i..$endIndex]
             $formattedVlanLines += ($vlanChunk -join ", ")
         }
-        
+
         # --- START: Text Formatting Logic ---
         # This section creates the requested format by combining the title with the first line.
         $vlanTitleAndFirstLine = "<b>VLAN(s):</b> " + $formattedVlanLines[0]
         $remainingVlanLines = if ($formattedVlanLines.Count -gt 1) { $formattedVlanLines[1..($formattedVlanLines.Count - 1)] } else { @() }
         $multilineVlans = ($vlanTitleAndFirstLine + $remainingVlanLines) -join "<br>"
-        
+
         $rootBridgeId = $group.Name
         $vlanBoxText = "<b>Root:</b> $($rootBridgeId)<br><br>$($multilineVlans)"
         # --- END: Text Formatting Logic ---
 
-        $baseHeight = 55 
+        $baseHeight = 55
         $heightPerVlanLine = 18
         $calculatedHeight = $baseHeight + (($formattedVlanLines.Count - 1) * $heightPerVlanLine)
 
@@ -1026,27 +961,27 @@ function Add-DrawioSpanningTreeHost {
     # --- Section 2: Final Host Sizing for Horizontal Layout ---
     $totalVlanBoxesWidth = ($vlanBoxCalculations.Width | Measure-Object -Sum).Sum
     $maxVlanBoxHeight = if ($vlanBoxCalculations.Count -gt 0) { ($vlanBoxCalculations.Height | Measure-Object -Maximum).Maximum } else { 0 }
-    
+
     $hostWidth = $totalVlanBoxesWidth + (($vlanBoxCalculations.Count + 1) * $GvlanSpacing)
-    $hostWidth = [System.Math]::Max($hostWidth, 300) 
+    $hostWidth = [System.Math]::Max($hostWidth, 300)
     $hostHeight = $GhostHeaderHeight + $maxVlanBoxHeight + ($GvlanSpacing * 2)
 
     $localBridgeId = if ($Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress) {
         $Device.SpanningTree.SpanningTreeArray[0].BridgeIDPriorityaddress
     } else { "N/A" }
-    
+
     $hostText = "<b>$($Device.HostName)</b><br>Bridge ID: $($localBridgeId)<br>Mode: $($Device.SpanningTree.SpanningTreeMode)"
     $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
 
     # --- Section 3: Draw the Host and VLAN Boxes ---
-    $hostGroupId = "stphost-group-$((New-Guid).ToString().Substring(0,8))"
+    $hostGroupId = "stphost-group-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$hostGroupId`" value=`"`" style=`"group`" vertex=`"1`" connectable=`"0`" parent=`"1`">
         <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
     </mxCell>`n"
-    
+
     $verticalAlign = if ($isRootForAnyVlan) { "top" } else { "bottom" }
     $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=12;fontStyle=1;verticalAlign=$($verticalAlign);spacingTop=4;spacingBottom=4;"
-    $hostId = "stphost-box-$((New-Guid).ToString().Substring(0,8))"
+    $hostId = "stphost-box-$((New-Guid).ToString())"
     $global:drawioXml += "        <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"$hostGroupId`">
         <mxGeometry x=`"0`" y=`"0`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
     </mxCell>`n"
@@ -1059,14 +994,14 @@ function Add-DrawioSpanningTreeHost {
         $group = $calc.Group
         $fillColor = if ($group.Group[0].RootBridge) { "#FFCDD2" } else { "#BBDEFB" }
         $strokeColor = if ($group.Group[0].RootBridge) { "#B71C1C" } else { "#0D47A1" }
-        
+
         $vlanBoxStyle = "rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=$($fillColor);strokeColor=$($strokeColor);fontSize=11;verticalAlign=top;align=left;spacingLeft=5;spacingTop=5;strokeWidth=2;"
-        
+
         $global:drawioXml += "        <mxCell id=`"$($calc.Identifier)`" value=`"$($calc.EncodedText)`" style=`"$vlanBoxStyle`" vertex=`"1`" parent=`"$hostId`">
             <mxGeometry x=`"$currentVlanX`" y=`"$vlanBoxesY`" width=`"$($calc.Width)`" height=`"$($calc.Height)`" as=`"geometry`" />
         </mxCell>`n"
 
-        $group.Group | ForEach-Object { 
+        $group.Group | ForEach-Object {
             if ($_.PSObject.Properties.Name -notcontains 'Shape') {
                 $_ | Add-Member -NotePropertyName Shape -NotePropertyValue $calc.Identifier
             } else {
@@ -1075,7 +1010,7 @@ function Add-DrawioSpanningTreeHost {
         }
         $currentVlanX += $calc.Width + $GvlanSpacing
     }
-    
+
     return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
 }
 

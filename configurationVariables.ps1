@@ -93,18 +93,21 @@ $GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -
 
 # This draws the diagrams with multiple devices per page and links them together.
 # This is the primary diagram you are probably after.
-$GDrawMultipleDevicesDiagram=$true
+$GDrawMultipleDevicesDiagram=$false
 
 # A single device diagram per Draw.io page.
 # This is good to see the configuration of individual devices, e.g., a device with 10 different
 # static routes to different locations.
 $GdrawSingles=$true
 
-#This draws each device with all it's phyiscal connections to other devices. 
+#This draws each device with all it's phyiscal connections to other devices.
 $GDrawPhysical=$true
 
-# Draw CDP / LLDP Diagram. This will draw a physical (Layer 2) diagram.
+# Draw CDP / LLDP Diagram. This will draw a physical (Layer 2) diagram. only for devices we have config for. 
 $GDrawCDP=$true
+
+# Draw CDP / LLDP Diagram. This will draw a physical (Layer 2) diagram. with all connected devices. 
+$GDrawCDPALL=$true
 
 # Draw a logical Layer 3 diagram.
 $GDrawLayer3=$true
@@ -116,7 +119,7 @@ $GDrawLayer3RoutedLinksOnly=$true
 $GDrawLayer3RoutesOnly=$true
 
 
-#Draw spanning tree diagrams or not. 
+#Draw spanning tree diagrams or not.
 $GDrawSpanningTree=$true
 
 
@@ -129,7 +132,7 @@ $GDrawSpanningTree=$true
 ## These variables control how the script processes data and handles specific cases.
 ################################################################################
 
-#If set to true this will draw all interfaces that are blocked by spanning tree. 
+#If set to true this will draw all interfaces that are blocked by spanning tree.
 $GdrawBlockedStpPorts = $true
 
 

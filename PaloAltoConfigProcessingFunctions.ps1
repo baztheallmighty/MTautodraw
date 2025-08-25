@@ -23,12 +23,12 @@ function Process-PaloAltoHostFiles {
         $hostid,
         $ArrayOfObjects # Included for signature consistency with other processing functions
     )
-    
+
     # For Palo Alto, all initial processing relies on the 'show system info' command.
     if ($hostid.ShowSystemInfo -and (Test-Path -Path $hostid.ShowSystemInfo)) {
         # The helper function creates and populates the entire device object.
         $Device = Get-PaloAltoSystemInfoFromText -ShowSystemInfoFile $hostid.ShowSystemInfo
-        
+
         # If the device object was successfully created, add the DeviceIdentifier from the filename.
         if ($Device) {
             $Device.DeviceIdentifier = ($hostid.ShowSystemInfo -replace "\.show system info.*", '' -replace "^.*\\", '')
@@ -41,7 +41,7 @@ function Process-PaloAltoHostFiles {
         Write-host "Required file 'show system info' was not found for hostid '$($hostid.HOSTID)'"
         return $null
     }
-    
+
     # Process the 'show interface all' file if it was found for this host.
     if ($hostid.ShowInterfaceAll) {
         Add-HostDebugText -HostObject $Device "Processing Palo Alto show interface all: $($hostid.ShowInterfaceAll)"
@@ -93,7 +93,7 @@ function Get-PaloAltoSystemInfoFromText {
             }
         }
     }
-    
+
     # A hostname is critical for the rest of the script. If it wasn't found, fail processing for this device.
     if ([string]::IsNullOrWhiteSpace($Device.hostname)) {
         Add-HostDebugText -HostObject $Device "CRITICAL: No hostname found in '$ShowSystemInfoFile'." -BackgroundColor Red
@@ -118,7 +118,7 @@ function Get-PaloAltoShowInterfaceAllFromText {
         Add-HostDebugText -HostObject $Device "Error processing hardware interfaces from '$($ShowInterfaceFile)'." -BackgroundColor Red
         return $Device # Return the device as-is on failure
     }
-    
+
     # Handle cases where only one result is returned
     if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
         $tempArray = @()
@@ -151,7 +151,7 @@ function Get-PaloAltoShowInterfaceAllFromText {
         Add-HostDebugText -HostObject $Device "Error processing logical interfaces from '$($ShowInterfaceFile)'." -BackgroundColor Red
         return $Device # Return the device with any hardware data that was processed
     }
-    
+
     # Handle cases where only one result is returned
     if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
         $tempArray = @()
@@ -166,13 +166,13 @@ function Get-PaloAltoShowInterfaceAllFromText {
         if ($interfaceToUpdate) {
             # If it exists, UPDATE it with the logical details
             $interfaceToUpdate.Zone = $logicalInt[3]
-            
+
             # Check for and process IP address information
             if ($logicalInt[6] -and $logicalInt[6] -ne "[n/a]") {
                 $interfaceToUpdate.IPAddress = ($logicalInt[6] -split "/")[0]
                 $interfaceToUpdate.SubnetMask = ($logicalInt[6] -split "/")[1]
                 $interfaceToUpdate.SwitchPortType = "Routed"
-                
+
                 if ($interfaceToUpdate.IPAddress -and $interfaceToUpdate.SubnetMask) {
                     $interfaceToUpdate.Cidr = (Get-IPv4Subnet -IPAddress $interfaceToUpdate.IPAddress -PrefixLength $interfaceToUpdate.SubnetMask).cidrid
                     if ($null -ne $interfaceToUpdate.Cidr) {
@@ -189,12 +189,12 @@ function Get-PaloAltoShowInterfaceAllFromText {
             $interfaceObject.Interface = $logicalInt[0]
             $interfaceObject.Zone = $logicalInt[3]
             $interfaceObject.shutdown = $false # Logical interfaces are assumed to be up unless otherwise specified
-            
+
             if ($logicalInt[6] -and $logicalInt[6] -ne "[n/a]") {
                 $interfaceObject.IPAddress = ($logicalInt[6] -split "/")[0]
                 $interfaceObject.SubnetMask = ($logicalInt[6] -split "/")[1]
                 $interfaceObject.SwitchPortType = "Routed"
-                
+
                 if ($interfaceObject.IPAddress -and $interfaceObject.SubnetMask) {
                     $interfaceObject.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
                     if ($null -ne $interfaceObject.Cidr) {
@@ -208,6 +208,6 @@ function Get-PaloAltoShowInterfaceAllFromText {
             $Device.interfaces += $interfaceObject
         }
     }
-    
+
     return $Device
 }

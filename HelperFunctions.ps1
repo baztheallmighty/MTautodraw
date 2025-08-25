@@ -393,7 +393,7 @@ function Test-FileHasValidData {
         [parameter(Mandatory=$true)]
         [string]$FilePath
     )
-    
+
     # Check if file exists and has content
     if (-not (Test-Path -Path $FilePath) -or (Get-Item $FilePath).Length -lt 10) {
         return $false

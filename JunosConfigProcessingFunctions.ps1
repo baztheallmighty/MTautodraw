@@ -26,7 +26,7 @@ function Process-JunosHostFiles{
 		$hostid,
         $ArrayOfObjects
     )
-        
+
         $Device=$null
         if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
             try{
@@ -39,7 +39,7 @@ function Process-JunosHostFiles{
 
 
             # MODIFICATION: Pass the result of the check to the parsing function.
-            $Device=Get-JunosShowRunFromXML -Lconfig $config 
+            $Device=Get-JunosShowRunFromXML -Lconfig $config
 
             $Device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
         }else{
@@ -63,19 +63,19 @@ function Process-JunosHostFiles{
                 }
             }
         }
-               
+
         if($hostid.ShowVersion){
             Add-HostDebugText -HostObject $Device "Processing Junos show version: $($hostid.ShowVersion)"
             $Device=Get-JunosShowVersionFromXML -JunosShowVersionFile $hostid.ShowVersion -Device $Device
-        }        
+        }
         if($hostid.ShowInterfaceDetail){
             Add-HostDebugText -HostObject $Device "Processing Junos show interface:$($hostid.ShowInterfaceDetail)"
             $Device=Get-JunosShowInterfaceFromXML -JunosInterfaceFile $hostid.ShowInterfaceDetail -Device $Device
         }
         if($hostid.ShowLLDPNeighbors){#CDP must be processed before LLDP.
             Add-HostDebugText -HostObject $Device "Processing show LLDP Details:$($hostid.ShowLLDPNeighbors)"
-            $Device=Get-JunosShowLLDPNeighbors -JunosShowLLDPNeighborsFile $hostid.ShowLLDPNeighbors -Device $Device 
-        }        
+            $Device=Get-JunosShowLLDPNeighbors -JunosShowLLDPNeighborsFile $hostid.ShowLLDPNeighbors -Device $Device
+        }
         if($hostid.ShowRouteAll){
             Add-HostDebugText -HostObject $Device "Processing Junos show route all:$($hostid.ShowRouteAll)"
             $device=Get-JunosShowRouteAllFromXML -device $device -JunosShowRouteAllFile $hostid.ShowRouteAll
@@ -87,7 +87,7 @@ function Process-JunosHostFiles{
         if($hostid.JunosShowSpanningTreeBridgeFromXML){
             Add-HostDebugText -HostObject $Device "Processing Junos Show Spanning Tree Bridge :$($hostid.JunosShowSpanningTreeBridgeFromXML)"
             $device=Get-JunosShowSpanningTreeBridgeFromXML -device $device -JunosShowSpanningTreeBridgeFile $hostid.JunosShowSpanningTreeBridgeFromXML
-        }        
+        }
         if ($hostid.ShowArp) {
             $device = Get-JunosArpTableFromXML -JunosArpFile $hostid.ShowArp -Device $device
         }
@@ -98,7 +98,7 @@ function Process-JunosHostFiles{
         ## This runs AFTER the main config parse to correct any ambiguities.
         #if ($hostid.ShowVlansDetail -and (Test-Path -Path $hostid.ShowVlansDetail)) {
         #    $device = Get-JunosVlansFromDetailXML -JunosVlansFile $hostid.ShowVlansDetail -Device $device
-        #}        
+        #}
         return $device
 }
 
@@ -115,7 +115,7 @@ function Get-JunosShowVersionFromXML{
     $VersionObject.Hostname =  $ShowVersion.'rpc-reply'.'multi-routing-engine-results'.'multi-routing-engine-item'.'software-information'.'host-name'
     $VersionObject.Hardware =  $ShowVersion.'rpc-reply'.'multi-routing-engine-results'.'multi-routing-engine-item'.'software-information'.'product-model'
 
-    $device.Version=$VersionObject        
+    $device.Version=$VersionObject
 
     return $device
 }
@@ -134,7 +134,7 @@ function Get-JunosShowLLDPNeighbors{
         Write-Warning "Could not parse XML file: $JunosShowLLDPNeighborsFile"
         return $device
     }
-    
+
     $AllLLDPDetailsObjects=@()
     foreach ($Neighbor in ($Neighbors.'rpc-reply'.'lldp-neighbors-information'.'lldp-neighbor-information')){
         $LLDPObject=Create-LLDPNeighborObject
@@ -145,7 +145,7 @@ function Get-JunosShowLLDPNeighbors{
         }else{
             $LLDPObject.Hostname=$Neighbor.'lldp-remote-chassis-id'
         }
-        
+
         if($Neighbor.'lldp-local-interface'){
             $LLDPObject.InterfaceLocalDevice=($Neighbor.'lldp-local-interface' -replace "\.0$",'')
         }elseif($Neighbor.'lldp-local-port-id'){
@@ -157,14 +157,14 @@ function Get-JunosShowLLDPNeighbors{
         $LLDPObject.ChassisID=$Neighbor.'lldp-remote-chassis-id'
 
         # --- START OF LOGIC FIX ---
-        
+
         # This section correctly handles inconsistent Juniper XML output.
         $remotePortId = $Neighbor.'lldp-remote-port-id'
         $remotePortDesc = $Neighbor.'lldp-remote-port-description'
 
         # Always assign the description property. This is crucial for Tier 2 matching.
         $LLDPObject.NeighborInterfaceDescription = $remotePortDesc
-        
+
         # Now, intelligently determine the Interface Name.
         # Prioritize the specific Port ID tag if it exists.
         if (-not [string]::IsNullOrEmpty($remotePortId)) {
@@ -190,17 +190,17 @@ function Get-JunosShowLLDPNeighbors{
         if($TempInterface) {
              $TempInterface.HasLLDPNeighbor = $true
         }
-       
+
         $AllLLDPDetailsObjects+=$LLDPObject
     }
-    
+
     # Handle cases where multiple neighbors report the same interface name (common with unmanaged switches)
     foreach ($LLDPDevice in $AllLLDPDetailsObjects ){
         if(($AllLLDPDetailsObjects | where { $_.hostname -eq $LLDPDevice.hostname -and $_.InterfaceRemoteDevice -eq $LLDPDevice.InterfaceRemoteDevice}).count -gt 1){
             $LLDPDevice.InterfaceRemoteDevice = "$($LLDPDevice.InterfaceRemoteDevice)___$(Get-Random)"
         }
     }
-    
+
     $device.LLDPNeighbors=$AllLLDPDetailsObjects | sort -property @{Expression={[int]($_.InterfaceLocalDevice -replace '[a-zA-Z-]+','' -replace "/",'')}}
     return $device
 }
@@ -222,7 +222,7 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
         [parameter(Mandatory = $true)]
         $device
     )
-    
+
     $FunctionName = "Get-JunosShowSpanningTreeBridgeFromXML"
 
     $SpanningTreeXml = [xml](Get-Content -Raw $JunosShowSpanningTreeBridgeFile)
@@ -238,7 +238,7 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
 
     $namespaceManager = [System.Xml.XmlNamespaceManager]::new($SpanningTreeXml.NameTable)
     $stpNode = $SpanningTreeXml.SelectSingleNode("//*[local-name()='stp-bridge']")
-    
+
     if ($null -eq $stpNode) {
         # This catch-all handles any other XML format where stp-bridge is not present.
         $device.SpanningTree = Create-SpanningTreeObject
@@ -251,9 +251,9 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
     $namespaceManager.AddNamespace("j", $namespaceURI)
 
     $device.SpanningTree = Create-SpanningTreeObject
-    
+
     $cistParams = $stpNode.SelectSingleNode("j:cist-bridge-parameters", $namespaceManager)
-    
+
     # Safely get node values
     $protocolNode = $stpNode.SelectSingleNode("j:protocol", $namespaceManager)
     $extendedIdNode = $cistParams.SelectSingleNode("j:extended-system-id", $namespaceManager)
@@ -267,14 +267,14 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
     $thisMac = if ($thisMacNode) { $thisMacNode.'#text' } else { '' }
     $isRootBridge = ($rootMac -eq $thisMac -and $rootMac -ne '')
 
-   
+
     foreach ($vlan in $device.vlans) {
         $stpVlanObject = Create-SpanningTreeVlan
-        
+
         $stpVlanObject.VlanID = $vlan.number
         $stpVlanObject.protocol = $device.SpanningTree.SpanningTreeMode
         $stpVlanObject.RootBridge = $isRootBridge
-        
+
         # Safely get node values for the loop
         $rootPriorityNode = $cistParams.SelectSingleNode("j:root-bridge/j:bridge-priority", $namespaceManager)
         $helloTimeNode = $cistParams.SelectSingleNode("j:hello-time-learned", $namespaceManager)
@@ -286,11 +286,11 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
         $stpVlanObject.Address = $rootMac
         $stpVlanObject.RootBridgeHelloTime = if ($helloTimeNode) { $helloTimeNode.'#text' } else { 'N/A' }
         $stpVlanObject.RootBridgeAgingTime = if ($maxAgeNode) { $maxAgeNode.'#text' } else { 'N/A' }
-        
+
         # --- Local Bridge Information ---
         $stpVlanObject.BridgeIDPriority = if ($bridgePriorityNode) { $bridgePriorityNode.'#text' } else { 'N/A' }
         $stpVlanObject.BridgeIDPriorityaddress = $thisMac
-        
+
         if (-not $isRootBridge) {
             $rootCostNode = $cistParams.SelectSingleNode("j:root-cost", $namespaceManager)
             $rootPortNode = $cistParams.SelectSingleNode("j:root-port", $namespaceManager)
@@ -299,12 +299,12 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
             $stpVlanObject.RootBridgePort = if ($rootPortNode) { $rootPortNode.'#text' } else { 'N/A' }
             $stpVlanObject.port = $stpVlanObject.RootBridgePort
         }
-        
+
         $device.SpanningTree.SpanningTreeArray += $stpVlanObject
     }
-    
+
     $device.SpanningTree.RootBridgeForVlans = $device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true } | Select-Object -ExpandProperty VlanID
-  
+
     return $device
 }
 
@@ -350,7 +350,7 @@ function Get-JunosShowSpanningTreeInterfaceFromXML {
                     'DIS' { $currentDeviceInterface.STRole = 'DIS' }
                     default { $currentDeviceInterface.STRole = 'UNKNOWN' }
                 }
-                
+
                 # Update the Spanning Tree State property directly on the $currentDeviceInterface
                 switch ($matchingStpEntry.'port-state') {
                     'FWD' { $currentDeviceInterface.STState = 'FWD' }
@@ -358,10 +358,10 @@ function Get-JunosShowSpanningTreeInterfaceFromXML {
                     'BLK' { $currentDeviceInterface.STState = 'BLK' }
                     default { $currentDeviceInterface.STState = 'UNKNOWN' }
                 }
-            } 
+            }
         }
     }
- 
+
     return $device
 }
 
@@ -371,13 +371,13 @@ function get-JunosShowRouteAllFromXML {
     param (
         [parameter(Mandatory=$true)]
         $JunosShowRouteAllFile,
-        
+
         [parameter(Mandatory=$true)]
         $device
     )
 
     $routeObjects = [System.Collections.Generic.List[pscustomobject]]::new()
-    
+
     #--> ADDED: Define protocols to completely exclude from the output.
     # Junos uses 'Direct' for connected routes and 'Local' for local routes.
     $protocolsToExclude = @('Local', 'Direct')
@@ -395,7 +395,7 @@ function get-JunosShowRouteAllFromXML {
         Write-Warning "Could not detect a Junos routing namespace in '$JunosShowRouteAllFile'. Skipping."
         return $device
     }
-    
+
     $namespace = @{ jrt = $namespaceUri }
     $routeEntries = Select-Xml -Xml $xmlContent -XPath "//jrt:rt" -Namespace $namespace
 
@@ -413,11 +413,11 @@ function get-JunosShowRouteAllFromXML {
             if ($protocolsToExclude -contains $routeObject.RouteProtocol) {
                 continue # Skip this route and move to the next one.
             }
-            
+
             if ($nextHop.preference) {
                 $routeObject.DISTANCE = [int]$nextHop.preference
             }
-            
+
             if ($nextHop.metric) {
                 $routeObject.METRIC = [int]$nextHop.metric
             }
@@ -441,15 +441,15 @@ function get-JunosShowRouteAllFromXML {
             # This logic now only runs on routes that have a gateway (e.g., Static, BGP, OSPF).
             $localProtocolsForGatewaySearch = @('Receive', 'Aggregate') # Protocols that can have gateways but we might still want to skip the search for.
             if ($routeObject.Gateway -and $device.interfaces -and ($localProtocolsForGatewaySearch -notcontains $routeObject.RouteProtocol)) {
-                
+
                 foreach ($interface in $device.interfaces) {
                     if ($interface.Cidr -and (Find-Subnet -addr1 $interface.Cidr -addr2 $routeObject.Gateway).condition) {
                         $routeObject.GatewayCidr = $interface.Cidr
-                        
+
                         if (-not $routeObject.Interface) {
                            $routeObject.Interface = $interface.Interface
                         }
-                        break 
+                        break
                     }
                 }
             }
@@ -457,7 +457,7 @@ function get-JunosShowRouteAllFromXML {
             $routeObjects.Add($routeObject)
         }
     }
-    
+
     $device.RoutingTable = $routeObjects
     return $device
 }
@@ -552,7 +552,7 @@ function Get-JunosArpTableFromXML {
         # Note: PROTOCOL, AGE, and TYPE will remain null as they are not in the Junos XML.
         $IPArpObject.MAC       = $entry.'mac-address'
         $IPArpObject.ipaddress = $entry.'ip-address'
-        
+
         # Clean up the interface name (e.g., "vlan.100" becomes "vlan100") and assign it.
         $IPArpObject.INTERFACE = $entry.'interface-name' -replace '\.', ''
 
@@ -596,7 +596,7 @@ function Get-JunosMacAddressTableFromXML {
 
     # Iterate through each <mac-table-entry> node in the XML.
     foreach ($entry in $MacXml.'rpc-reply'.'ethernet-switching-table-information'.'ethernet-switching-table'.'mac-table-entry') {
-        
+
         # Skip entries that are not useful (e.g., Flood entries or internal router entries).
         if ($entry.'mac-address' -eq '*' -or $entry.'mac-interface' -eq 'Router') {
             continue
@@ -604,12 +604,12 @@ function Get-JunosMacAddressTableFromXML {
 
         # Use the existing Create-MacAddressObject function for consistency.
         $MacObject = Create-MacAddressObject
-        
+
         # Populate the object with data from the XML nodes.
         $MacObject.MacAddress = $entry.'mac-address'
         $MacObject.Vlan       = $entry.'mac-vlan-tag'
         $MacObject.Type       = $entry.'mac-type'
-        
+
         # Clean up the interface name (e.g., "ge-0/0/23.0" becomes "ge-0/0/23") to match other configs.
         $MacObject.Interface  = $entry.'mac-interface' -replace '\.0$', ''
 
@@ -702,20 +702,20 @@ function Get-JunosShowRunFromXML {
         # Force the object into an array to handle single and multiple VLANs
         foreach ($vlan in @($Lconfig.'rpc-reply'.configuration.vlans.vlan)) {
             $vlanObject = Create-vlanObject
-            
+
             # Check if the properties exist before accessing them
             if ($vlan.'vlan-id') {
                 $vlanObject.number = $vlan.'vlan-id'
             }
-            
+
             if ($vlan.name) {
                 $vlanObject.name = $vlan.name
             }
-            
+
             if ($vlan.description) {
                 $vlanObject.description = $vlan.description
             }
-            
+
             $vlanPSObjects += $vlanObject
             # This line will only work if $vlan.name and $vlan.'vlan-id' exist
             if ($vlan.name -and $vlan.'vlan-id') {
@@ -752,7 +752,7 @@ function Get-JunosShowRunFromXML {
                 foreach ($member in @($rangeNode.member)) {
                     $allMemberNames += Expand-JunosInterfaceRange -Name $member.name
                 }
-                
+
                 # --- START: CORRECTED member-range PARSING ---
                 foreach ($memberRange in @($rangeNode.'member-range')) {
                     if ($memberRange.name -match '(.+/)(\d+)$') {
@@ -763,7 +763,7 @@ function Get-JunosShowRunFromXML {
                         # Now, perform the second match
                         if ($memberRange.'end-range' -match '(.+/)(\d+)$') {
                             $end = [int]$matches[2]
-                            
+
                             if ($start -le $end) {
                                 for ($i = $start; $i -le $end; $i++) {
                                     $allMemberNames += "$prefix$i"
@@ -840,7 +840,7 @@ function Get-JunosShowRunFromXML {
                         $interfaceObjects[$logicalInterfaceName] = $obj
                     }
                     $obj = $interfaceObjects[$logicalInterfaceName]
-                    
+
                     $obj.Description = $unit.description
                     $obj.shutdown = [bool]($unit.disable)
                     $obj.SwitchPortType = 'routed'
@@ -930,12 +930,12 @@ function Get-JunosShowRunFromXML {
                 if ($ifaceNode.description) { $obj.Description = $ifaceNode.description }
                 if ($ifaceNode.disable) { $obj.shutdown = $true }
                 if ($ifaceNode.'native-vlan-id') { $obj.NativeVlan = $ifaceNode.'native-vlan-id' }
-                
+
                 $etherOptions = $ifaceNode.'ether-options'
                 if (-not $etherOptions) { $etherOptions = $ifaceNode.'gigether-options' }
                 if (-not $etherOptions) { $etherOptions = $ifaceNode.'ten-gigether-options' }
                 if (-not $etherOptions) { $etherOptions = $ifaceNode.'aggregated-ether-options' }
-                
+
                 $bundle = $null
                 if ($etherOptions) {
                     $bundle = $etherOptions.'ieee-802.3ad'.bundle
@@ -949,7 +949,7 @@ function Get-JunosShowRunFromXML {
                         $obj.SwitchPortType = 'switched'
                         $obj.SwitchportMode = 'access'
                         $obj.SwitchportAccessVlan = '1'
-                        if ($switching.'native-vlan-id') { 
+                        if ($switching.'native-vlan-id') {
                             $nativeVlanName = $switching.'native-vlan-id'
                             $obj.NativeVlan = if ($vlanMap.ContainsKey($nativeVlanName)) { $vlanMap[$nativeVlanName] } else { $nativeVlanName }
                         }
@@ -960,7 +960,7 @@ function Get-JunosShowRunFromXML {
                         if ($portMode) {
                             $obj.SwitchportMode = $portMode
                         }
-                        
+
                         if ($switching.vlan.members) {
                             if ($obj.SwitchportMode -eq 'access') {
                                 $vlanName = $switching.vlan.members
@@ -968,7 +968,7 @@ function Get-JunosShowRunFromXML {
                                     $obj.SwitchportAccessVlan = if ($vlanMap.ContainsKey($vlanName)) { $vlanMap[$vlanName] } else { $vlanName }
                                 }
                             } elseif ($obj.SwitchportMode -eq 'trunk') {
-                                $obj.SwitchportAccessVlan = $null 
+                                $obj.SwitchportAccessVlan = $null
                                 if ($switching.vlan.members -eq 'all') {
                                     $obj.SwitchportTrunkVlan = ($vlanMap.Values | Sort-Object -Unique) -join ','
                                 } else {
@@ -986,13 +986,13 @@ function Get-JunosShowRunFromXML {
                 }
             }
         }
-        
+
         foreach ($ifaceObj in $interfaceObjects.Values) {
             if ($ifaceObj.ChannelGroup) {
                 $aeName = $ifaceObj.ChannelGroup
                 if ($interfaceObjects.ContainsKey($aeName)) {
                     $parentAe = $interfaceObjects[$aeName]
-                    
+
                     $ifaceObj.SwitchPortType       = $parentAe.SwitchPortType
                     $ifaceObj.SwitchportMode       = $parentAe.SwitchportMode
                     $ifaceObj.SwitchportAccessVlan = $parentAe.SwitchportAccessVlan
@@ -1030,7 +1030,7 @@ function Get-JunosShowRunFromXML {
     $Device.ArrayOfNetworks = $ArrayOfHostNetworks
     $Device.vlans = $vlanPSObjects
     $Device.interfaces = $interfaces
-    
+
     $ipReport = $interfaces | Where-Object { $_.IPAddress } | ForEach-Object {
         $prefix = if ($_.Cidr) { ($_.Cidr -split '/')[1] } else { 'N/A' }
         "$($_.Interface): $($_.IPAddress)/$prefix"

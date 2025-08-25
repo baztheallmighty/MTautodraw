@@ -38,10 +38,10 @@ function Process-CheckPointHostFiles{
          Write-host "File doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun)"
          return $null
      }
- 
+
      # Now that $Device is a valid object, we can log to it.
      Add-HostDebugText -HostObject $Device "Processing CheckPoint Host: $($Device.hostname)"
- 
+
     if($null -eq $Device.hostname ){
         Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
         return $null
@@ -50,11 +50,11 @@ function Process-CheckPointHostFiles{
     if($hostid.ShowAssetAll){#
         Add-HostDebugText -HostObject $Device  "Processing checkpoint Show Asset All:$($hostid.ShowAssetAll)"
         $Device=Get-CheckpointShowAssetAllFromText -ShowAssetAll $hostid.ShowAssetAll -Device $Device
-    }  
+    }
     if($hostid.Version){#
         Add-HostDebugText -HostObject $Device  "Processing checkpoint show version:$($hostid.ShowVersion)"
         $Device=Get-CheckpointGaiaVersionFromText -Version $hostid.ShowVersion -Device $Device
-    }      
+    }
     if($hostid.ShowInterface){#
         Add-HostDebugText -HostObject $Device  "Processing checkpoint show interface:$($hostid.ShowInterface)"
         $Device=Get-CheckPointShowInterfaceFromText -CheckPointInterfaceFile $hostid.ShowInterface -Device $Device
@@ -116,7 +116,7 @@ function Get-CheckPointShowInterfaceFromText(){
         $tempArray = @()
         $tempArray += ,$Device.ProcessOutputObjects
         $Device.ProcessOutputObjects = $tempArray
-    }    
+    }
     foreach ($int in $Device.ProcessOutputObjects){
         $interfaceObject = Create-InterfaceObject
         $interfaceObject.Interface=$int[0]
@@ -289,10 +289,10 @@ function Get-CheckpointShowAssetAllFromText {
     if ($parsedData.ContainsKey('Serial Number')) {
         $VersionObject.Serial += $parsedData['Serial Number']
     }
-    
+
     # Assign the populated version object to the main device object.
     $device.Version = $VersionObject
-    
+
     # Return the updated device object.
     return $device
 }
@@ -338,7 +338,7 @@ function Get-CheckpointGaiaVersionFromText {
         # Update the OS property directly on the device's Version object.
         $device.Version.OS = $matches[1]
     }
-    
+
     # Return the updated device object.
     return $device
 }

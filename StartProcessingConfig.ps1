@@ -43,7 +43,7 @@ function Create-FileHostObjects{
                 if($file.name -like "*show run*" -or $file.name -like "*show config*" ){ #Checkpoint and cisco show run or show config.
                     $hostid.showrun=$file.fullname
                 }
-                
+
                 if($file.name -like "*show ip bgp summary*"){
                     $hostid.ShowIPBGPSummary=$file.fullname
                     break
@@ -60,7 +60,7 @@ function Create-FileHostObjects{
                     $hostid.ShowIPBGPVPNv4Neighbors=$file.fullname
                     break
                 }
-                
+
                 if($file.name -like "*show cdp neighbors detail*"){
                     $hostid.ShowCDPNeighborsDetails=$file.fullname
                     break
@@ -84,7 +84,7 @@ function Create-FileHostObjects{
                 if($file.name -like "*show interface all*"){
                     $hostid.ShowInterfaceAll=$file.fullname
                     break
-                }                
+                }
                 if($file.name -like "*show mac address-table*"){
                     $hostid.ShowMacAddressTable=$file.fullname
                     break
@@ -96,7 +96,7 @@ function Create-FileHostObjects{
                 if($file.name -like "*show spanning-tree bridge*"){
                     $hostid.JunosShowSpanningTreeBridgeFromXML=$file.fullname
                     break
-                }                
+                }
                 if($file.name -like "*show spanning-tree*"){
                     $hostid.ShowSpanningTree=$file.fullname
                     break
@@ -128,9 +128,9 @@ function Create-FileHostObjects{
                 }
 
                 if($file.name -like "*show version*"){
-                    $ShowVersionText=get-content $file.fullname -raw  
-                    
-                    
+                    $ShowVersionText=get-content $file.fullname -raw
+
+
                     $hostid.ShowVersion=$file.fullname
                     if(($ShowVersionText | Select-String "Check Point Gaia").Matches.Success){
                         $hostid.DeviceType="CheckPoint"
@@ -172,11 +172,11 @@ function Create-FileHostObjects{
                 if($file.name -like "*show vlans detail*"){
                     $hostid.ShowVlansDetail=$file.fullname
                     break
-                } 
+                }
                 if($file.name -like "*show asset all*"){
                     $hostid.ShowAssetAll=$file.fullname
                     break
-                } 
+                }
 
                 #if($file.name -like "*show interface*"){ #Checkpoint and cisco show interfaces
                 #    $hostid.ShowInterface=$file.fullname
@@ -223,7 +223,7 @@ function Set-MacAddressVendor {
     # We use '=' to set the string value directly.
     $HostObject.HostTypeIfCDPorLLDP = $vendorName
 }
-    
+
 # Helper function to check if two MAC addresses are from the same device block
 function Test-MacProximity {
     param(
@@ -270,7 +270,7 @@ function Start-ProcessingFiles(){
     $processedDevices = $ArrayOfHostIDs | ForEach-Object -Parallel {
         # Inside the script block, we use the '$using:' scope to access variables from the main script.
         # This is crucial for passing paths, templates, and other settings to each thread.
-        
+
         $hostid = $_ # The current item from the pipeline
 
         # We must explicitly import modules needed by this thread.
@@ -282,7 +282,7 @@ function Start-ProcessingFiles(){
         $GPathToScript               = $using:GPathToScript
         $GPathToPythonExe            = $using:GPathToPythonExe
         $GPathToPythonTextFSMScript  = $using:GPathToPythonTextFSMScript
-        
+
         # "Constant" variables (loaded from configurationVariables.ps1 in the main script):
         $GTemplate                   = $using:GTemplate
         $GSkipCDPLLDPPhones          = $using:GSkipCDPLLDPPhones
@@ -293,7 +293,7 @@ function Start-ProcessingFiles(){
         $GLastExecutionTime          = $using:GLastExecutionTime # For write-HostDebugText
         # --- END OF THREAD INITIALIZATION ---
 
-        $hostid = $_ 
+        $hostid = $_
 
         # Import function definitions.
         # DO NOT import configurationVariables.ps1 here; its values are already captured above.
@@ -315,11 +315,11 @@ function Start-ProcessingFiles(){
                 $BackgroundColor,
                 $ForegroundColor
             )
-            
+
             # Set default foreground color if not provided
             if(-not($ForegroundColor)){
                 $ForegroundColor="white"
-            }            
+            }
             # Set default BackgroundColor color if not provided
             if(-not($BackgroundColor)){
                 $BackgroundColor="Black"
@@ -335,10 +335,10 @@ function Start-ProcessingFiles(){
 
             # Add the log entry to the host object's debug log array
             $HostObject.DebugLog += $logEntry
-            
+
         }
         $Device = $null # Reset device for each loop
-        
+
         # NOTE: We pass $null for ArrayOfObjects because we cannot safely check for duplicates in parallel.
         # We will perform the duplicate check *after* all jobs are complete.
         switch($hostid.DeviceType){
@@ -358,7 +358,7 @@ function Start-ProcessingFiles(){
                 $Device=Process-JunosHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="Junos" }
             }
-            "PaloAlto"{ 
+            "PaloAlto"{
                 $Device=Process-PaloAltoHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="PaloAlto" }
             }
@@ -367,24 +367,24 @@ function Start-ProcessingFiles(){
                 Write-Warning "Device type for $($hostid.HOSTID) is unknown or unsupported. Skipping."
             }
         }
-        
+
         # Return the processed device object. It will be collected by ForEach-Object.
         return $Device
 
     } -ThrottleLimit $throttleLimit
 
     write-HostDebugText "Parallel processing complete. Aggregating results..." -ForegroundColor "Cyan"
-    
+
 	# --- Display all collected debug logs ---
 	write-HostDebugText "Displaying all collected debug/error logs..." -ForegroundColor Yellow
-	
+
 	# Iterate through the main array of successfully processed devices.
 	foreach ($device in $processedDevices) {
 	    # Check if this device has any log entries.
 	    if ($device.DebugLog.Count -gt 0) {
 	        # Print a clear header for the device's logs.
 	        Write-Host "`n--- Debug Logs for: $($device.hostname) ---" -BackgroundColor DarkCyan -ForegroundColor White
-	        
+
 	        # Loop through each log entry for the current device.
 	        foreach ($log in $device.DebugLog) {
 	            $logMessage = "$($log.Timestamp) - $($log.Text)"
@@ -397,10 +397,10 @@ function Start-ProcessingFiles(){
     # 2. AGGREGATE RESULTS AND CHECK FOR DUPLICATES SEQUENTIALLY
     # This part runs after all parallel jobs are finished and uses your array definitions.
 
-    $hostnameMap = @{} 
+    $hostnameMap = @{}
 
     foreach ($device in ($processedDevices | Where-Object { $_ -ne $null })) {
-        
+
         # --- Safety Check: Ensure the device has a hostname ---
         if ([string]::IsNullOrEmpty($device.hostname)) {
             Write-Warning "A device was found with no hostname. Skipping this entry."
@@ -411,18 +411,18 @@ function Start-ProcessingFiles(){
         if ($hostnameMap.ContainsKey($device.hostname)) {
             # A device with the same hostname exists. We must now check its serial number.
             $originalDevice = $hostnameMap[$device.hostname]
-            
+
             # --- Safety Check: Safely get the primary serial number from both devices ---
-            $originalSerial = if ($originalDevice.Version -and $originalDevice.Version.Serial.Count -gt 0) { 
-                $originalDevice.Version.Serial[0] 
-            } else { 
-                $null 
+            $originalSerial = if ($originalDevice.Version -and $originalDevice.Version.Serial.Count -gt 0) {
+                $originalDevice.Version.Serial[0]
+            } else {
+                $null
             }
-            
-            $currentSerial = if ($device.Version -and $device.Version.Serial.Count -gt 0) { 
-                $device.Version.Serial[0] 
-            } else { 
-                $null 
+
+            $currentSerial = if ($device.Version -and $device.Version.Serial.Count -gt 0) {
+                $device.Version.Serial[0]
+            } else {
+                $null
             }
 
             # --- Compare Serial Numbers ---
@@ -435,25 +435,25 @@ function Start-ProcessingFiles(){
                     Write-Warning "DUPLICATE HOSTNAME: '$($device.hostname)'. The new device has no serial number, so a unique name cannot be generated. Skipping."
                     continue
                 }
-                
+
                 $originalHostname = $device.hostname
                 $device.hostname = "$($originalHostname)_$($currentSerial)"
                 Write-Host "Duplicate hostname '$($originalHostname)' found with a different serial number. Renaming device to '$($device.hostname)'." -ForegroundColor Yellow
             }
         }
-        
+
         # Add the unique device to the map for future checks.
         $hostnameMap[$device.hostname] = $device
 
         # Add the processed data to the main arrays using the += operator.
         $ArrayOfObjects += $device
-        
+
         # Safety Check: Ensure the ArrayOfNetworks property exists before adding.
         if ($null -ne $device.ArrayOfNetworks) {
            $ArrayOfNetworks += $device.ArrayOfNetworks
         }
     }
-	
+
     write-HostDebugText "Processing Arp Entries" -ForegroundColor green
     #Create an array of ip ARP entries. This will be used when drawing layer 3 diagrams.
     $ArrayOfIPApr=$ArrayOfObjects | % {$_.IPArpEntries } | sort -Unique mac,ipaddress,interface
@@ -477,7 +477,7 @@ function Start-ProcessingFiles(){
     foreach ($Device in $ArrayOfObjects){
         foreach ($interface in $Device.interfaces | where { $_.ipaddress -and $_.shutdown -eq $false -and $_.IntStatus -notlike "*down*"}){
             $interface.RoutesForInterface=$Device.RoutingTable| where { $_.interface -eq $interface.Interface -and $_.routeprotocol -notmatch "Access-internal|local|connected|direct" } | sort gateway,subnet
-            #$Device.RoutingTable| where { !($_.interface) -and $_.routeprotocol -notmatch "local|connected|direct"} 
+            #$Device.RoutingTable| where { !($_.interface) -and $_.routeprotocol -notmatch "local|connected|direct"}
         }
     }
 
@@ -538,15 +538,15 @@ function Start-ProcessingFiles(){
 
     # Display a status message for the user.
     write-HostDebugText "Linking cdp neighbours we have config for together" -ForegroundColor green
-    
+
     # Iterate through each device object that has been created from a config file.
     foreach ($Device in $ArrayOfObjects){
         # For each device, iterate through its list of discovered CDP neighbors.
         foreach ( $cdpneighbor in $Device.cdpneighbors){
-            
+
             # CASE 1: The neighbor's SystemName is missing. We must rely on the DeviceID, which might be messy.
             if($null -eq $cdpneighbor.SystemName -or $cdpneighbor.SystemName -eq ""){
-                
+
                 # Search for the neighbor device in our master list ($ArrayOfObjects).
                 # The pipeline finds a device whose hostname matches the neighbor's DeviceID after cleaning it up.
                 # REGEX CLEANUP:
@@ -555,16 +555,16 @@ function Start-ProcessingFiles(){
                 #   .trim()                    -> Removes any leading/trailing whitespace.
                 # Then, it finds the specific interface on that neighbor that matches the remote port from the CDP data.
                 if($ArrayOfObjects | where { $_.hostname -eq ($cdpneighbor.DeviceID -replace "\(.*?\)",'' -replace "(.*?)\..*",'$1').trim() } | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice }){
-                    
+
                     # If a match is found, create a direct REFERENCE to the neighbor's interface object.
                     # This links the two objects in memory for easy traversal later.
                     $cdpneighbor.PartnerEthernetInterface = [ref]($ArrayOfObjects | where { $_.hostname -eq ($cdpneighbor.DeviceID -replace "\(.*?\)",'' -replace "(.*?)\..*",'$1').trim() } | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice })
-                    
+
                     # Also, set a flag on the NEIGHBOR'S interface object to mark it as successfully linked.
                     # This is useful for drawing diagrams, as it confirms this interface is part of a known connection.
                     ($ArrayOfObjects | where { $_.hostname -eq ($cdpneighbor.DeviceID -replace "\(.*?\)",'' -replace "(.*?)\..*",'$1').trim() } | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice } ).IsLinkedToByCDPorLLDP = $true
                 }
-            
+
             # CASE 2: The neighbor's SystemName is available. This is a much cleaner and more reliable match.
             }else{
                 # Find the neighbor by its SystemName and remote interface, then perform the same linking as above.
@@ -575,7 +575,7 @@ function Start-ProcessingFiles(){
             }
         }
     }
-    
+
     # ==============================================================================
     # Linking LLDP neighbours with VERBOSE debug output
     # ==============================================================================
@@ -613,7 +613,7 @@ function Start-ProcessingFiles(){
                 $candidateDevice = $deviceLookup[$originalHostname]
             }
             else {
-                 
+
             }
 
             # --- Tier 1 & 2 Logic ---
@@ -889,7 +889,7 @@ foreach ($device in $ArrayOfObjects) {
             $HostGatewayObject = $null
             $interfaceObject = $null
             $NewObjectToCreate = $device.IPArpEntries | Where-Object { $_.ipaddress -eq $route.gateway }
-            
+
             if ($NewObjectToCreate) {
                 $HostGatewayObject = Create-HostObject
                 $HostGatewayObject.Origin = "ARP"
@@ -903,7 +903,7 @@ foreach ($device in $ArrayOfObjects) {
                 $HostGatewayObject.hostname = "Unknown`r`n$($route.gateway)"
                 [array]$HostGatewayObject.arrayofipaddresses += [array]$route.gateway
             }
-            
+
             # Create the interface for the new HostGatewayObject
             $interfaceObject = Create-InterfaceObject
             $interfaceObject.shutdown = $false
@@ -925,15 +925,15 @@ foreach ($device in $ArrayOfObjects) {
                 $HostGatewayObject.Description = $LLDPDevice.Description
                 [array]$HostGatewayObject.arrayofipaddresses += $LLDPDevice.arrayofipaddresses
             }
-            
+
             # Step 5: Finalize the link. THIS IS THE CRITICAL FIX.
             # Just like the old code, we ALWAYS link to the interface object of the gateway.
             $route.GatewayLink = [ref]$interfaceObject
-            
+
             # Clean up the IP list and save the new gateway host
             $HostGatewayObject.arrayofipaddresses = $HostGatewayObject.arrayofipaddresses | Where-Object { $_ } | Sort-Object -Unique
             $ArrayofGatewayHosts += $HostGatewayObject
-            
+
             foreach ($ip in $HostGatewayObject.arrayofipaddresses) {
                 $GatewayHostsLookup[$ip] = $true
             }
@@ -956,7 +956,7 @@ foreach ($device in $ArrayOfObjects) {
             foreach ($bgpNeighbor in $device.BGPNeighbors) {
                 # Find the gateway host object whose IP address matches the BGP neighbor's IP.
                 $gatewayHost = $ArrayofGatewayHosts | Where-Object { $_.ArrayOfIPAddresses -contains $bgpNeighbor.NEIGHBOR } | Select-Object -First 1
-                
+               
                 # If a corresponding gateway host is found and it has a remote AS number...
                 if ($gatewayHost -and $bgpNeighbor.REMOTE_AS) {
                     # ...update the gateway host's BGP_AS_Number property.
@@ -974,7 +974,7 @@ foreach ($device in $ArrayOfObjects) {
                  if ($interface.RoutesForInterface.Count -gt 0) {
                     # This is a source interface with routes, so it should be drawn.
                     $interface.DrawOnRoutesOnlyDiagram = $true
-    
+
                     # Now, find and mark the destination interface for each route.
                     foreach ($route in $interface.RoutesForInterface) {
                         if ($route.GatewayLink) {
@@ -982,7 +982,7 @@ foreach ($device in $ArrayOfObjects) {
                             $targetInterface = $route.GatewayLink.Value
                             if ($targetInterface) {
                                 # Mark the target interface to be drawn.
-    
+
                                 $targetInterface.DrawOnRoutesOnlyDiagram = $true
                             }
                         }
@@ -1032,7 +1032,7 @@ foreach ($device in $ArrayOfObjects) {
     foreach ($lldpDevice in $ArrayOfLLDPDeviceIDs) {
         Set-MacAddressVendor -HostObject $lldpDevice -VendorMapping $GMacAddressToVendorMapping
     }
-    
+
     return $ArrayOfNetworks,$ArrayOfObjects,$ArrayOfCDPDeviceIDs,$ArrayOfLLDPDeviceIDs,$ArrayOfIPApr,$ArrayofGatewayHosts
 }
 
