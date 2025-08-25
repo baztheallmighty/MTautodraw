@@ -263,3 +263,109 @@ Copyright (C) 2022 Myles Treadwell
 This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version**.
 
 This program is distributed in the hope that it will be useful, but **WITHOUT ANY WARRANTY**; without even the implied warranty of **MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE**. See the GNU General Public License for more details.
+
+-----
+
+## How the Application works:
+
+```
+Input Files (e.g., .show run.txt, .show lldp neighbors.txt)
+│
+└───> function Create-FileHostObjects()
+      │
+      └───> **FileObject** (container for file paths)
+            │
+            └───> function Start-ProcessingFiles()
+                  │
+                  └───> function Process-*HostFiles() (e.g., Process-CiscoHostFiles)
+                        │
+                        └───> **HostObject** (main device representation)
+                              │
+                              ├───> function Get-*FromText()/FromXML()
+                              │     │
+                              │     ├─> Creates new **HostObject** from hostname
+                              │     │
+                              │     ├─> Populates HostObject properties:
+                              │     │   - .hostname
+                              │     │   - .DeviceType (e.g., "Cisco")
+                              │     │   - .Version (a **ShowVersionObject**)
+                              │     │   - .interfaces (an array of **InterfaceObject**s)
+                              │     │   - .vlans (an array of **VlanObject**s)
+                              │     │   - .RoutingTable (an array of **RouteObject**s)
+                              │     │   - .CDPNeighbors (an array of **CDPNeighborObject**s)
+                              │     │   - .LLDPNeighbors (an array of **LLDPNeighborObject**s)
+                              │     │   - .IPArpEntries (an array of **ShowIPArpObject**s)
+                              │     │
+                              │     └─> Uses sub-functions like:
+                              │           - Create-ShowVersionObject
+                              │           - Create-InterfaceObject
+                              │           - Create-VlanObject
+                              │           - Create-RouteObject
+                              │           - Create-CDPNeighborObject
+                              │           - Create-LLDPNeighborObject
+                              │           - Create-ShowIPArpObject
+                              │
+                              │
+                              └───> Post-Processing Logic (in Start-ProcessingFiles)
+                                    │
+                                    ├─> Links **CDPNeighborObject**s and **LLDPNeighborObject**s to other **HostObject**s using the `.PartnerEthernetInterface` property.
+                                    │
+                                    ├─> Creates new **HostObject**s (called "gateway hosts") to represent devices without config files, based on routing or ARP entries.
+                                    │
+                                    └─> Links **RouteObject**s to their corresponding exit interfaces on the local device, and to the appropriate interface on a remote device (either a configured **HostObject** or a new "gateway host" **HostObject**).
+```
+
+
+### What is inside the host object
+```
+**HostObject** ($Device)
+└───
+    ├─── .hostname: "CORE-SW-01"
+    ├─── .DeviceType: "Cisco"
+    ├─── .Version: (ShowVersionObject) { .OS, .Hardware, .Serial }
+    │
+    ├─── .interfaces: [array] of InterfaceObject
+    │    └─── InterfaceObject {
+    │           ├── .Interface: "GigabitEthernet1/0/1"
+    │           ├── .Description: "Link to WEB-FW-A"
+    │           ├── .IPAddress: "10.1.1.1"
+    │           ├── .Cidr: "10.1.1.0/30" ──────────> (Creates a NetworkObject)
+    │           ├── .shutdown: $false
+    │           ├── .SwitchportMode: "access"
+    │           ├── .SwitchportAccessVlan: "100"──> (Links to a VlanObject by its .number)
+    │           └── .STRole: "Root" <─────────────── (Updated by the SpanningTreeObject)
+    │         }
+    │
+    ├─── .vlans: [array] of VlanObject
+    │    └─── VlanObject {
+    │           ├── .number: "100"
+    │           └── .name: "SERVERS" ─────────────> (Used to name the NetworkObject)
+    │         }
+    │
+    ├─── .ArrayOfNetworks: [array] of NetworkObject
+    │    └─── NetworkObject {
+    │           ├── .Cidr: "10.1.1.0/30"
+    │           ├── .NetworkName: "SERVERS"
+    │           └── .ARPEntries: [array] <───────── (Populated with matching ShowIPArpObjects)
+    │         }
+    │
+    ├─── .RoutingTable: [array] of RouteObject
+    │    └─── RouteObject {
+    │           ├── .Subnet: "0.0.0.0/0"
+    │           ├── .gateway: "10.1.1.2"
+    │           └── .interface: "GigabitEthernet1/0/1" -> (References an InterfaceObject)
+    │         }
+    │
+    ├─── .CDPNeighbors: [array] of CDPNeighborObject
+    │    └─── CDPNeighborObject {
+    │           ├── .InterfaceLocalDevice: "GigabitEthernet1/0/1" -> (References an InterfaceObject)
+    │           ├── .DeviceID: "WEB-FW-A"
+    │           └── .PartnerEthernetInterface: [ref] -> (🔗 A link to the actual InterfaceObject on the neighbor's HostObject)
+    │         }
+    │
+    └─── .SpanningTree: (SpanningTreeObject)
+         └─── .SpanningTreeArray: [array] of SpanningTreeVlan
+              └─── SpanningTreeVlan {
+                     └─── .SpanningTreeInterfaces: [array] of SpanningTreeInterface -> (Updates .STRole on InterfaceObjects)
+                   }
+```
