@@ -1978,7 +1978,6 @@ function Get-ShowSpanningTreeFromText(){
 
 
 write-warning "broken code:foreach ($Interface in $ActiveInterfaces) it's slow.'"
-
 ##Process the show ip route file
 function Get-ShowIPRouteFromText(){
     param (
@@ -2067,8 +2066,12 @@ function Get-ShowIPRouteFromText(){
         # OPTIMIZATION: Filter interfaces ONCE before the loop
         $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
 
+        # cache variables
+        $lastGateway = $null
+        $lastInterface = $null
+
         # OPTIMIZATION: Efficiently create the array by capturing the loop's output
-        $AllRouteObjects = foreach ($Route in $Device.ProcessOutputObjects){
+        $AllRouteObjects = foreach ($Route in ($Device.ProcessOutputObjects | Sort-Object { $_[7] })){
             $RouteObject=Create-RouteObject
             $RouteObject.VRF=$Route[0]
             $RouteObject.RouteProtocol=$Route[1]
@@ -2093,12 +2096,23 @@ function Get-ShowIPRouteFromText(){
             }
             $RouteObject.Interface=$Route[8]
 
-            if( $RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
-                # Iterate over the PRE-FILTERED list
-                foreach ($Interface in $ActiveInterfaces){
-                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
-                        $RouteObject.Interface=$Interface.Interface
-                        break
+            if( $RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){
+                # cache check
+                if($RouteObject.gateway -eq $lastGateway){
+                    $RouteObject.Interface = $lastInterface
+                } else {
+                    $found = $false
+                    foreach ($Interface in $ActiveInterfaces){
+                        if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+                            $RouteObject.Interface=$Interface.Interface
+                            $lastGateway = $RouteObject.gateway
+                            $lastInterface = $Interface.Interface
+                            $found = $true
+                            break
+                        }
+                    }
+                    if(-not $found){
+                        Add-HostDebugText -HostObject $Device "No matching interface found for gateway $($RouteObject.gateway)" -BackgroundColor red
                     }
                 }
             }
@@ -2154,8 +2168,12 @@ function Get-ShowIPRouteFromText(){
     # OPTIMIZATION: Filter interfaces ONCE before the loop
     $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
 
+    # cache variables
+    $lastGateway = $null
+    $lastInterface = $null
+
     # OPTIMIZATION: Efficiently create the array by capturing the loop's output
-    $AllRouteObjects = foreach ($Route in $Device.ProcessOutputObjects){
+    $AllRouteObjects = foreach ($Route in ($Device.ProcessOutputObjects | Sort-Object { $_[7] })){
         $RouteObject=Create-RouteObject
         if($Route[0]){
             $RouteObject.vrf=$Route[0]
@@ -2184,12 +2202,22 @@ function Get-ShowIPRouteFromText(){
         if($null -eq $RouteObject.RouteProtocol){
             continue
         }
-        if($RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){#these don't have gateways so don't try and find them.
-            # Iterate over the PRE-FILTERED list
-            foreach ($Interface in $ActiveInterfaces){
-                if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
-                    $RouteObject.Interface=$Interface.Interface
-                    break
+        if($RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")){
+            if($RouteObject.gateway -eq $lastGateway){
+                $RouteObject.Interface = $lastInterface
+            } else {
+                $found = $false
+                foreach ($Interface in $ActiveInterfaces){
+                    if((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition){
+                        $RouteObject.Interface=$Interface.Interface
+                        $lastGateway = $RouteObject.gateway
+                        $lastInterface = $Interface.Interface
+                        $found = $true
+                        break
+                    }
+                }
+                if(-not $found){
+                    Add-HostDebugText -HostObject $Device "No matching interface found for gateway $($RouteObject.gateway)" -BackgroundColor red
                 }
             }
         }

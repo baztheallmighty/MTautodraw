@@ -93,7 +93,7 @@ $GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -
 
 # This draws the diagrams with multiple devices per page and links them together.
 # This is the primary diagram you are probably after.
-$GDrawMultipleDevicesDiagram=$false
+$GDrawMultipleDevicesDiagram=$true
 
 # A single device diagram per Draw.io page.
 # This is good to see the configuration of individual devices, e.g., a device with 10 different

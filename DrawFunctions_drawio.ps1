@@ -306,7 +306,7 @@ function Add-DrawioHostPhysical {
             (
                 $_.HasCPDNieghbor -or
                 $_.HasLLDPNeighbor -or
-                ($_.STRole -eq 'Root' -or $_.STRole -eq 'ALT' )) -and ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown))
+                ($_.STRole -eq 'Root' -or $_.STRole -eq 'ALT' )) -and ($_.interface -notmatch 'vlan|loopback|port-channel|ae' -and (-not $_.shutdown))
         })
     }else{
         # --- STEP 1: Get the names of local interfaces connected to configured CDP neighbors. ---
@@ -326,7 +326,7 @@ function Add-DrawioHostPhysical {
         # --- STEP 4: Select the full interface objects that match the names and are physical/active. ---
         $neighborAndStpInterfaces = @($device.interfaces | Where-Object {
             $_.Interface -in $allLinkedInterfaceNames -and
-            $_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and
+            $_.interface -notmatch 'vlan|loopback|port-channel|ae' -and
             (-not $_.shutdown)
         })
     }
@@ -343,7 +343,7 @@ function Add-DrawioHostPhysical {
             ($_.Interface -notin $neighborAndStpInterfaces.Interface) -and
             # --- START MODIFICATION ---
             # Added 'ae' to this regex as well for consistency.
-            ($_.interface -notmatch 'vlan|loopback|mgmt|port-channel|ae' -and (-not $_.shutdown)) -and
+            ($_.interface -notmatch 'vlan|loopback|port-channel|ae' -and (-not $_.shutdown)) -and
             # --- END MODIFICATION ---
             # Check if the MAC address count meets the global threshold.
             ($_.MacAddressArray) -and
@@ -566,6 +566,58 @@ function Add-DrawioNeighborHost {
 
 
 
+# Converts an IP address into a unique and visually distinct hex color code.
+function Get-ColorFromIp {
+    param(
+        [parameter(Mandatory = $true)]
+        [string]$IpAddress
+    )
+
+    try {
+        # 1. Generate a stable hash code from the IP address string.
+        # Use [Math]::Abs() to ensure the hash code is always positive. THIS IS THE FIX.
+        $hashCode = [Math]::Abs($IpAddress.GetHashCode())
+
+        # 2. Use the golden ratio to ensure generated colors are far apart on the color wheel.
+        $goldenRatioConjugate = 0.61803398875
+        $hueSeed = ($hashCode * $goldenRatioConjugate) % 1
+        $hue = $hueSeed * 360
+
+        # 3. Set fixed Saturation and Brightness for vibrant, easy-to-read colors.
+        $saturation = 0.65 + (($hashCode % 20) / 100.0) # 0.65–0.85
+        $brightness = 0.85 + (($hashCode % 10) / 100.0) # 0.85–0.95
+
+
+        # 4. Convert the calculated HSV (Hue, Saturation, Brightness) color to RGB.
+        $chroma = $brightness * $saturation
+        $h_prime = $hue / 60.0
+        $x = $chroma * (1 - [Math]::Abs(($h_prime % 2) - 1))
+        
+        $r1 = 0; $g1 = 0; $b1 = 0
+
+        if (0 -le $h_prime -and $h_prime -lt 1)     { $r1 = $chroma; $g1 = $x; $b1 = 0 }
+        elseif (1 -le $h_prime -and $h_prime -lt 2) { $r1 = $x; $g1 = $chroma; $b1 = 0 }
+        elseif (2 -le $h_prime -and $h_prime -lt 3) { $r1 = 0; $g1 = $chroma; $b1 = $x }
+        elseif (3 -le $h_prime -and $h_prime -lt 4) { $r1 = 0; $g1 = $x; $b1 = $chroma }
+        elseif (4 -le $h_prime -and $h_prime -lt 5) { $r1 = $x; $g1 = 0; $b1 = $chroma }
+        else                                       { $r1 = $chroma; $g1 = 0; $b1 = $x }
+        
+        $m = $brightness - $chroma
+        $r = [int](($r1 + $m) * 255)
+        $g = [int](($g1 + $m) * 255)
+        $b = [int](($b1 + $m) * 255)
+
+        # 5. Format the final RGB values into a hex color string.
+        $hexColor = "#$($r.ToString('X2'))$($g.ToString('X2'))$($b.ToString('X2'))"
+
+
+        return $hexColor
+    }
+    catch {
+        Write-Host "ERROR: Could not generate color for IP: $IpAddress" -ForegroundColor Red
+        return "#808080"
+    }
+}
 
 
 
@@ -630,6 +682,26 @@ function Add-DrawioLogicalInterface {
         }
     }
 
+    # ==================== NEW LOGIC START ====================
+    # Check for a Standby or Cluster IP to apply a special, thicker border.
+    # This logic runs after the default styles are set so it can override them.
+    $targetIp = $null
+    if ($Interface.standbyip) {
+        $targetIp = $Interface.standbyip
+    }
+    elseif ($Interface.ClusterIP) {
+        $targetIp = $Interface.ClusterIP
+    }
+
+    if ($targetIp) {
+        # Calculate the unique color from the IP address.
+        $borderColor = Get-ColorFromIp -IpAddress $targetIp
+        # Append styles for a thicker border (strokeWidth) and the calculated color.
+        # This will override any previously set strokeColor.
+        $style += "strokeWidth=4;strokeColor=$borderColor;"
+    }
+    # ===================== NEW LOGIC END =====================
+
     # 3. Generate XML
     $interfaceId = "l3-iface-$((New-Guid).ToString())"
     # Store the generated ID on the object for creating connectors later.
@@ -640,6 +712,79 @@ function Add-DrawioLogicalInterface {
             <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$GDrawioLogicalInterfaceWidth`" height=`"$height`" as=`"geometry`" />
         </mxCell>`n"
 }
+
+## Creates the XML for a single logical (L3) interface shape (e.g., Vlan, Loopback).
+#function Add-DrawioLogicalInterface {
+#    [CmdletBinding()]
+#    param(
+#        # The interface object with its L3 properties.
+#        [parameter(Mandatory = $true)] $Interface,
+#        # The X/Y coordinates relative to the parent host.
+#        [parameter(Mandatory = $true)] [PSCustomObject]$Location,
+#        # The ID of the parent host shape.
+#        [parameter(Mandatory = $true)] [string]$ParentId
+#    )
+#
+#    # 1. Text Construction
+#    # Build the text content for the shape line by line.
+#    $textElements = [System.Collections.ArrayList]::new()
+#    $height = $GDrawioLogicalInterfaceHeight # Start with a default height.
+#
+#    # Use shortened interface names if configured.
+#    $ifaceName = if ($GDrawioShortenInterfacesNames) {
+#        $Interface.Interface -replace "Vlan", "vl" -replace "Loopback", "Lo"
+#    }
+#    else {
+#        $Interface.Interface
+#    }
+#    $null = $textElements.Add("<b>$ifaceName</b>")
+#
+#    # Add IP address with subnet mask if available.
+#    $ipAddress = if ($Interface.subnetmask) { "$($Interface.ipaddress)/$($Interface.subnetmask)" } else { $Interface.ipaddress }
+#    $null = $textElements.Add($ipAddress)
+#
+#    # Add optional details and increase height if they exist.
+#    if ($Interface.Description) { $null = $textElements.Add($Interface.Description) }
+#    if ($Interface.standbyip) { $null = $textElements.Add("HSRP: $($Interface.standbyip)"); $height += $GDrawioVrfTextSizeExtension }
+#    if ($Interface.ClusterIP) { $null = $textElements.Add("ClusterIP: $($Interface.ClusterIP)"); $height += $GDrawioVrfTextSizeExtension }
+#
+#    # 2. Styling and Final Text
+#    $style = "rounded=1;whiteSpace=wrap;html=1;arcSize=20;align=center;verticalAlign=middle;fontSize=$($GDrawioLogicalInterfaceFontSize);"
+#
+#    # Check if the interface is shutdown. This style takes precedence.
+#    if ($Interface.shutdown -or ($Interface.IntStatus -like "*down*" -and $Interface.INTProtocolStatus -like "*down*")) {
+#        if ($interface.vrf) { $null = $textElements.Add("VRF: $($interface.vrf)") }
+#        $null = $textElements.Add("<b>SHUTDOWN</b>")
+#        $style += "fillColor=#FFCDD2;strokeColor=#B71C1C;fontColor=#B71C1C;" # Red color scheme for 'down' state.
+#    }
+#    else {
+#        # Style based on VRF membership.
+#        if ($interface.vrf) {
+#            # Use the VRF's assigned color, or a default purple if none is set.
+#            $vrfColor = if ($Interface.VRFColor) { Convert-RgbToHex -RgbString $Interface.VRFColor } else { "#E1BEE7" }
+#            $style += "fillColor=$vrfColor;strokeColor=#6A1B9A;"
+#            $null = $textElements.Add("VRF: $($interface.vrf)")
+#            $height += $GDrawioVrfTextSizeExtension # Increase height for the VRF text line.
+#        }
+#        else {
+#            # Default style for a normal, active interface.
+#            $style += "fillColor=#FFFFFF;strokeColor=#424242;" # Default white fill.
+#        }
+#    }
+#
+#    # 3. Generate XML
+#    $interfaceId = "l3-iface-$((New-Guid).ToString())"
+#    # Store the generated ID on the object for creating connectors later.
+#    $Interface.LogicalDrawioId = $interfaceId
+#    $encodedText = [System.Web.HttpUtility]::HtmlEncode($textElements -join "<br>")
+#
+#    $global:drawioXml += "        <mxCell id=`"$interfaceId`" value=`"$encodedText`" style=`"$style`" vertex=`"1`" parent=`"$ParentId`">
+#            <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$GDrawioLogicalInterfaceWidth`" height=`"$height`" as=`"geometry`" />
+#        </mxCell>`n"
+#}
+
+
+
 # Creates the XML for a Layer 3 host and its logical interfaces.
 function Add-DrawioHostLayer3 {
     [CmdletBinding()]

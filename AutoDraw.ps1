@@ -233,17 +233,19 @@ if($GdrawSingles){
     Initialize-DrawioFile
 
     foreach ($Device in $GArrayOfObjects){
-        # Draw the Layer 3 diagram for the device if enabled
         if($GDrawLayer3){
-            Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
-        }
-
-        # ADD THIS BLOCK to draw the physical diagram for the device if enabled
-        # Assumes a global variable $GDrawPhysical exists.
-        if($GDrawPhysical){
-            write-warning "singles lldp neighbors are not being linked correctly copy and paste code from multi diagrams to singles. "
-            Draw-SingleHostPhysicalDrawio -Device $Device -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs
-        }
+            Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks -DiagramType "RoutesOnly" -ArrayOfObjects $GArrayOfObjects -ArrayofGatewayHosts $GArrayofGatewayHosts 
+        }        
+        # Draw the Layer 3 diagram for the device if enabled
+        #if($GDrawLayer3){
+        #    Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
+        #}
+        #
+        ## ADD THIS BLOCK to draw the physical diagram for the device if enabled
+        ## Assumes a global variable $GDrawPhysical exists.
+        #if($GDrawPhysical){
+        #    Draw-SingleHostPhysicalDrawio -Device $Device -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs
+        #}
     }
 
     Finalize-DrawioFile
