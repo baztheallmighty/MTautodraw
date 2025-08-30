@@ -269,103 +269,252 @@ This program is distributed in the hope that it will be useful, but **WITHOUT AN
 ## How the Application works:
 
 ```
-Input Files (e.g., .show run.txt, .show lldp neighbors.txt)
+Of course. Here is the updated diagram with more detail added to the object return and final output stages of the data processing workflow.
+
+***
+
+Input Files (e.g., `.show run.txt`, `.show lldp neighbors.txt`)
 │
-└───> function Create-FileHostObjects()
+└───> **`Create-FileHostObjects()`**
       │
-      └───> **FileObject** (container for file paths)
+      └───> **FileObject** (A temporary container for file paths per device)
             │
-            └───> function Start-ProcessingFiles()
+            └───> **`Start-ProcessingFiles()`** (Main data aggregation function)
                   │
-                  └───> function Process-*HostFiles() (e.g., Process-CiscoHostFiles)
+                  ├───> **Parallel Processing Loop** (`ForEach-Object -Parallel`)
+                  │     │
+                  │     └───> **`Process-*HostFiles()`** (e.g., `Process-CiscoHostFiles`)
+                  │           │
+                  │           └───> **`Get-*FromText()`/`FromXML()`**
+                  │                 │
+                  │                 ├───> **Python TextFSM script** (Parses raw text into structured data)
+                  │                 │
+                  │                 ├───> **`Create-*Object()`** functions build PowerShell objects
+                  │                 │
+                  │                 └───> Returns a populated **HostObject** (main device representation)
+                  │                       │
+                  │                       └───> (The parallel loop collects one of these for each device into a temporary array, `$processedDevices`)
+                  │
+                  ├───> **Post-Processing Logic** (Sequential, after parallel loop)
+                  │     │
+                  │     ├─── Links **CDPNeighborObject**s and **LLDPNeighborObject**s to other **HostObject**s using the `.PartnerEthernetInterface` property.
+                  │     │
+                  │     ├─── Creates new **HostObject**s (called "gateway hosts") to represent devices without config files, based on routing or ARP entries.
+                  │     │
+                  │     └─── Links **RouteObject**s to their corresponding exit interfaces on the local device, and to the appropriate interface on a remote device via the `.GatewayLink` property.
+                  │
+                  └───> **`Start-ProcessingFiles`** returns the final, aggregated data collections:
                         │
-                        └───> **HostObject** (main device representation)
-                              │
-                              ├───> function Get-*FromText()/FromXML()
-                              │     │
-                              │     ├─> Creates new **HostObject** from hostname
-                              │     │
-                              │     ├─> Populates HostObject properties:
-                              │     │   - .hostname
-                              │     │   - .DeviceType (e.g., "Cisco")
-                              │     │   - .Version (a **ShowVersionObject**)
-                              │     │   - .interfaces (an array of **InterfaceObject**s)
-                              │     │   - .vlans (an array of **VlanObject**s)
-                              │     │   - .RoutingTable (an array of **RouteObject**s)
-                              │     │   - .CDPNeighbors (an array of **CDPNeighborObject**s)
-                              │     │   - .LLDPNeighbors (an array of **LLDPNeighborObject**s)
-                              │     │   - .IPArpEntries (an array of **ShowIPArpObject**s)
-                              │     │
-                              │     └─> Uses sub-functions like:
-                              │           - Create-ShowVersionObject
-                              │           - Create-InterfaceObject
-                              │           - Create-VlanObject
-                              │           - Create-RouteObject
-                              │           - Create-CDPNeighborObject
-                              │           - Create-LLDPNeighborObject
-                              │           - Create-ShowIPArpObject
-                              │
-                              │
-                              └───> Post-Processing Logic (in Start-ProcessingFiles)
-                                    │
-                                    ├─> Links **CDPNeighborObject**s and **LLDPNeighborObject**s to other **HostObject**s using the `.PartnerEthernetInterface` property.
-                                    │
-                                    ├─> Creates new **HostObject**s (called "gateway hosts") to represent devices without config files, based on routing or ARP entries.
-                                    │
-                                    └─> Links **RouteObject**s to their corresponding exit interfaces on the local device, and to the appropriate interface on a remote device (either a configured **HostObject** or a new "gateway host" **HostObject**).
+                        ├─── **`$GArrayOfObjects`**: All fully configured **HostObject**s.
+                        ├─── **`$GArrayOfNetworks`**: All unique **NetworkObject**s.
+                        ├─── **`$GArrayOfCDPDeviceIDs`**: **HostObject**s for discovered-only CDP neighbors.
+                        ├─── **`$GArrayOfLLDPDeviceIDs`**: **HostObject**s for discovered-only LLDP neighbors.
+                        └─── **`$GArrayofGatewayHosts`**: **HostObject**s for discovered gateways (from ARP/routes).
+                             │
+                             └───> **Drawing Process**
+                                   │
+                                   ├───> **`Initialize-DrawioFile()`**: Creates the XML header for a new `.drawio` file.
+                                   │
+                                   ├───> **Multi-Device Diagram Generation** (`if $GDrawMultipleDevicesDiagram`)
+                                   │     │
+                                   │     ├─── **`Draw-AllNeighborsDrawio`**: Creates physical topology diagrams.
+                                   │     │    ├─── `if $GDrawCDPALL`: Draws all configured devices and all their discovered CDP/LLDP neighbors.
+                                   │     │    └─── `if $GDrawCDP`: Draws only the connections between configured devices.
+                                   │     │
+                                   │     ├─── **`Draw-AllLayer3Drawio`**: Creates logical L3 topology diagrams.
+                                   │     │    ├─── `if $GDrawLayer3`: Shows all devices, their L3 interfaces, and connections to network segments.
+                                   │     │    ├─── `if $GDrawLayer3RoutedLinksOnly`: Shows L3 links that have routing protocols running over them.
+                                   │     │    └─── `if $GDrawLayer3RoutesOnly`: Shows only the specific routing paths between devices.
+                                   │     │
+                                   │     └─── **`Draw-SpanningTreeDiagram`**: Creates a specialized STP topology diagram showing root bridges and port roles.
+                                   │
+                                   ├───> **Single-Device Diagram Generation** (`if $GdrawSingles`)
+                                   │     │
+                                   │     └─── Loops through each **HostObject** to create individual diagrams:
+                                   │          ├─── **`Draw-SinglesLayer3Drawio`**: Creates a focused L3 diagram for one device and its network connections.
+                                   │          └─── **`Draw-SingleHostPhysicalDrawio`**: Creates a physical diagram for one device and its immediate neighbors.
+                                   │
+                                   └───> **`Finalize-DrawioFile()`** & **`Save-DrawioFile()`**
+                                         │
+                                         └───> Closes the XML tags and writes the complete XML string to a final `.drawio` file.
 ```
 
 
 ### What is inside the host object
 ```
+Of course. Here is the updated diagram with all sub-objects and their properties, based on the provided PowerShell code.
+
+***
+
 **HostObject** ($Device)
 └───
     ├─── .hostname: "CORE-SW-01"
     ├─── .DeviceType: "Cisco"
-    ├─── .Version: (ShowVersionObject) { .OS, .Hardware, .Serial }
+    ├─── .Origin: "config", "CDP", "LLDP", "ARP", etc.
+    ├─── .Description: "System description from CDP/LLDP"
+    ├─── .Platform: "cisco C9300-48U" (from CDP)
+    ├─── .Capabilities: "Router, Switch, IGMP" (from CDP)
+    ├─── .DeviceIdentifier: "CORE-SW-01.show run.txt"
+    ├─── .BGP_AS_Number: "65001"
+    ├─── .HostTypeIfCDPorLLDP: "HP" (Vendor name if hostname is a MAC)
+    ├─── .ArrayOfIPAddresses: [array] of "10.1.1.1", "172.16.0.1", ...
+    │
+    ├─── .Version: (ShowVersionObject)
+    │    ├─── .OS: "15.2(7)E4"
+    │    ├─── .Type: "IOS", "XE-IOS", "NXOS", etc.
+    │    ├─── .Hardware: [array] of "C9300-48U", "C9300-NM-8X"
+    │    ├─── .Serial: [array] of "FOC12345678", "FOC87654321"
+    │    ├─── .ROMMON: "16.12.1r"
+    │    ├─── .Image: "bootflash:packages.conf"
+    │    ├─── .ReasonForRelod: "Reload Command"
+    │    ├─── .ConfigRegister: "0x102"
+    │    ├─── .MacAddressArray: [array] of "00:00:DE:AD:BE:EF"
+    │    ├─── .Uptime: "3 years, 2 weeks, 4 days, 5 hours, 3 minutes"
+    │    └─── .LastRestarted: "10:00:00 UTC Fri Aug 1 2022"
     │
     ├─── .interfaces: [array] of InterfaceObject
     │    └─── InterfaceObject {
-    │           ├── .Interface: "GigabitEthernet1/0/1"
-    │           ├── .Description: "Link to WEB-FW-A"
-    │           ├── .IPAddress: "10.1.1.1"
-    │           ├── .Cidr: "10.1.1.0/30" ──────────> (Creates a NetworkObject)
-    │           ├── .shutdown: $false
-    │           ├── .SwitchportMode: "access"
-    │           ├── .SwitchportAccessVlan: "100"──> (Links to a VlanObject by its .number)
-    │           └── .STRole: "Root" <─────────────── (Updated by the SpanningTreeObject)
+    │         ├── .Interface: "GigabitEthernet1/0/1"
+    │         ├── .Description: "Link to WEB-FW-A"
+    │         ├── .shutdown: $false
+    │         ├── .IntStatus: "up"
+    │         ├── .INTProtocolStatus: "up"
+    │         ├── .Speed: "1000Mb/s"
+    │         ├── .Duplex: "full"
+    │         ├── .macaddress: "aabb.cc00.0100"
+    │         ├── .HardwareType: "Gigabit Ethernet"
+    │         ├── .MediaType: "10/100/1000BaseTX"
+    │         ├── .SwitchPortType: "switched" | "routed"
+    │         ├── .SwitchportMode: "access" | "trunk"
+    │         ├── .SwitchportAccessVlan: "100" ──> (Links to a VlanObject by its .number)
+    │         ├── .SwitchportTrunkVlan: "10,20,30-40"
+    │         ├── .NativeVlan: "1"
+    │         ├── .IPAddress: "10.1.1.1"
+    │         ├── .SubnetMask: "30"
+    │         ├── .Cidr: "10.1.1.0/30" ───────────> (Creates a NetworkObject)
+    │         ├── .SecondaryIPAddress: "10.1.1.5"
+    │         ├── .SecondaryCidr: "10.1.1.4/30"
+    │         ├── .Standbyip: "10.1.1.3" (HSRP/VRRP VIP)
+    │         ├── .ClusterIP: "10.1.1.4" (CheckPoint Cluster IP)
+    │         ├── .vrf: "MGMT"
+    │         ├── .Zone: "inside" (ASA specific)
+    │         ├── .ChannelGroup: "1"
+    │         ├── .STRole: "Root" <───────────────── (Updated by SpanningTreeObject)
+    │         ├── .STState: "FWD"
+    │         ├── .STDesgnInterfaceForVlans: [array] of "101", "102"
+    │         ├── .HasCPDNieghbor: $true
+    │         ├── .HasLLDPNeighbor: $true
+    │         ├── .IsLinkedToByCDPorLLDP: $true
+    │         ├── .RoutesForInterface: [array] of RouteObject
+    │         ├── .MacAddressArray: [array] of MacAddressObject
+    │         │    └─── MacAddressObject {
+    │         │         ├── .MacAddress: "0000.dead.beef"
+    │         │         ├── .Vlan: "100"
+    │         │         ├── .Type: "DYNAMIC"
+    │         │         ├── .VendorCompanyName: "VMware, Inc."
+    │         │         └── .protocols: "-"
+    │         │         }
+    │         └── .DrawOnRoutesOnlyDiagram: $true
     │         }
     │
     ├─── .vlans: [array] of VlanObject
     │    └─── VlanObject {
-    │           ├── .number: "100"
-    │           └── .name: "SERVERS" ─────────────> (Used to name the NetworkObject)
+    │         ├── .number: "100"
+    │         ├── .name: "SERVERS" ───────────────> (Used to name the NetworkObject)
+    │         └── .description: "Main Server VLAN"
     │         }
     │
     ├─── .ArrayOfNetworks: [array] of NetworkObject
     │    └─── NetworkObject {
-    │           ├── .Cidr: "10.1.1.0/30"
-    │           ├── .NetworkName: "SERVERS"
-    │           └── .ARPEntries: [array] <───────── (Populated with matching ShowIPArpObjects)
+    │         ├── .Cidr: "10.1.1.0/30"
+    │         ├── .NetworkName: "SERVERS"
+    │         ├── .RoutedVlan: "vlan100"
+    │         ├── .NumberOfConnectors: 2
+    │         ├── .NumberOfRoutedConnectors: 1
+    │         └── .ARPEntries: [array] <──────────── (Populated with matching ShowIPArpObjects)
     │         }
     │
     ├─── .RoutingTable: [array] of RouteObject
     │    └─── RouteObject {
-    │           ├── .Subnet: "0.0.0.0/0"
-    │           ├── .gateway: "10.1.1.2"
-    │           └── .interface: "GigabitEthernet1/0/1" -> (References an InterfaceObject)
+    │         ├── .Subnet: "0.0.0.0/0"
+    │         ├── .gateway: "10.1.1.2"
+    │         ├── .interface: "GigabitEthernet1/0/1" -> (References an InterfaceObject)
+    │         ├── .RouteProtocol: "static"
+    │         ├── .VRF: "MGMT"
+    │         ├── .DISTANCE: "1"
+    │         ├── .METRIC: "0"
+    │         └── .GatewayLink: [ref]──────────────> (🔗 A link to the actual gateway InterfaceObject)
+    │         }
+    │
+    ├─── .IPArpEntries: [array] of ShowIPArpObject
+    │    └─── ShowIPArpObject {
+    │         ├── .ipaddress: "10.1.1.2"
+    │         ├── .MAC: "aabb.cc00.0200"
+    │         ├── .INTERFACE: "Vlan100"
+    │         ├── .Cidr: "10.1.1.0/30"
+    │         ├── .VendorCompanyName: "Cisco"
+    │         ├── .PROTOCOL: "Internet"
+    │         ├── .AGE: "120"
+    │         └── .TYPE: "ARPA"
     │         }
     │
     ├─── .CDPNeighbors: [array] of CDPNeighborObject
     │    └─── CDPNeighborObject {
-    │           ├── .InterfaceLocalDevice: "GigabitEthernet1/0/1" -> (References an InterfaceObject)
-    │           ├── .DeviceID: "WEB-FW-A"
-    │           └── .PartnerEthernetInterface: [ref] -> (🔗 A link to the actual InterfaceObject on the neighbor's HostObject)
+    │         ├── .InterfaceLocalDevice: "GigabitEthernet1/0/1" -> (References an InterfaceObject)
+    │         ├── .DeviceID: "WEB-FW-A"
+    │         ├── .SystemName: "WEB-FW-A.domain.local"
+    │         ├── .InterfaceRemoteDevice: "GigabitEthernet0/1"
+    │         ├── .Platform: "Cisco ASA 5525-X"
+    │         ├── .Version: "Cisco Adaptive Security Appliance Software Version 9.12(2)"
+    │         ├── .Capabilities: "Router"
+    │         ├── .InterfaceIPAddresses: "10.1.1.2"
+    │         └── .PartnerEthernetInterface: [ref]──> (🔗 A link to the InterfaceObject on the neighbor HostObject)
+    │         }
+    │
+    ├─── .LLDPNeighbors: [array] of LLDPNeighborObject
+    │    └─── LLDPNeighborObject {
+    │         ├── .InterfaceLocalDevice: "GigabitEthernet1/0/2" -> (References an InterfaceObject)
+    │         ├── .Hostname: "ESXI-HOST-01"
+    │         ├── .ChassisID: "aabb.cc00.0300"
+    │         ├── .InterfaceRemoteDevice: "vmnic0"
+    │         ├── .NeighborInterfaceDescription: "Uplink 1"
+    │         ├── .SystemDescription: "VMware ESXi, 7.0.3, 20328353"
+    │         ├── .ManagementIP: "172.16.100.50"
+    │         ├── .HasCDPNeighborEntry: $false
+    │         └── .PartnerEthernetInterface: [ref]──> (🔗 A link to the InterfaceObject on the neighbor HostObject)
+    │         }
+    │
+    ├─── .BGPNeighbors: [array] of BGPNeighborObject
+    │    └─── BGPNeighborObject {
+    │         ├── .NEIGHBOR: "192.168.1.2"
+    │         ├── .REMOTE_AS: "65002"
+    │         ├── .BGP_STATE: "Established"
+    │         ├── .VRF: "default"
+    │         ├── .DESCRIPTION: "Peer to ISP-A"
+    │         ├── .INBOUND_ROUTEMAP: "ALLOW-ALL-IN"
+    │         └── .OUTBOUND_ROUTEMAP: "ALLOW-ALL-OUT"
     │         }
     │
     └─── .SpanningTree: (SpanningTreeObject)
+         ├─── .SpanningTreeMode: "rstp"
+         ├─── .SpanningTreeExtended: $true
+         ├─── .RootBridgeForVlans: [array] of "10", "20"
          └─── .SpanningTreeArray: [array] of SpanningTreeVlan
               └─── SpanningTreeVlan {
-                     └─── .SpanningTreeInterfaces: [array] of SpanningTreeInterface -> (Updates .STRole on InterfaceObjects)
+                   ├── .VlanID: "100"
+                   ├── .protocol: "rstp"
+                   ├── .RootBridge: $false
+                   ├── .RootIDPriority: "32768"
+                   ├── .Address: "0000.1111.2222"
+                   ├── .BridgeIDPriority: "32868"
+                   ├── .BridgeIDPriorityaddress: "aabb.cc00.0100"
+                   └─── .SpanningTreeInterfaces: [array] of SpanningTreeInterface
+                        └─── SpanningTreeInterface {
+                             ├── .Interface: "Po1"
+                             ├── .Role: "Root"
+                             ├── .Status: "FWD"
+                             ├── .Cost: "3"
+                             ├── .PrioNbr: "128.1281"
+                             └── .Type: "P2p"
+                             }
                    }
-```
