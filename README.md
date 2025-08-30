@@ -269,9 +269,6 @@ This program is distributed in the hope that it will be useful, but **WITHOUT AN
 ## How the Application works:
 
 ```
-Of course. Here is the updated diagram with more detail added to the object return and final output stages of the data processing workflow.
-
-***
 
 Input Files (e.g., `.show run.txt`, `.show lldp neighbors.txt`)
 │
@@ -342,9 +339,6 @@ Input Files (e.g., `.show run.txt`, `.show lldp neighbors.txt`)
 
 ### What is inside the host object
 ```
-Of course. Here is the updated diagram with all sub-objects and their properties, based on the provided PowerShell code.
-
-***
 
 **HostObject** ($Device)
 └───
