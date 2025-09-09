@@ -227,25 +227,28 @@ if($GDrawMultipleDevicesDiagram){
     write-HostDebugText "Multi-Device Diagram saved to $multiDeviceFilePath" -ForegroundColor Green
 }
 
+
+#Finish singles routing. 
+#Maybe add second file. Look at speed to see what needs fixing next. 
 # Draw Single-Device Diagrams
 if($GdrawSingles){
     write-HostDebugText "Initializing Singles Draw.io file..." -ForegroundColor Cyan
     Initialize-DrawioFile
 
     foreach ($Device in $GArrayOfObjects){
-        if($GDrawLayer3){
-            Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks -DiagramType "RoutesOnly" -ArrayOfObjects $GArrayOfObjects -ArrayofGatewayHosts $GArrayofGatewayHosts 
-        }        
-        # Draw the Layer 3 diagram for the device if enabled
         #if($GDrawLayer3){
-        #    Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
-        #}
-        #
-        ## ADD THIS BLOCK to draw the physical diagram for the device if enabled
-        ## Assumes a global variable $GDrawPhysical exists.
-        #if($GDrawPhysical){
-        #    Draw-SingleHostPhysicalDrawio -Device $Device -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs
-        #}
+        #    Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks -DiagramType "RoutesOnly" -ArrayOfObjects $GArrayOfObjects -ArrayofGatewayHosts $GArrayofGatewayHosts 
+        #}        
+        # Draw the Layer 3 diagram for the device if enabled
+        if($GDrawLayer3){
+            Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
+        }
+        
+        # ADD THIS BLOCK to draw the physical diagram for the device if enabled
+        # Assumes a global variable $GDrawPhysical exists.
+        if($GDrawPhysical){
+            Draw-SingleHostPhysicalDrawio -Device $Device -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs
+        }
     }
 
     Finalize-DrawioFile

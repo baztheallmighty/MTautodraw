@@ -378,9 +378,6 @@ function get-JunosShowRouteAllFromXML {
 
     $routeObjects = [System.Collections.Generic.List[pscustomobject]]::new()
 
-    #--> ADDED: Define protocols to completely exclude from the output.
-    # Junos uses 'Direct' for connected routes and 'Local' for local routes.
-    $protocolsToExclude = @('Local', 'Direct')
 
     try {
         $xmlContent = [xml](Get-Content -Path $JunosShowRouteAllFile -Raw)
@@ -409,10 +406,6 @@ function get-JunosShowRouteAllFromXML {
             $routeObject.Subnet = $routeNode.'rt-destination'
             $routeObject.RouteProtocol = $nextHop.'protocol-name'
 
-            #--> ADDED: Filter to skip processing and adding local/direct routes.
-            if ($protocolsToExclude -contains $routeObject.RouteProtocol) {
-                continue # Skip this route and move to the next one.
-            }
 
             if ($nextHop.preference) {
                 $routeObject.DISTANCE = [int]$nextHop.preference
