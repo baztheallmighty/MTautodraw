@@ -68,9 +68,9 @@ function Process-JunosHostFiles{
             Add-HostDebugText -HostObject $Device "Processing Junos show version: $($hostid.ShowVersion)"
             $Device=Get-JunosShowVersionFromXML -JunosShowVersionFile $hostid.ShowVersion -Device $Device
         }
-        if($hostid.ShowInterfaceDetail){
-            Add-HostDebugText -HostObject $Device "Processing Junos show interface:$($hostid.ShowInterfaceDetail)"
-            $Device=Get-JunosShowInterfaceFromXML -JunosInterfaceFile $hostid.ShowInterfaceDetail -Device $Device
+        if($hostid.ShowInterfaceTerse){
+            Add-HostDebugText -HostObject $Device "Processing Junos show interface terse:$($hostid.ShowInterfaceTerse)"
+            $Device=Get-JunosShowInterfaceTerseFromXML -JunosInterfaceTerseFile $hostid.ShowInterfaceTerse -Device $Device
         }
         if($hostid.ShowLLDPNeighbors){#CDP must be processed before LLDP.
             Add-HostDebugText -HostObject $Device "Processing show LLDP Details:$($hostid.ShowLLDPNeighbors)"
@@ -455,31 +455,145 @@ function get-JunosShowRouteAllFromXML {
     return $device
 }
 
-#Extract all the information from the interfaces xml file
-function Get-JunosShowInterfaceFromXML{
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Extract all the information from the 'show interfaces terse' xml file
+function Get-JunosShowInterfaceTerseFromXML {
     param (
-		[parameter(Mandatory=$true)]
-		$JunosInterfaceFile,
+        [parameter(Mandatory = $true)]
+        $JunosInterfaceTerseFile,
+        [parameter(Mandatory = $true)]
         $device
     )
-    $Interfaces = [xml] (Get-Content -Raw $JunosInterfaceFile )
-    foreach ($interface in ($interfaces.'rpc-reply'.'interface-information'.'physical-interface')){
-        $FoundInterface=$device.interfaces | where { $_.interface -eq $interface.name}
-        if($FoundInterface){
-            if($interface.'oper-status' -eq "up"){
-                $FoundInterface.shutdown=$false
+    [xml]$Interfaces = Get-Content -Raw $JunosInterfaceTerseFile
+    
+    # --- Flag for debug logging for the specific host ---
+    $enableDebug = ($device.hostname -eq 'junicore.fgao.fr')
+
+    # Iterate through each physical interface in the XML data
+    foreach ($physical_interface in $Interfaces.'rpc-reply'.'interface-information'.'physical-interface') {
+        # Find the corresponding physical interface object in the main device object
+        $FoundInterface = $device.interfaces | where { $_.interface -eq $physical_interface.name }
+        if ($FoundInterface) {
+            # Update the operational status based on the XML
+
+            if($physical_interface.'oper-status' -eq "up"){
+                $FoundInterface.shutdown = $false
+                $FoundInterface.IntStatus = "up"
+                $FoundInterface.INTProtocolStatus = "up"
             }else{
-                $FoundInterface.shutdown=$true
-            }
-            $FoundInterface.speed=$interface.speed
-            $FoundInterface.duplex=$interface.duplex
-            if($interface.'current-physical-address' ){
-                $FoundInterface.macaddress=$interface.'current-physical-address'
+                $FoundInterface.shutdown = $true
+                $FoundInterface.IntStatus = "down"
+                $FoundInterface.INTProtocolStatus = "down"
+            }                 
+        }
+
+        # Check for and iterate through any logical interfaces associated with the physical one
+        if ($physical_interface.'logical-interface') {
+            # Ensure the logical interfaces are always treated as a collection, even if there's only one
+            $logicalInterfaces = @($physical_interface.'logical-interface')
+
+            foreach ($logical_interface in $logicalInterfaces) {
+                # Determine the object to update, starting with a normalized name (e.g., "irb.53" -> "irb53")
+                $normalizedName = $logical_interface.name -replace '\.', ''
+                $interfaceToUpdate = $device.interfaces | Where-Object { $_.interface -eq $normalizedName }
+
+                # Fallback for .0 sub-interfaces, which should apply to the parent physical interface
+                if (-not $interfaceToUpdate -and $FoundInterface -and $logical_interface.name -eq "$($FoundInterface.interface).0") {
+                    $interfaceToUpdate = $FoundInterface
+                }
+
+                if ($interfaceToUpdate) {
+                    # Update the logical interface's operational status
+                    if($logical_interface.'oper-status' -eq "up"){
+                        $interfaceToUpdate.shutdown = $false
+                        $interfaceToUpdate.IntStatus = "up"
+                        $interfaceToUpdate.INTProtocolStatus = "up"
+                    }else{
+                        $interfaceToUpdate.shutdown = $true
+                        $interfaceToUpdate.IntStatus = "down"
+                        $interfaceToUpdate.INTProtocolStatus = "down"
+                    }  
+
+                    # Find the 'inet' address family to extract IP address information
+                    $inetFamily = $logical_interface.'address-family' | Where-Object { $_.'address-family-name' -eq 'inet' }
+                    if ($inetFamily -and $inetFamily.'interface-address') {
+                        $ipAddressNodes = @($inetFamily.'interface-address'.'ifa-local')
+
+                        # Loop through all available IP addresses on the interface
+                        for ($i = 0; $i -lt $ipAddressNodes.Count; $i++) {
+                            $ipNode = $ipAddressNodes[$i]
+                            if ($null -ne $ipNode -and -not [string]::IsNullOrWhiteSpace($ipNode.'#text')) {
+                                $ipString = $ipNode.'#text'
+                                if ($ipString -like '*/*') {
+                                    $ip, $prefix = $ipString -Split '/'
+                                    
+                                    # Calculate the full network CIDR
+                                    $networkAddr = Get-NetworkAddress -IPAddress $ip -PrefixLength ([int]$prefix)
+                                    $cidr = "$networkAddr/$prefix"
+
+                                    if ($i -eq 0) { # Handle Primary IP Address
+                                        $interfaceToUpdate.IPAddress = $ip
+                                        $interfaceToUpdate.Cidr = $cidr
+                                        $interfaceToUpdate.SubnetMask = "$prefix"
+                                    }
+                                    elseif ($i -eq 1) { # Handle Secondary IP Address
+                                        $interfaceToUpdate.SecondaryIPAddress = $ip
+                                        $interfaceToUpdate.SecondaryCidr = $cidr
+                                        $interfaceToUpdate.SecondarySubnetMask = "$prefix"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+
+    # --- START: Final debug output for all interfaces ---
+    if ($enableDebug) {
+        Add-HostDebugText -HostObject $device -text "--- FINAL INTERFACE STATE BEFORE RETURN ---" -BackgroundColor "DarkBlue"
+        # Select key properties to display in the log for clarity
+        $finalInterfaceState = $device.interfaces | Format-Table Interface, shutdown, IPAddress, SubnetMask, Cidr, IntStatus -AutoSize | Out-String
+        Add-HostDebugText -HostObject $device -text $finalInterfaceState -BackgroundColor "DarkBlue"
+    }
+    # --- END: Final debug output ---
+
     return $device
 }
+
+
+
+
+
+
+
+
+
 
 
 #This takes and array of vlans and vlan name to search for and returns the vlan id. AKA 0 - 4096.
@@ -627,19 +741,6 @@ function Get-JunosMacAddressTableFromXML {
 
 
 
-
-
-#region Helper Functions
-function Convert-CidrToSubnetMask {
-    param([int]$Cidr)
-    if ($Cidr -lt 0 -or $Cidr -gt 32) { return $null }
-    $binaryString = ('1' * $Cidr).PadRight(32, '0')
-    $octets = for ($i = 0; $i -lt 4; $i++) {
-        [Convert]::ToByte($binaryString.Substring($i * 8, 8), 2)
-    }
-    return $octets -join '.'
-}
-
 function Get-NetworkAddress {
     param($IPAddress, $PrefixLength)
     $ip = [System.Net.IPAddress]::Parse($IPAddress)
@@ -672,6 +773,9 @@ function Expand-JunosInterfaceRange {
     }
     return $expandedNames
 }
+
+
+
 function Get-JunosShowRunFromXML {
     param (
         [parameter(Mandatory = $true)]
@@ -835,36 +939,57 @@ function Get-JunosShowRunFromXML {
                     $obj = $interfaceObjects[$logicalInterfaceName]
 
                     $obj.Description = $unit.description
-                    $obj.shutdown = [bool]($unit.disable)
+                    if ($unit.disable -or $unit.inactive -eq 'inactive') {
+                        $obj.shutdown = $true
+                        $obj.IntStatus = "down" 
+                        $obj.INTProtocolStatus = "down"                        
+                    }
                     $obj.SwitchPortType = 'routed'
                     $obj.RoutedVlan = $unit.name
 
                     $inet = $unit.family.inet
                     if ($inet.address) {
                         $addresses = @($inet.address)
-                        if ($addresses[0].name) {
-                            try {
-                                $ipParts = $addresses[0].name.Split('/')
-                                if ($ipParts.Count -lt 2) { throw "IP address format is missing the CIDR prefix (e.g., /24)." }
-                                $prefix = [int]$ipParts[1]
-                                $obj.IPAddress = $ipParts[0]
-                                $obj.SubnetMask = Convert-CidrToSubnetMask -Cidr $prefix
-                                $networkAddr = Get-NetworkAddress -IPAddress $obj.IPAddress -PrefixLength $prefix
-                                $obj.Cidr = "$networkAddr/$prefix"
-                                $ArrayOfIPAddresses += $obj.IPAddress
-                            } catch {
-                                Write-Warning "Failed to parse IP Address '$($addresses[0].name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
-                            }
-                        }
-                        if ($addresses.Count -gt 1 -and $addresses[1].name) {
-                            try {
-                                $ipParts = $addresses[1].name.Split('/')
-                                if ($ipParts.Count -lt 2) { throw "Secondary IP address format is missing the CIDR prefix (e.g., /24)." }
-                                $prefix = [int]$ipParts[1]
-                                $obj.SecondaryIPAddress = $ipParts[0]
-                                $obj.SecondarySubnetMask = Convert-CidrToSubnetMask -Cidr $prefix
-                            } catch {
-                                Write-Warning "Failed to parse Secondary IP Address '$($addresses[1].name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
+                        # Loop through all addresses to handle primary, secondary, etc.
+                        for ($i = 0; $i -lt $addresses.Count; $i++) {
+                            $addressEntry = $addresses[$i]
+                            # --- FIX: Validate that the address name exists and is not empty ---
+                            # If an address is marked as inactive, set the interface to shutdown.
+							if ($addressEntry.inactive -eq 'inactive') {
+								$obj.shutdown = $true
+                                $obj.IntStatus = "down" 
+                                $obj.INTProtocolStatus = "down"
+							}
+
+ 								# Validate that the address name exists and is not empty before processing.
+                            if ($addressEntry -and -not [string]::IsNullOrWhiteSpace($addressEntry.name)) {
+                                try {
+                                    $ipParts = $addressEntry.name.Split('/')
+                                    if ($ipParts.Count -lt 2) { throw "IP address format is missing the CIDR prefix." }
+                                    
+                                    # --- FIX: Validate the IP part is not empty after splitting ---
+                                    if (-not [string]::IsNullOrWhiteSpace($ipParts[0])) {
+                                        $ip = $ipParts[0]
+                                        $prefix = [int]$ipParts[1]
+                                        $subnetMask = "$prefix"
+                                        $networkAddr = Get-NetworkAddress -IPAddress $ip -PrefixLength $prefix
+                                        $cidr = "$networkAddr/$prefix"
+
+                                        if ($i -eq 0) { # Primary IP
+                                            $obj.IPAddress = $ip
+                                            $obj.SubnetMask = $subnetMask
+                                            $obj.Cidr = $cidr
+                                            $ArrayOfIPAddresses += $obj.IPAddress
+                                        }
+                                        elseif ($i -eq 1) { # Secondary IP
+                                            $obj.SecondaryIPAddress = $ip
+                                            $obj.SecondarySubnetMask = $subnetMask
+                                            $obj.SecondaryCidr = $cidr
+                                        }
+                                    }
+                                } catch {
+                                    Write-Warning "Failed to parse IP Address '$($addressEntry.name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
+                                }
                             }
                         }
                     }
@@ -884,7 +1009,11 @@ function Get-JunosShowRunFromXML {
                         $configToApply = $groupTemplate.interfaces.interface
                         if ($configToApply) {
                             if ($configToApply.description) { $obj.Description = $configToApply.description }
-                            if ($configToApply.disable) { $obj.shutdown = $true }
+                            if ($configToApply.disable -or $configToApply.inactive -eq 'inactive') {
+                                $obj.shutdown = $true
+                                $obj.IntStatus = "down" 
+                                $obj.INTProtocolStatus = "down"                                
+                            }
                             if ($configToApply.'native-vlan-id') { $obj.NativeVlan = $configToApply.'native-vlan-id' }
 
                             foreach ($unit in @($configToApply.unit)) {
@@ -921,7 +1050,11 @@ function Get-JunosShowRunFromXML {
                 }
 
                 if ($ifaceNode.description) { $obj.Description = $ifaceNode.description }
-                if ($ifaceNode.disable) { $obj.shutdown = $true }
+                if ($ifaceNode.disable -or $ifaceNode.inactive -eq 'inactive') {
+                    $obj.shutdown = $true
+                    $obj.IntStatus = "down" 
+                    $obj.INTProtocolStatus = "down"                    
+                }
                 if ($ifaceNode.'native-vlan-id') { $obj.NativeVlan = $ifaceNode.'native-vlan-id' }
 
                 $etherOptions = $ifaceNode.'ether-options'
@@ -988,12 +1121,15 @@ function Get-JunosShowRunFromXML {
 
                     $ifaceObj.SwitchPortType       = $parentAe.SwitchPortType
                     $ifaceObj.SwitchportMode       = $parentAe.SwitchportMode
-                    $ifaceObj.SwitchportAccessVlan = $parentAe.SwitchportAccessVlan
-                    $ifaceObj.SwitchportTrunkVlan  = $parentAe.SwitchportTrunkVlan
-                    $ifaceObj.NativeVlan           = $parentAe.NativeVlan
-                    $ifaceObj.IPAddress            = $parentAe.IPAddress
-                    $ifaceObj.SubnetMask           = $parentAe.SubnetMask
-                    $ifaceObj.Cidr                 = $parentAe.Cidr
+                    $ifaceObj.SwitchportAccessVlan  = $parentAe.SwitchportAccessVlan
+                    $ifaceObj.SwitchportTrunkVlan   = $parentAe.SwitchportTrunkVlan
+                    $ifaceObj.NativeVlan            = $parentAe.NativeVlan
+                    $ifaceObj.IPAddress             = $parentAe.IPAddress
+                    $ifaceObj.SubnetMask            = $parentAe.SubnetMask
+                    $ifaceObj.Cidr                  = $parentAe.Cidr
+                    $ifaceObj.SecondaryIPAddress    = $parentAe.SecondaryIPAddress
+                    $ifaceObj.SecondarySubnetMask   = $parentAe.SecondarySubnetMask
+                    $ifaceObj.SecondaryCidr         = $parentAe.SecondaryCidr
                 }
             }
         }
@@ -1032,6 +1168,4 @@ function Get-JunosShowRunFromXML {
 
     return $Device
 }
-
-
 

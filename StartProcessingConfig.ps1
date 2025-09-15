@@ -73,6 +73,10 @@ function Create-FileHostObjects{
                     $hostid.ShowInterfaceStatus=$file.fullname
                     break
                 }
+                if($file.name -like "*show interfaces terse*"){
+                    $hostid.ShowInterfaceTerse=$file.fullname
+                    break
+                }                
                 if($file.name -like "*show interfaces detail*"){
                     $hostid.ShowInterfaceDetail=$file.fullname
                     break

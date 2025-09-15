@@ -193,6 +193,7 @@ function Create-FileObject(){
     $newObject| Add-Member -type NoteProperty -Name ShowEthernetSwitchingTable -value $null
     $newObject| Add-Member -type NoteProperty -Name ShowVlansDetail -value $null
     $newObject| Add-Member -type NoteProperty -Name ShowAssetAll -value $null
+    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceTerse -value $null # Used for Junos 'show interfaces terse'
     return $newObject
 }
 
