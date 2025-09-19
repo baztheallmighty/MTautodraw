@@ -156,6 +156,7 @@ function Process-CiscoHostFiles{
                $Device=Get-ShowMacAddressTableFromText -ShowMacAddressTable $hostid.ShowMacAddressTable -Device $Device
            }
         }
+    $Device = Update-LocalRoutesWithInterfaces -device $Device
     return $Device
 }
 

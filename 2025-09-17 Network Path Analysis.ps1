@@ -1,98 +1,3 @@
-function Create-HopObject {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Device,
-
-        [Parameter(Mandatory=$true)]
-        [ValidateSet('Reached', 'NoRoute', 'Terminated')]
-        [string]$Status,
-
-        [string]$Interface = $null,
-        [string]$Subnet = $null,
-        [string]$Gateway = $null
-    )
-
-    # This function creates a standardized 'Hop' object which represents a single step in a path trace.
-    $newObject = New-Object -TypeName PSObject
-
-    $newObject | Add-Member -Type NoteProperty -Name Device -Value $Device        # The hostname or unique identifier of the device at this hop.
-    $newObject | Add-Member -Type NoteProperty -Name Interface -Value $Interface  # The egress interface used to leave the device;
-    $newObject | Add-Member -Type NoteProperty -Name Subnet -Value $Subnet        # The subnet of the egress interface;
-    $newObject | Add-Member -Type NoteProperty -Name Gateway -Value $Gateway      # The next-hop IP address for the route;
-    $newObject | Add-Member -Type NoteProperty -Name Status -Value $Status        # The trace result at this hop ('Reached', 'NoRoute', 'Terminated').
-   
-    return $newObject
-}
-
-function Create-PairObject {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$DeviceA,
-
-        [Parameter(Mandatory=$true)]
-        [string]$DeviceIdentifierA,
-
-        [Parameter(Mandatory=$true)]
-        [string]$SubnetA,
-
-        [Parameter(Mandatory=$true)]
-        [string]$DeviceB,
-
-        [Parameter(Mandatory=$true)]
-        [string]$DeviceIdentifierB,
-
-        [Parameter(Mandatory=$true)]
-        [string]$SubnetB
-    )
-
-    $newObject = New-Object -TypeName PSObject
-
-    $newObject | Add-Member -Type NoteProperty -Name DeviceA -Value $DeviceA
-    $newObject | Add-Member -Type NoteProperty -Name DeviceIdentifierA -Value $DeviceIdentifierA
-    $newObject | Add-Member -Type NoteProperty -Name SubnetA -Value $SubnetA
-    $newObject | Add-Member -Type NoteProperty -Name DeviceB -Value $DeviceB
-    $newObject | Add-Member -Type NoteProperty -Name DeviceIdentifierB -Value $DeviceIdentifierB
-    $newObject | Add-Member -Type NoteProperty -Name SubnetB -Value $SubnetB
-    $newObject | Add-Member -Type NoteProperty -Name Symmetry -Value $null
-    $newObject | Add-Member -Type NoteProperty -Name PathType -Value $null
-
-    # --- NEW Path Properties (replaces the 8 old properties) ---
-    # An array to hold structured 'Path' objects for the A->B direction.
-    $newObject | Add-Member -Type NoteProperty -Name PathsForward -Value @()
-    # An array to hold structured 'Path' objects for the B->A direction.
-    $newObject | Add-Member -Type NoteProperty -Name PathsReverse -Value @()
-
-    return $newObject
-}
-
-function Create-PathObject {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [array]$HopArray,
-
-        [Parameter(Mandatory=$true)]
-        [int]$PathNumber
-    )
-
-    # Determine the final status of the path from its very last hop.
-    $finalStatus = if ($HopArray.Count -gt 0) { $HopArray[-1].Status } else { 'Unknown' }
-
-    # Create the new, structured Path object
-    $pathObject = [PSCustomObject]@{
-        PathNumber    = $PathNumber
-        Status        = $finalStatus
-        DevicePath    = $HopArray.Device      # Extracts all 'Device' properties into a simple array
-        InterfacePath = $HopArray.Interface  # Extracts all 'Interface' properties
-        SubnetPath    = $HopArray.Subnet      # Extracts all 'Subnet' properties
-        HopDetails    = $HopArray            # The original, full array of Hop objects for deep inspection
-    }
-
-    return $pathObject
-}
-
 # This version stores a richer object (Hostname + Interface) in the lookup table.
 function Add-IpToDeviceLookup {
     # This is a private helper function for Create-DeviceLookupTable.
@@ -136,27 +41,20 @@ function Add-IpToDeviceLookup {
             Hostname  = $CurrentDevice.hostname
             Interface = $CurrentInterface.Interface
         }
-       
+        
         if ($LogLevel -eq 'Debug') {
             $deviceAndInterfaceLog = $DeviceLookup[$Ip] | ForEach-Object { "$($_.Hostname)($($_.Interface))" } | Sort-Object -Unique
             Write-Host "[WARN] Shared IP $Ip detected on devices: $($deviceAndInterfaceLog -join ', ')" -ForegroundColor Yellow
         }
     }
 }
-
-                                    
-                                                                                                                                    
-                                                                                                                               
-         
-     
- 
 function Add-ConnectedInterfaceRoutes {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
         [array]$DeviceObjects
     )
-   
+    
     Write-Host "[PRE-FLIGHT] Ensuring all active interfaces have a connected route..." -ForegroundColor Cyan
     $addedRoutesCount = 0
 
@@ -167,7 +65,7 @@ function Add-ConnectedInterfaceRoutes {
         # --- FIX: Create and populate the HashSet in two steps for reliability ---
         # 1. Create an empty, case-insensitive HashSet first.
         $existingSubnets = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-       
+        
         # 2. Then, safely populate it from the routing table if it exists.
         if ($null -ne $device.RoutingTable) {
             foreach ($route in $device.RoutingTable) {
@@ -179,16 +77,10 @@ function Add-ConnectedInterfaceRoutes {
         }
         # --- END FIX ---
 
-                                                                                   
-                                                             
-                                                                                                                 
-
-                                                                          
-                                             
         foreach ($interface in $device.interfaces) {
             # We only care about active interfaces that have a valid CIDR subnet
             if ((-not $interface.shutdown) -and (-not [string]::IsNullOrEmpty($interface.Cidr))) {
-               
+                
                 # Now this check is safe because $existingSubnets is guaranteed to be a valid object
                 if (-not $existingSubnets.Contains($interface.Cidr)) {
                     # Create a new route object that matches the existing schema
@@ -210,7 +102,6 @@ function Add-ConnectedInterfaceRoutes {
     Write-Host "[INFO] Added $addedRoutesCount missing connected routes to the data model." -ForegroundColor Green
     return $DeviceObjects
 }
-         
 
 function Create-DeviceLookupTable {
     [CmdletBinding()]
@@ -248,7 +139,7 @@ function Create-DeviceLookupTable {
     }
 
     Write-Host "[INFO] IP lookup table created with $($deviceLookup.Count) unique IPs." -ForegroundColor Green
-   
+    
     return $deviceLookup
 }
 
@@ -292,7 +183,7 @@ function Create-RouteLookupTableLPM {
             # --- START MODIFICATION ---
             # Sort the prefix keys ONCE and store them.
             $sortedPrefixes = $deviceRoutesByPrefix.Keys | Sort-Object -Descending
-           
+            
             # Store an object containing both the routes and the pre-sorted keys.
             $RouteLookupTable[$device.hostname] = [PSCustomObject]@{
                 RoutesByPrefix = $deviceRoutesByPrefix
@@ -309,133 +200,96 @@ function Create-RouteLookupTableLPM {
 
     Write-Host "[INFO] Route lookup table created for $($RouteLookupTable.Keys.Count) devices." -ForegroundColor Green
     return $RouteLookupTable
-                                                                                                                   
-             
 }
-     
-
-                                                                                                                      
-                            
- 
 
 
-# This function is refactored from Create-ExternalVirtualDevices.
-# Instead of creating fake devices, it identifies external routes and attaches
-# metadata about them directly to the real edge devices. It also flags the
-# routes themselves for easier lookup during tracing.
-function Attach-ExternalSubnets {
+
+function Create-ExternalVirtualDevices {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
-        [array]$AllDeviceObjects, # Takes the list of real devices
+        [array]$GArrayOfObjectsFilter,
 
-                                        
-                     
-          
         [Parameter(Mandatory=$true)]
-        [hashtable]$DeviceLookupTable, # Used to determine if a gateway is internal or external
+        [hashtable]$DeviceLookupTable,
 
         [Parameter(Mandatory=$false)]
         [ValidateSet("Normal", "Debug")]
         [string]$LogLevel = "Normal"
     )
 
-    Write-Host "[INFO] Identifying external subnets and attaching to edge devices..." -ForegroundColor Green
-    $externalSubnetCount = 0
-                                    
-     
+    Write-Host "[INFO] Identifying external gateways..." -ForegroundColor Green
 
-    foreach ($device in $AllDeviceObjects) {
-        # Ensure the device has a place to store these new objects.
-        # This prevents errors if a device has no external routes.
-        $device | Add-Member -MemberType NoteProperty -Name ExternalSubnets -Value @() -Force
+    # This hashtable will group all external routes by their unique key: "OriginDeviceIdentifier_GatewayIP"
+    $externalRoutesGrouped = @{}
 
-        if ($null -eq $device.RoutingTable) {
+    foreach ($device in $GArrayOfObjectsFilter) {
+        # Skip devices that have no routing table or identifier
+        if ($null -eq $device.RoutingTable -or [string]::IsNullOrEmpty($device.hostname)) {
             continue
         }
 
         foreach ($route in $device.RoutingTable) {
-            # An external route must have a gateway, and that gateway must NOT be an IP of an internal device.
+            # An external route must have a gateway and that gateway must not be in our internal IP lookup table
             if (-not ([string]::IsNullOrEmpty($route.Gateway)) -and -not $DeviceLookupTable.ContainsKey($route.Gateway)) {
-                    
-         
+                
+                $key = "$($device.hostname)_$($route.Gateway)"
 
-                                                  
-                # This is an external route.
-                                                                                                                          
-
-                # 1. Flag the route object itself for quick identification in Get-NextHopInfo.
-                $route | Add-Member -MemberType NoteProperty -Name IsExternal -Value $true -Force
-
-                # 2. Create a structured ExternalSubnet object.
-                $externalSubnet = [PSCustomObject]@{
-                    Subnet     = $route.Subnet
-                    Gateway    = $route.Gateway
-                    IsExternal = $true
+                if (-not $externalRoutesGrouped.ContainsKey($key)) {
+                    # This is the first time we see this unique combination of an origin device and an external gateway
+                    $externalRoutesGrouped[$key] = @{
+                        OriginDevice = $device
+                        GatewayIP    = $route.Gateway
+                        Subnets      = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+                    }
                 }
-                     
-                 
-
-                # 3. Add this subnet object to the list on the current (edge) device.
-                $device.ExternalSubnets += $externalSubnet
-                $externalSubnetCount++
-         
-     
-
-                if ($LogLevel -eq 'Debug') {
-                    Write-Host "[DEBUG] Attached external subnet $($route.Subnet) (via $($route.Gateway)) to device '$($device.hostname)'." -ForegroundColor Cyan
-                }
+                
+                # Add the destination subnet for this route to the set (HashSet handles duplicates)
+                $externalRoutesGrouped[$key].Subnets.Add($route.Subnet) | Out-Null
             }
-            else {
-                 # Ensure the property exists on all routes to avoid errors.
-                 $route | Add-Member -MemberType NoteProperty -Name IsExternal -Value $false -Force
-            }
-        }
-       
-        # Deduplicate the list of external subnets on the device
-        if ($device.ExternalSubnets.Count -gt 0) {
-            $device.ExternalSubnets = $device.ExternalSubnets | Sort-Object -Property Subnet, Gateway -Unique
         }
     }
 
-    Write-Host "[INFO] Finished. Identified and attached $externalSubnetCount external subnet references." -ForegroundColor Green
-   
-    # This function modifies the objects in place, so we return the modified array.
-    return $AllDeviceObjects
+    $virtualDevices = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-                                                                                             
-                                                                                              
+    foreach ($groupKey in $externalRoutesGrouped.Keys) {
+        $group = $externalRoutesGrouped[$groupKey]
+        $originDevice = $group.OriginDevice
+        $gatewayIp = $group.GatewayIP
 
-                                                                          
-                                                                                   
-                                                                                           
-                                                     
-                                                                          
+        # Create one virtual device object per host for each unique external gateway IP found
+        $virtualDevice = Create-HostObject # Use your existing function to get the base schema
+        
+        # Set the unique hostname and identifier as per the prompt's logic
+        $virtualDevice.hostname = "virtual-$($originDevice.hostname)-$($gatewayIp)"
+        $virtualDevice.DeviceIdentifier = "virtual-$($originDevice.hostname)-$($gatewayIp)"
+        $virtualDevice.DeviceType = "Virtual Gateway"
+        $virtualDevice.Origin = "Discovered via $($originDevice.hostname)"
 
-                                                                             
-                                
-                                             
-                                                                                   
-                                                                                         
-                                            
-                                               
-                                              
-                                                      
-                                                   
+        # For each destination subnet, create a corresponding InterfaceObject
+        $virtualInterfaces = @()
+        foreach ($subnet in $group.Subnets) {
+            $virtualInterface = Create-InterfaceObject # Use your existing function
+            $virtualInterface.Interface = "virtual-route-to-$($subnet -replace '/', '_')"
+            $virtualInterface.Cidr = $subnet
+            $virtualInterface.shutdown = $false
+            $virtualInterface.IntStatus = 'up'
+            $virtualInterface.INTProtocolStatus = 'up'
+            $virtualInterfaces += $virtualInterface
+        }
+        $virtualDevice.interfaces = $virtualInterfaces
+
+        $virtualDevices.Add($virtualDevice)
+
+        if ($LogLevel -eq 'Debug') {
+            Write-Host "[DEBUG] Created virtual device '$($virtualDevice.hostname)' for external gateway $($gatewayIp) (discovered via route on $($originDevice.hostname))." -ForegroundColor Cyan
+        }
+    }
+
+    Write-Host "[INFO] Finished. Created $($virtualDevices.Count) virtual external devices." -ForegroundColor Green
+    
+    return $virtualDevices
 }
-                                                      
-
-                                           
-
-                                    
-                                                                                                                                                                                                  
-         
-     
-
-                                                                                                                   
-
-                          
- 
 function Generate-InternalPairs {
     [CmdletBinding()]
     param(
@@ -453,18 +307,18 @@ function Generate-InternalPairs {
     $pairCounter = 0
 
     # Create a flattened master list of all valid interfaces to avoid nested loops over devices.
-    $allInterfaces = [System.Collections.Generic.List[object]]::new()
+    $allInterfaces = @()
     foreach ($device in $InternalDeviceObjects) {
         if ($null -ne $device.interfaces) {
             foreach ($interface in $device.interfaces) {
                 # Check for a valid CIDR AND that the interface is not shut down.
                 if ((-not ([string]::IsNullOrEmpty($interface.Cidr))) -and (-not $interface.shutdown)) {
                     # --- CHANGE: Add DeviceIdentifier to the object ---
-                    $allInterfaces.Add([PSCustomObject]@{
+                    $allInterfaces += [PSCustomObject]@{
                         Hostname         = $device.hostname
                         DeviceIdentifier = $device.DeviceIdentifier
                         Cidr             = $interface.Cidr
-                    })
+                    }
                 }
             }
         }
@@ -487,10 +341,14 @@ function Generate-InternalPairs {
 
             if (-not $internalPairs.ContainsKey($pairKey)) {
                 # --- CHANGE: Add DeviceIdentifierA and DeviceIdentifierB to the pair object ---
-                $internalPairs[$pairKey] = Create-PairObject -DeviceA $interfaceA.Hostname `
-                    -DeviceIdentifierA $interfaceA.DeviceIdentifier -SubnetA $interfaceA.Cidr `
-                    -DeviceB $interfaceB.Hostname -DeviceIdentifierB $interfaceB.DeviceIdentifier `
-                    -SubnetB $interfaceB.Cidr
+                $internalPairs[$pairKey] = [PSCustomObject]@{
+                    DeviceA           = $interfaceA.Hostname
+                    DeviceIdentifierA = $interfaceA.DeviceIdentifier
+                    SubnetA           = $interfaceA.Cidr
+                    DeviceB           = $interfaceB.Hostname
+                    DeviceIdentifierB = $interfaceB.DeviceIdentifier
+                    SubnetB           = $interfaceB.Cidr
+                }
 
                 $pairCounter++
                 if ($LogLevel -eq 'Debug' -and $pairCounter % 5000 -eq 0) {
@@ -508,7 +366,10 @@ function Generate-EgressPairs {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
-        [array]$InternalDeviceObjects, # No longer need a separate external device list
+        [array]$InternalDeviceObjects,
+
+        [Parameter(Mandatory=$true)]
+        [array]$ExternalVirtualDevices,
 
         [Parameter(Mandatory=$false)]
         [ValidateSet("Normal", "Debug")]
@@ -516,61 +377,41 @@ function Generate-EgressPairs {
     )
 
     Write-Host "[INFO] Generating internal-to-egress pairs..." -ForegroundColor Green
-                                        
-                                    
-     
 
     $egressPairs = @{}
     $pairCounter = 0
 
-    # Create a flattened list of all valid internal interfaces first.
-    $allInternalInterfaces = [System.Collections.Generic.List[object]]::new()
-    foreach ($device in $InternalDeviceObjects) {
-        if ($null -ne $device.interfaces) {
-            foreach ($interface in $device.interfaces) {
-                if ((-not ([string]::IsNullOrEmpty($interface.Cidr))) -and (-not $interface.shutdown)) {
-                    $allInternalInterfaces.Add( [PSCustomObject]@{
-                        Hostname         = $device.hostname
-                        DeviceIdentifier = $device.DeviceIdentifier
-                        Cidr             = $interface.Cidr
-                    })
+    foreach ($internalDevice in $InternalDeviceObjects) {
+        if ($null -ne $internalDevice.interfaces) {
+            foreach ($internalInterface in $internalDevice.interfaces) {
+                if (([string]::IsNullOrEmpty($internalInterface.Cidr)) -or $internalInterface.shutdown) {
+                    continue
                 }
-            }
-        }
-    }
-   
-    # Now, iterate through all internal interfaces and pair them with every discovered external subnet.
-    foreach ($internalInt in $allInternalInterfaces) {
-        foreach ($edgeDevice in $InternalDeviceObjects) {
-            # Check if this device has any external subnets attached
-            if ($null -ne $edgeDevice.ExternalSubnets -and $edgeDevice.ExternalSubnets.Count -gt 0) {
-                foreach ($externalSubnet in $edgeDevice.ExternalSubnets) {
-                   
-                    # Do not pair an edge device's internal interface with its own external subnet.
-                    # This is typically not a valid or useful path to trace.
-                    if ($internalInt.Hostname -eq $edgeDevice.hostname) {
-                        continue
-                    }
 
-                    # Define unique identifiers for the pair
-                    $identifierA = "$($internalInt.Hostname):$($internalInt.Cidr)"
-                    # The "endpoint" for an external subnet is the edge device itself and the subnet CIDR.
-                    $identifierB = "$($edgeDevice.hostname):$($externalSubnet.Subnet)"
-                   
-                    $sortedIdentifiers = @($identifierA, $identifierB) | Sort-Object
-                    $pairKey = $sortedIdentifiers -join '_'
+                foreach ($virtualDevice in $ExternalVirtualDevices) {
+                    if ($null -ne $virtualDevice.interfaces) {
+                        foreach ($virtualInterface in $virtualDevice.interfaces) {
+                            $identifierA = "$($internalDevice.hostname):$($internalInterface.Cidr)"
+                            $identifierB = "$($virtualDevice.hostname):$($virtualInterface.Cidr)"
+                            $sortedIdentifiers = @($identifierA, $identifierB) | Sort-Object
+                            $pairKey = $sortedIdentifiers -join '_'
 
-                    if (-not $egressPairs.ContainsKey($pairKey)) {
-                        # Create the pair object.
-                        # DeviceB is the REAL edge device. SubnetB is the EXTERNAL subnet.
-                        $egressPairs[$pairKey] = Create-PairObject -DeviceA $internalInt.Hostname `
-                            -DeviceIdentifierA $internalInt.DeviceIdentifier -SubnetA $internalInt.Cidr `
-                            -DeviceB $edgeDevice.hostname -DeviceIdentifierB $edgeDevice.DeviceIdentifier `
-                            -SubnetB $externalSubnet.Subnet
-
-                        $pairCounter++
-                        if ($LogLevel -eq 'Debug' -and $pairCounter % 5000 -eq 0) {
-                            Write-Host "[DEBUG] Generated $pairCounter egress pairs..." -ForegroundColor Gray
+                            if (-not $egressPairs.ContainsKey($pairKey)) {
+                                # --- CHANGE: Add DeviceIdentifierA and DeviceIdentifierB to the pair object ---
+                                $egressPairs[$pairKey] = [PSCustomObject]@{
+                                    DeviceA           = $internalDevice.hostname
+                                    DeviceIdentifierA = $internalDevice.DeviceIdentifier
+                                    SubnetA           = $internalInterface.Cidr
+                                    DeviceB           = $virtualDevice.hostname
+                                    DeviceIdentifierB = $virtualDevice.DeviceIdentifier
+                                    SubnetB           = $virtualInterface.Cidr
+                                }
+                                
+                                $pairCounter++
+                                if ($LogLevel -eq 'Debug' -and $pairCounter % 5000 -eq 0) {
+                                    Write-Host "[DEBUG] Generated $pairCounter egress pairs..." -ForegroundColor Gray
+                                }
+                            }
                         }
                     }
                 }
@@ -578,21 +419,9 @@ function Generate-EgressPairs {
         }
     }
 
-                                              
-                                                                                           
     Write-Host "[INFO] Generated $($egressPairs.Count) egress pairs." -ForegroundColor Green
     return $egressPairs
-                             
-                         
-                     
-                 
-             
-         
 }
-
-                                                                                            
-                       
- 
 
 function Test-IpInSubnet {
     param ([string]$Ip, [string]$Cidr)
@@ -618,11 +447,6 @@ function Test-IpInSubnet {
         return $false
     }
 }
-           
-                                                                    
-                     
-     
- 
 # ===================================================================
 # ========= START: COPY AND REPLACE/ADD THE 4 FUNCTIONS BELOW =========
 # ===================================================================
@@ -639,10 +463,7 @@ function Get-NextHopInfo {
         [Parameter(Mandatory=$true)]
         [hashtable]$DeviceLookupTable,
         [Parameter(Mandatory=$true)]
-        [hashtable]$RouteLookupTableLPM,
-        # --- This parameter is still used by logic in Trace-FullPath ---
-        [Parameter(Mandatory=$true)]
-        [string]$EndDeviceName
+        [hashtable]$RouteLookupTableLPM
     )
 
     try {
@@ -656,79 +477,33 @@ function Get-NextHopInfo {
     if ($null -eq $bestRoute) {
         return [PSCustomObject]@{ Status = "No Route"; HopInfo = $null; NextHopDevices = $null }
     }
-   
+    
     $hopInfo = [PSCustomObject]@{
-        EgressInterface = $bestRoute.interface
-        GatewayUsed     = $bestRoute.gateway
+        EgressInterface = $bestRoute.Interface
+        GatewayUsed     = $bestRoute.Gateway
         RouteProtocol   = $bestRoute.RouteProtocol
         MatchedRoute    = $bestRoute.Subnet
     }
 
-    # ========================== REFACTORED LOGIC BLOCK ==========================
-    # Check the flag set by Attach-ExternalSubnets. This is the new termination
-    # condition for paths leaving the internal network.
-    if ($bestRoute.IsExternal) {
-        return [PSCustomObject]@{ Status = "Reached (External)"; HopInfo = $hopInfo; NextHopDevices = $null }
-    }
-    # ======================== END REFACTORED LOGIC BLOCK ========================
-   
     $directProtocols = @('local', 'connected', 'direct')
     if ($directProtocols -contains $bestRoute.RouteProtocol) {
         return [PSCustomObject]@{ Status = "Reached"; HopInfo = $hopInfo; NextHopDevices = $null }
     }
-    if ($bestRoute.interface -like 'Null*') {
+    if ($bestRoute.Interface -like 'Null*') {
         return [PSCustomObject]@{ Status = "Terminated"; HopInfo = $hopInfo; NextHopDevices = $null }
     }
     if ([string]::IsNullOrEmpty($bestRoute.Gateway)) {
         return [PSCustomObject]@{ Status = "No Route"; HopInfo = $hopInfo; NextHopDevices = $null }
     }
-   
     $nextHopLookup = if ($DeviceLookupTable.ContainsKey($bestRoute.Gateway)) { $DeviceLookupTable[$bestRoute.Gateway] } else { $null }
-   
     if ($null -eq $nextHopLookup) {
-        # The new model makes this an error state. If a route has a gateway, but that gateway isn't internal,
-        # it should have been flagged as 'IsExternal'. If we get here, it means there's a next-hop
-        # to an IP we don't know about, and it's not a configured external route.
         return [PSCustomObject]@{ Status = "Unknown Next Hop"; HopInfo = $hopInfo; NextHopDevices = $null }
     }
-
     $nextHopDevices = [System.Collections.Generic.List[object]]::new()
+    # The $nextHopLookup is now an array of detailed objects.
     foreach ($hopDetail in $nextHopLookup) {
-                                                                                                  
-     
-                                             
-        $nextHopDevices.Add([PSCustomObject]@{ 
-            DeviceName       = $hopDetail.Hostname
-            IngressInterface = $hopDetail.Interface 
-        })
+        $nextHopDevices.Add([PSCustomObject]@{ DeviceName = $hopDetail.Hostname; IngressInterface = $hopDetail.Interface })
     }
-
-                                                                           
-                                                                                
-                                                               
-                                           
-                                                          
-                                                      
-                                                                      
-                                                                                                                 
-         
-     
-                                                                           
-
-                                                                                                                                      
-
-                                   
-                                                                                                           
-     
-
-                                                                      
-                                            
-                                              
-                                                  
-                                                   
-          
-     
-
     return [PSCustomObject]@{ Status = "Continue"; HopInfo = $hopInfo; NextHopDevices = $nextHopDevices }
 }
 
@@ -738,9 +513,9 @@ function Create-TransitSubnetLookup {
         [Parameter(Mandatory=$true)]
         [array]$AllDeviceObjects
     )
-   
+    
     Write-Host "[INFO] Identifying transit subnets..." -ForegroundColor Green
-   
+    
     # Use a hashtable to count device members for each subnet
     $subnetMembership = @{}
 
@@ -770,42 +545,17 @@ function Create-TransitSubnetLookup {
 
     Write-Host "[INFO] Found $($transitSubnets.Count) transit subnets." -ForegroundColor Green
     return $transitSubnets
-                                                        
-                                                             
-                                                                                                      
-                                             
-                                                                      
-                                                                                                                                           
 }
-                                                                               
-                 
-             
-         
-     
-
-                                                                             
-                                                                                                            
-                                                 
-                                                                           
-                                                     
-                                                   
-         
-     
-
-                                                                                              
-                          
- 
 
 
 # --- FUNCTION 2 of 4: Trace-FullPath (Updated with Verbose Logging) ---
-
-function Trace-FullPath { # V2 with structured objects
+function Trace-FullPath {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
         [string]$StartDeviceName,
         [Parameter(Mandatory=$true)]
-        [string]$EndDeviceName,   
+        [string]$EndDeviceName,        
         [Parameter(Mandatory=$true)]
         [string]$EndSubnet,
         [Parameter(Mandatory=$true)]
@@ -823,53 +573,49 @@ function Trace-FullPath { # V2 with structured objects
         [array]$DebugTargets = @()
     )
 
-    $finalizedPaths = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $allPaths = [System.Collections.Generic.List[PSCustomObject]]::new()
     $forksToExplore = [System.Collections.Generic.Stack[PSCustomObject]]::new()
     $forksToExplore.Push(
         [PSCustomObject]@{
             PathHistory       = @()
             CurrentDeviceName = $StartDeviceName
-            IngressInterface  = "" # The starting point has no ingress interface
+            IngressInterface  = ""
         }
     )
 
-    # Explore forks until none are left, but cap at 2 found paths for performance.
-    while ($forksToExplore.Count -gt 0 -and $finalizedPaths.Count -lt 2) {
-        $currentTrace = $forksToExplore.Pop() # PathHistory on this is a list of temporary hop objects
+    while ($forksToExplore.Count -gt 0 -and $allPaths.Count -lt 2) {
+        $currentTrace = $forksToExplore.Pop()
         $path = [PSCustomObject]@{ Status = "In Progress"; Hops = [System.Collections.Generic.List[object]]::new($currentTrace.PathHistory) }
         $currentDeviceName = $currentTrace.CurrentDeviceName
         $ingressInterface = $currentTrace.IngressInterface
 
         for ($hopCount = $path.Hops.Count; $hopCount -lt $MaxHops; $hopCount++) {
             $logThisTrace = ($LogLevel -eq 'Debug') -or ($LogLevel -eq 'Specific' -and ($DebugTargets -contains $StartDeviceName -or $DebugTargets -contains $EndSubnet.Split(':')[0]))
-           
-            # The old block for handling 'virtual-*' devices is now removed.
-            # The trace terminates naturally when Get-NextHopInfo returns 'Reached (External)'.
-           
-            # Prevent routing loops
+            
+            if ($currentDeviceName -like 'virtual-*') {
+                $currentHopObject = [PSCustomObject]@{ DeviceName = $currentDeviceName; IngressInterface = $ingressInterface }
+                $path.Hops.Add($currentHopObject)
+                $path.Status = "Reached (External)"
+                if ($logThisTrace) {
+                    Write-Host "-----------------------------------------------------" -ForegroundColor DarkGray
+                    Write-Host "[TRACE] Hop $($path.Hops.Count): $currentDeviceName" -ForegroundColor White
+                    Write-Host "  - Ingress: $ingressInterface"
+                    Write-Host "  - Path Status: $($path.Status)"
+                    Write-Host "[TRACE] Path successfully exited to external destination." -ForegroundColor Green
+                }
+                break
+            }
+            
             if ($path.Hops.DeviceName -contains $currentDeviceName) {
                 $path.Status = "Loop"
                 if ($logThisTrace) { Write-Host "  [FAIL] Loop detected at $($currentDeviceName)" -ForegroundColor Red }
                 break
             }
 
-            # Create the basic hop object. It will be enriched with more data after the routing decision.
-                                                       
             $currentHopObject = [PSCustomObject]@{ DeviceName = $currentDeviceName; IngressInterface = $ingressInterface }
             $path.Hops.Add($currentHopObject)
-                                    
-                                                                                                                
-                                                                                                                                                        
-                 
-                     
-             
 
-            $decision = Get-NextHopInfo -CurrentDeviceName $currentDeviceName -DestinationSubnet $EndSubnet -DeviceLookupTable $DeviceLookupTable -RouteLookupTableLPM $RouteLookupTableLPM -EndDeviceName $EndDeviceName
-                                                                     
-                                     
-                                                                                                                        
-                     
-             
+            $decision = Get-NextHopInfo -CurrentDeviceName $currentDeviceName -DestinationSubnet $EndSubnet -DeviceLookupTable $DeviceLookupTable -RouteLookupTableLPM $RouteLookupTableLPM
 
             if ($logThisTrace) {
                 $ingressLog = if ([string]::IsNullOrEmpty($ingressInterface)) { "(Start of Trace)" } else { $ingressInterface }
@@ -878,19 +624,22 @@ function Trace-FullPath { # V2 with structured objects
                 Write-Host "  - Ingress: $ingressLog"
                 Write-Host "  - Destination: $EndSubnet"
                 if ($null -ne $decision.HopInfo) {
-                    Write-Host "  - Decision: Found best route '$($decision.HopInfo.MatchedRoute)' via [$($decision.HopInfo.RouteProtocol)]"
+                    Write-Host "  - Decision: Found best route '$($decision.HopInfo.MatchedRoute)' [$($decision.HopInfo.RouteProtocol)]"
                     if ($decision.Status -eq 'Continue') {
                         $nextDeviceNames = $decision.NextHopDevices.DeviceName -join ', '
                         Write-Host "  - Action: Exiting via interface '$($decision.HopInfo.EgressInterface)' towards gateway '$($decision.HopInfo.GatewayUsed)'"
                         Write-Host "  - Next Device(s): $nextDeviceNames"
+                    } elseif ($decision.Status -eq 'Reached') {
+                        Write-Host "  - Action: Destination is directly connected on interface '$($decision.HopInfo.EgressInterface)'."
+                    } elseif ($decision.Status -eq 'Terminated') {
+                         Write-Host "  - Action: Route terminates in Null interface '$($decision.HopInfo.EgressInterface)'."
                     }
                 } else {
                     Write-Host "  - Decision: No route found."
                 }
-                 Write-Host "  - Path Status: $($decision.Status)"
+                Write-Host "  - Path Status: $($decision.Status)"
             }
 
-            # Enrich the current hop object with the decision details
             if ($null -ne $decision.HopInfo) {
                 $currentHopObject | Add-Member -MemberType NoteProperty -Name EgressInterface -Value $decision.HopInfo.EgressInterface -Force
                 $currentHopObject | Add-Member -MemberType NoteProperty -Name GatewayUsed -Value $decision.HopInfo.GatewayUsed -Force
@@ -900,26 +649,27 @@ function Trace-FullPath { # V2 with structured objects
 
             if ($decision.Status -ne "Continue") {
                 $path.Status = $decision.Status
-                # If we reached the destination subnet on an intermediate device, add the actual endpoint device to the path.
-                if ($decision.Status -eq 'Reached' -and $currentDeviceName -ne $EndDeviceName -and $decision.HopInfo.MatchedRoute -eq $EndSubnet) {
+                # If path is 'Reached' on an intermediate device via a 'connected' route,
+                # and the subnet of that route is the SAME as the destination's subnet,
+                # then we can confidently add the final device as the last hop.
+                if ($decision.Status -eq 'Reached' -and $currentDeviceName -ne $EndDeviceName `
+                    -and $decision.HopInfo.MatchedRoute -eq $EndSubnet) {
+                    
                     $finalHopObject = [PSCustomObject]@{
-                        DeviceName       = $EndDeviceName
-                        IngressInterface = $decision.HopInfo.EgressInterface
-                        EgressInterface  = ''
-                        GatewayUsed      = ''
-                        RouteProtocol    = 'connected'
+                        DeviceName       = $EndDeviceName;
+                        IngressInterface = $decision.HopInfo.EgressInterface;
+                        EgressInterface  = '';
+                        GatewayUsed      = '';
+                        RouteProtocol    = 'connected';
                         MatchedRoute     = $EndSubnet
                     }
                     $path.Hops.Add($finalHopObject)
-                }
+                }                
                 break
             }
-                                                                  
-             
 
-            # Handle ECMP or other path forks by queuing them for later exploration
             if ($decision.NextHopDevices.Count -gt 1) {
-                for ($i = 1; $i -lt $decision.NextHopDevices.Count; $i++) {
+                for ($i = $decision.NextHopDevices.Count - 1; $i -ge 1; $i--) {
                     $nextHopInfo = $decision.NextHopDevices[$i]
                     if ($logThisTrace) { Write-Host "  [FORK] Queuing alternate path to $($nextHopInfo.DeviceName)" -ForegroundColor Magenta }
                     $forksToExplore.Push(
@@ -931,111 +681,24 @@ function Trace-FullPath { # V2 with structured objects
                     )
                 }
             }
-           
-            # Continue the trace to the next hop
+            
+            # The ingress interface is now provided directly by Get-NextHopInfo.
+            # All the complex resolution/inference logic can be removed.
             $currentDeviceName = $decision.NextHopDevices[0].DeviceName
             $ingressInterface = $decision.NextHopDevices[0].IngressInterface
         }
-
         if ($path.Status -eq "In Progress") { $path.Status = "Max Hops" }
-                                               
-                                                                                                                             
-                                                                                                                                                   
-                                                        
-                                                         
-                                                                            
-                                             
-                                             
-                                                      
-                                                     
-                     
-                                                   
-                 
-                     
-             
-
-        # --- CONVERT THE TEMPORARY PATH INTO FINAL, STRUCTURED OBJECTS ---
-        $hopObjectArray = [System.Collections.Generic.List[object]]::new()
-        for ($i = 0; $i -lt $path.Hops.Count; $i++) {
-            $tempHop = $path.Hops[$i]
-            $isLastHop = ($i -eq ($path.Hops.Count - 1))
-            $hopStatus = ''
-                                          
-                                                             
-                                                                       
-                                                                             
-                         
-                     
-                 
-             
-
-            if ($isLastHop) {
-                # Map the final path status to a valid Hop status
-                switch ($path.Status) {
-                    'Reached'             { $hopStatus = 'Reached' }
-                    'Reached (External)'{ $hopStatus = 'Reached' }
-                    'Terminated'          { $hopStatus = 'Terminated' }
-                    'No Route'            { $hopStatus = 'NoRoute' }
-                    'Unknown Next Hop'    { $hopStatus = 'NoRoute' } # Treat as a dead end
-                    default               { $hopStatus = 'Terminated' } # Loop, Max Hops etc.
-                }
-            } else {
-                # Use a placeholder status for intermediate hops to satisfy the function's mandatory parameter.
-                # The overall path status is derived from the LAST hop only, so this is safe.
-                $hopStatus = 'Reached'
-            }
-
-            $newHop = Create-HopObject -Device $tempHop.DeviceName -Status $hopStatus `
-                -Interface $tempHop.EgressInterface -Subnet $tempHop.MatchedRoute -Gateway $tempHop.GatewayUsed
-           
-            $hopObjectArray.Add($newHop)
-        }
-
-                                                                           
-        if ($hopObjectArray.Count -gt 0) {
-            $pathNumber = $finalizedPaths.Count + 1
-            $finalPathObject = Create-PathObject -HopArray $hopObjectArray -PathNumber $pathNumber
-            $finalizedPaths.Add($finalPathObject)
-        }
+        $allPaths.Add($path)
     }
-    return $finalizedPaths
-                                                                 
-                                       
-                                                                    
-                                                                  
-                                                                       
-                                                                    
-                                                                                          
-                                                                                             
+    return $allPaths
 }
-                    
-                                                                                                               
-                                                                                             
-                                      
-             
-
-                                                                                       
-                                                                                                               
-
-                                        
-         
-
-                                          
-                                                   
-                                                                                                  
-                                                 
-         
-     
-                          
- 
-
 
 
 # --- FUNCTION 3 of 4: Format-PathForConsole (New Helper Function) ---
 function Format-PathForConsole {
     param(
         [Parameter(Mandatory=$true)]
-        [array]$PathArray,
+        [psobject]$PathObject,
 
         [Parameter(Mandatory=$true)]
         [string]$Title
@@ -1043,39 +706,37 @@ function Format-PathForConsole {
 
     Write-Host "`n--- $($Title) ---" -ForegroundColor Green
     if ($null -eq $PathObject) {
+        Write-Host "Path was not traced (null)." -ForegroundColor Yellow
+        return
+    }
 
-    if ($null -eq $PathArray -or $PathArray.Count -eq 0) {
+    Write-Host "Overall Status: $($PathObject.Status)" -ForegroundColor Cyan
+    if ($null -eq $PathObject.Hops -or $PathObject.Hops.Count -eq 0) {
         Write-Host "Path has no hops."
         return
     }
 
-    foreach ($path in $PathArray) {
-        Write-Host "`n  Path #$($path.PathNumber) | Status: $($path.Status)" -ForegroundColor Cyan
-        $hopCounter = 0
-        foreach ($hop in $path.HopDetails) {
-            $hopCounter++
-            Write-Host "     [Hop $hopCounter] Device: $($hop.Device)" -ForegroundColor Yellow
-            Write-Host "       - Egress Interface : $($hop.Interface)"
-            Write-Host "       - Matched Subnet   : $($hop.Subnet)"
-            Write-Host "       - Next-Hop Gateway : $($hop.Gateway)"
-        }
-    }
+    $hopCounter = 0
+    foreach ($hop in $PathObject.Hops) {
+        $hopCounter++
+        Write-Host "  [Hop $hopCounter] Device: $($hop.DeviceName)" -ForegroundColor Yellow
+        Write-Host "    - Ingress Interface : $($hop.IngressInterface)"
+        Write-Host "    - Egress Interface  : $($hop.EgressInterface)"
+        Write-Host "    - Gateway Used      : $($hop.GatewayUsed)"
+        Write-Host "    - Matched Route     : $($hop.MatchedRoute)"
+        Write-Host "    - Route Protocol    : $($hop.RouteProtocol)"
     }
 }
-     
-     
- 
 
 
 # --- FUNCTION 4 of 4: Debug-SpecificPair (New Top-Level Debug Function) ---
-
 function Debug-SpecificPair {
     <#
     .SYNOPSIS
         Re-runs a full trace and symmetry analysis for a single, specific pair of devices/subnets.
     .DESCRIPTION
-        This function is designed for interactive debugging. It relies on the global/script 
-        variables ($DeviceLookupTable, etc.) being populated by the main script first.
+        This function is designed for interactive debugging after the main script has run at least once.
+        It relies on the global/script variables ($DeviceLookupTable, $AllDevices, etc.) being populated.
     .EXAMPLE
         Debug-SpecificPair -DeviceA 'Router-A' -SubnetA '10.1.1.0/24' -DeviceB 'Firewall-B' -SubnetB '10.2.2.0/24'
     #>
@@ -1103,44 +764,60 @@ function Debug-SpecificPair {
 
     # --- Trace Forward Path (A -> B) ---
     Write-Host "`n[PHASE] Tracing Forward Path (A -> B)..." -ForegroundColor Cyan
-    $forwardPaths = Trace-FullPath -StartDeviceName $DeviceA -EndDeviceName $DeviceB -EndSubnet $SubnetB `
+    $forwardPaths = Trace-FullPath -StartDeviceName $DeviceA -EndSubnet $SubnetB `
         -DeviceLookupTable $Script:DeviceLookupTable -RouteLookupTableLPM $Script:RouteLookupTableLPM `
         -AllDeviceObjects $Script:AllDevices -MaxHops $Script:MaxHops -LogLevel 'Debug'
 
     # --- Trace Reverse Path (B -> A) ---
     Write-Host "`n[PHASE] Tracing Reverse Path (B -> A)..." -ForegroundColor Cyan
-    $reversePaths = Trace-FullPath -StartDeviceName $DeviceB -EndDeviceName $DeviceA -EndSubnet $SubnetA `
+    $reversePaths = Trace-FullPath -StartDeviceName $DeviceB -EndSubnet $SubnetA `
         -DeviceLookupTable $Script:DeviceLookupTable -RouteLookupTableLPM $Script:RouteLookupTableLPM `
         -AllDeviceObjects $Script:AllDevices -MaxHops $Script:MaxHops -LogLevel 'Debug'
 
     # --- Build Pair Object for Symmetry Test ---
-    # The DeviceIdentifier properties are not available here, so we pass the hostname again.
-    $pairObject = Create-PairObject -DeviceA $DeviceA -DeviceIdentifierA $DeviceA -SubnetA $SubnetA `
-        -DeviceB $DeviceB -DeviceIdentifierB $DeviceB -SubnetB $SubnetB
-    $pairObject.PathsForward = $forwardPaths
-    $pairObject.PathsReverse = $reversePaths
+    $pairObject = [PSCustomObject]@{
+        DeviceA              = $DeviceA
+        SubnetA              = $SubnetA
+        DeviceB              = $DeviceB
+        SubnetB              = $SubnetB
+        ForwardPrimaryPath   = $forwardPaths[0]
+        ForwardAlternatePath = $forwardPaths[1]
+        ReversePrimaryPath   = $reversePaths[0]
+        ReverseAlternatePath = $reversePaths[1]
+    }
 
     # --- Perform Symmetry Check ---
     Write-Host "`n[PHASE] Performing Symmetry Check..." -ForegroundColor Cyan
-    $pairObject.Symmetry = if (Test-PathSymmetry -PairObject $pairObject -LogLevel 'Debug') { "Asymmetric" } else { "Symmetric" }
+    $isAsymmetric = Test-PathSymmetry -PairObject $pairObject -LogLevel 'Debug'
 
     # --- Display Formatted Results ---
     Write-Host "`n========================================================================" -ForegroundColor Magenta
-    Write-Host "                                  DETAILED PATH ANALYSIS"
+    Write-Host "                          DETAILED PATH ANALYSIS"
     Write-Host "========================================================================" -ForegroundColor Magenta
-    Format-PathForConsole -PathArray $pairObject.PathsForward -Title "FORWARD Paths (A -> B)"
-    Format-PathForConsole -PathArray $pairObject.PathsReverse -Title "REVERSE Paths (B -> A)"
+
+    Format-PathForConsole -PathObject $pairObject.ForwardPrimaryPath -Title "FORWARD Primary Path (A -> B)"
+    if ($pairObject.ForwardAlternatePath) {
+        Format-PathForConsole -PathObject $pairObject.ForwardAlternatePath -Title "FORWARD Alternate Path (A -> B)"
+    }
+    Format-PathForConsole -PathObject $pairObject.ReversePrimaryPath -Title "REVERSE Primary Path (B -> A)"
+    if ($pairObject.ReverseAlternatePath) {
+        Format-PathForConsole -PathObject $pairObject.ReverseAlternatePath -Title "REVERSE Alternate Path (B -> A)"
+    }
 
     # --- Final Verdict ---
-    $verdictColor = if ($pairObject.Symmetry -eq 'Asymmetric') { "Red" } else { "Green" }
+    $symmetryResult = if ($isAsymmetric) { "ASYMMETRIC" } else { "SYMMETRIC" }
+    $verdictColor = if ($isAsymmetric) { "Red" } else { "Green" }
     Write-Host "`n========================================================================" -ForegroundColor Magenta
-    Write-Host "  Final Verdict: " -NoNewline; Write-Host $pairObject.Symmetry -ForegroundColor $verdictColor
+    Write-Host "  Final Verdict: " -NoNewline; Write-Host $symmetryResult -ForegroundColor $verdictColor
     Write-Host "========================================================================" -ForegroundColor Magenta
 }
 
 # ===================================================================
 # ========================= END OF FUNCTIONS ========================
 # ===================================================================
+
+
+
 
 
 function Get-BestRoute {
@@ -1166,15 +843,11 @@ function Get-BestRoute {
             }
         }
     }
-   
+    
     return $null
 }
-     
 
-                
- 
-
-function Test-PathSymmetry { # V2 with structured objects
+function Test-PathSymmetry {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -1188,51 +861,89 @@ function Test-PathSymmetry { # V2 with structured objects
         [array]$DebugTargets = @()
     )
 
-    # Helper function to compare two path objects based on their device sequence.
-    function Compare-DevicePaths {
+    # Helper function to perform the granular, hop-by-hop comparison
+    function Compare-PathsGranularly {
         param($pathA, $pathB)
-        # The sequence of devices in path A should be the exact reverse of path B.
-        $reversedDevicePathB = [string[]]$pathB.DevicePath
-        [array]::Reverse($reversedDevicePathB)
-        return (Compare-Object -ReferenceObject $pathA.DevicePath -DifferenceObject $reversedDevicePathB -SyncWindow 0) -eq $null
+        
+        # Paths must have the same number of hops to be symmetric
+        if ($pathA.Hops.Count -ne $pathB.Hops.Count) {
+            return $false
+        }
+
+        $reversedHopsB = ([array]$pathB.Hops).Clone()
+        [array]::Reverse($reversedHopsB)
+
+        for ($i = 0; $i -lt $pathA.Hops.Count; $i++) {
+            $hopA = $pathA.Hops[$i]
+            $hopB = $reversedHopsB[$i]
+
+            # 1. Device names must always match.
+            if ($hopA.DeviceName -ne $hopB.DeviceName) { return $false }
+
+            # 2. The interface used to ENTER a device on the forward path must be the
+            #    same one used to EXIT it on the reverse path.
+            #    We skip this check for the very first hop (i=0) as its Ingress is not a real interface.
+            if ($i -gt 0) {
+                if ($hopA.IngressInterface -ne $hopB.EgressInterface) { return $false }
+            }
+
+            # 3. The interface used to EXIT a device on the forward path must be the
+            #    same one used to ENTER it on the reverse path.
+            #    We skip this check for the very last hop, as its Egress is a termination
+            #    status, not a physical interface link.
+            if ($i -lt ($pathA.Hops.Count - 1)) {
+                if ($hopA.EgressInterface -ne $hopB.IngressInterface) { return $false }
+            }
+        }
+
+        # If all relevant hop comparisons passed, the paths are symmetric
+        return $true
     }
 
     $logThisCheck = ($LogLevel -eq 'Debug') -or `
-                         ($LogLevel -eq 'Specific' -and ($DebugTargets -contains $PairObject.DeviceA -or $DebugTargets -contains $PairObject.DeviceB))
-
+                    ($LogLevel -eq 'Specific' -and ($DebugTargets -contains $PairObject.DeviceA -or $DebugTargets -contains $PairObject.DeviceB))
+    
     if ($logThisCheck) {
-        Write-Host "[DEBUG] Checking symmetry for $($PairObject.DeviceA) <-> $($PairObject.DeviceB)" -ForegroundColor Gray
+        Write-Host "[DEBUG] Checking symmetry for $($PairObject.DeviceA):($($PairObject.SubnetA)) <-> $($PairObject.DeviceB):($($PairObject.SubnetB))" -ForegroundColor Gray
     }
-
-    # Simplified Same-Subnet Check
+    
+    # --- START: NEW INTELLIGENT SAME-SUBNET OVERRIDE ---
     if ($PairObject.SubnetA -eq $PairObject.SubnetB) {
-        # If two devices are in the same subnet, communication is assumed to be symmetric.
-        if ($logThisCheck) { Write-Host "[DEBUG] Symmetric: Overridden due to same-subnet communication." -ForegroundColor Gray }
-        return $false # Not asymmetric
+        $fwdPath = $PairObject.ForwardPrimaryPath
+        $revPath = $PairObject.ReversePrimaryPath
+
+        # Ensure both paths were traced successfully before checking their properties
+        if ($null -ne $fwdPath -and $fwdPath.Hops.Count -gt 0 -and $null -ne $revPath -and $revPath.Hops.Count -gt 0) {
+            
+            # Get the routing protocol used by the source device in each direction
+            $fwdProtocol = $fwdPath.Hops[0].RouteProtocol
+            $revProtocol = $revPath.Hops[0].RouteProtocol
+            $directProtocols = @('local', 'connected', 'direct')
+
+            # If BOTH devices use a simple connected route, it's definitively symmetric.
+            if ($directProtocols -contains $fwdProtocol -and $directProtocols -contains $revProtocol) {
+                if ($logThisCheck) {
+                    Write-Host "[DEBUG] Symmetric: Overridden due to direct same-subnet communication." -ForegroundColor Gray
+                }
+                return $false # Return $false, meaning the path is NOT asymmetric.
+            }
+        }
     }
+    # --- END OF NEW LOGIC ---
 
     # --- Check 1: Outcome Asymmetry ---
-    $forwardPrimary = @($PairObject.PathsForward) | Select-Object -First 1
-    $reversePrimary = @($PairObject.PathsReverse) | Select-Object -First 1
-
-    # Case: One path was traced, the other was not. Per the new rule, this is Symmetric.
-    if (($null -eq $forwardPrimary) -ne ($null -eq $reversePrimary)) {
-        if ($logThisCheck) { Write-Host "[DEBUG] Symmetric: Overridden as one path was successful while the other was not traced." }
-        return $false # Not Asymmetric
-    }
-
-    # Case: Both paths were traced, but their outcomes differ. This is Asymmetric.
-    # This check is safe because the above 'if' ensures that if one path is $null, the other must also be $null.
-    if ($null -ne $forwardPrimary -and $forwardPrimary.Status -ne $reversePrimary.Status) {
-        if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: Primary path statuses do not match ('$($forwardPrimary.Status)' vs '$($reversePrimary.Status)')." }
+    $forwardPrimary = $PairObject.ForwardPrimaryPath
+    $reversePrimary = $PairObject.ReversePrimaryPath
+    if ($null -eq $forwardPrimary -or $null -eq $reversePrimary -or $forwardPrimary.Status -ne $reversePrimary.Status) {
+        if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: Primary path statuses do not match ('$($forwardPrimary.Status)' vs '$($reversePrimary.Status)')." -ForegroundColor Yellow }
         return $true # Asymmetric
     }
 
     # --- Check 2: Redundancy Asymmetry ---
-    $forwardPaths = @($PairObject.PathsForward)
-    $reversePaths = @($PairObject.PathsReverse)
+    $forwardPaths = @( @($PairObject.ForwardPrimaryPath, $PairObject.ForwardAlternatePath) | Where-Object { $null -ne $_ } )
+    $reversePaths = @( @($PairObject.ReversePrimaryPath, $PairObject.ReverseAlternatePath) | Where-Object { $null -ne $_ } )
     if ($forwardPaths.Count -ne $reversePaths.Count) {
-        if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: Path counts do not match ($($forwardPaths.Count) vs $($reversePaths.Count))." }
+        if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: Path counts do not match ($($forwardPaths.Count) vs $($reversePaths.Count))." -ForegroundColor Yellow }
         return $true # Asymmetric
     }
 
@@ -1245,10 +956,10 @@ function Test-PathSymmetry { # V2 with structured objects
 
         for ($i = 0; $i -lt $availableReversePaths.Count; $i++) {
             $revPath = $availableReversePaths[$i]
-            if (Compare-DevicePaths -pathA $fwdPath -pathB $revPath) {
+            if (Compare-PathsGranularly -pathA $fwdPath -pathB $revPath) {
                 $foundMatch = $true
                 $matchIndex = $i
-                if ($logThisCheck) { Write-Host "[DEBUG] Found symmetric match for forward path ($($fwdPath.DevicePath -join '->'))" }
+                if ($logThisCheck) { Write-Host "[DEBUG] Found symmetric match for forward path ($($fwdPath.Hops.DeviceName -join '->'))" -ForegroundColor Gray }
                 break
             }
         }
@@ -1259,7 +970,7 @@ function Test-PathSymmetry { # V2 with structured objects
         }
         else {
             # This forward path has no symmetric partner in the reverse set
-            if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: No symmetric partner found for forward path ($($fwdPath.DevicePath -join '->'))." }
+            if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: No symmetric partner found for forward path ($($fwdPath.Hops.DeviceName -join '->'))." -ForegroundColor Yellow }
             return $true # Asymmetric
         }
     }
@@ -1276,136 +987,108 @@ function Test-PathSymmetry { # V2 with structured objects
 
 
 
+
+
 function Export-TraceAnalysisToHTML {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
         [hashtable]$PopulatedPairs,
+
         [Parameter(Mandatory=$true)]
         [string]$OutputPath,
+
         [Parameter(Mandatory=$true)]
-        [System.Collections.Generic.HashSet[string]]$TransitSubnets,
-        [Parameter(Mandatory=$true)]
-        [array]$AllDeviceObjects
+        [System.Collections.Generic.HashSet[string]]$TransitSubnets
     )
 
+    # --- Step 1: Transform Data into a Flat Array for JSON ---
     $exportData = [System.Collections.Generic.List[object]]::new()
 
-    # Create a fast lookup table of all known external subnets.
-    $allExternalSubnets = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($device in $AllDeviceObjects) {
-        if ($null -ne $device.ExternalSubnets) {
-            foreach ($extSubnet in $device.ExternalSubnets) {
-                $allExternalSubnets.Add($extSubnet.Subnet) | Out-Null
-            }
-        }
-    }
-
-    # Helper function to generate the detailed Device+Interface path string
+    # This helper function builds the detailed interface path string
     $formatPathWithInterfaces = {
-        param($PathObject)
-        if ($null -eq $PathObject) { return $PathObject.Status }
-        $hops = $PathObject.HopDetails
+        param($pathObject)
+        if ($null -eq $pathObject -or $null -eq $pathObject.Hops -or $pathObject.Hops.Count -eq 0) { return "" }
+        $hops = $pathObject.Hops
+        if ($hops.Count -eq 1) { return $hops[0].DeviceName }
         $pathParts = [System.Collections.Generic.List[string]]::new()
-        for ($i = 0; $i -lt $hops.Count; $i++) {
-            $currentHop = $hops[$i]
-            $ingressInterface = if ($i -gt 0) { $hops[$i - 1].Interface } else { $null }
-
-            # Wrap device name in a span with data attributes for the tooltip
-            $deviceSpan = "<span class=`"device-hover`" data-device-name=`"$($currentHop.Device)`" data-matched-route=`"$($currentHop.Subnet)`">$($currentHop.Device)</span>"
-            
-            $interfaceParts = @()
-            if (-not [string]::IsNullOrEmpty($ingressInterface)) { $interfaceParts += "In: $ingressInterface" }
-            if (-not [string]::IsNullOrEmpty($currentHop.Interface)) { $interfaceParts += "Out: $($currentHop.Interface)" }
-            
-            $displayString = $deviceSpan
-            if ($interfaceParts.Count -gt 0) {
-                $displayString += " ($($interfaceParts -join ', '))"
-            }
-            $pathParts.Add($displayString)
+        $pathParts.Add("$($hops[0].DeviceName) (Out: $($hops[0].EgressInterface))")
+        for ($i = 1; $i -lt ($hops.Count - 1); $i++) {
+            $pathParts.Add("$($hops[$i].DeviceName) (In: $($hops[$i].IngressInterface), Out: $($hops[$i].EgressInterface))")
         }
+        $pathParts.Add("$($hops[-1].DeviceName) (In: $($hops[-1].IngressInterface))")
         return $pathParts -join ' -> '
     }
 
-    # --- NEW HELPER: Generate Host-Only path with hover pop-ups ---
-    $formatPathAsHostOnly = {
-        param($PathObject)
-        if ($null -eq $PathObject) { return "N/A" }
-        $pathParts = [System.Collections.Generic.List[string]]::new()
-        foreach ($hop in $PathObject.HopDetails) {
-            $pathParts.Add("<span class=`"device-hover`" data-device-name=`"$($hop.Device)`" data-matched-route=`"$($hop.Subnet)`">$($hop.Device)</span>")
-        }
-        return $pathParts -join ' -> '
-    }
-
-
-    # --- MODIFIED HELPER: Generate IP path with hover pop-ups on gateways ---
+    # This helper function builds the IP/Gateway path string
     $formatPathWithIPs = {
-        param($PathObject, $startSubnet)
-        if ($null -eq $PathObject) { return $PathObject.Status }
-        # The first part is the start subnet, not hoverable
-        $ipParts = @($startSubnet)
-        # For each hop, add the gateway, but wrap it in a span linked to the device *at that hop*
-        foreach ($hop in $PathObject.HopDetails) {
-            if (-not [string]::IsNullOrEmpty($hop.Gateway)) {
-                $ipParts += "<span class=`"device-hover`" data-device-name=`"$($hop.Device)`" data-matched-route=`"$($hop.Subnet)`">$($hop.Gateway)</span>"
-            }
-        }
+        param($pathObject, $startSubnet)
+        if ($null -eq $pathObject -or $null -eq $pathObject.Hops -or $pathObject.Hops.Count -eq 0) { return "" }
+        $ipParts = @($startSubnet.Split('/')[0])
+        $pathObject.Hops | ForEach-Object { if (-not [string]::IsNullOrEmpty($_.GatewayUsed)) { $ipParts += $_.GatewayUsed } }
         return $ipParts -join ' -> '
     }
 
+
     foreach ($key in $PopulatedPairs.Keys) {
         $pair = $PopulatedPairs[$key]
+        
+        $pathType = if ($pair.DeviceA.StartsWith('virtual-') -or $pair.DeviceB.StartsWith('virtual-')) { 'External' } else { 'Internal' }
 
-        # A pair is 'External' if either of its subnets is in our external subnet lookup.
-        $pathType = if ($allExternalSubnets.Contains($pair.SubnetA) -or $allExternalSubnets.Contains($pair.SubnetB)) { 'External' } else { 'Internal' }
-        $pair.PathType = $pathType
-
-        $maxPathCount = [Math]::Max($pair.PathsForward.Count, $pair.PathsReverse.Count)
-
-        if ($maxPathCount -eq 0) { # Handle cases where no paths were found in either direction
-            $maxPathCount = 1
+        # --- Primary Path Data ---
+        $primaryRow = [PSCustomObject]@{
+            PairKey            = $key
+            PathRole           = "Primary"
+            PathType           = $pathType
+            DeviceA            = $pair.DeviceA
+            DeviceA_Identifier = $pair.DeviceIdentifierA
+            SubnetA            = $pair.SubnetA
+            SubnetA_IsTransit  = $TransitSubnets.Contains($pair.SubnetA)
+            DeviceB            = $pair.DeviceB
+            DeviceB_Identifier = $pair.DeviceIdentifierB
+            SubnetB            = $pair.SubnetB
+            SubnetB_IsTransit  = $TransitSubnets.Contains($pair.SubnetB)
+            PathAtoB_Interface = & $formatPathWithInterfaces $pair.ForwardPrimaryPath
+            PathAtoB_Host      = if ($pair.ForwardPrimaryPath) { $pair.ForwardPrimaryPath.Hops.DeviceName -join ' -> ' } else { "" }
+            PathAtoB_IP        = & $formatPathWithIPs $pair.ForwardPrimaryPath $pair.SubnetA
+            ResultAtoB         = if ($pair.ForwardPrimaryPath) { $pair.ForwardPrimaryPath.Status } else { "Not Traced" }
+            PathBtoA_Interface = & $formatPathWithInterfaces $pair.ReversePrimaryPath
+            PathBtoA_Host      = if ($pair.ReversePrimaryPath) { $pair.ReversePrimaryPath.Hops.DeviceName -join ' -> ' } else { "" }
+            PathBtoA_IP        = & $formatPathWithIPs $pair.ReversePrimaryPath $pair.SubnetB
+            ResultBtoA         = if ($pair.ReversePrimaryPath) { $pair.ReversePrimaryPath.Status } else { "Not Traced" }
+            Symmetry           = if ($pair.IsAsymmetric) { "Asymmetric" } else { "Symmetric" }
         }
+        $exportData.Add($primaryRow)
 
-        for ($i = 0; $i -lt $maxPathCount; $i++) {
-            $fwdPath = $pair.PathsForward[$i] # This will be null if index is out of bounds
-            $revPath = $pair.PathsReverse[$i] # This will be null if index is out of bounds
-
-            $row = [PSCustomObject]@{
+        # --- Secondary Path Data (if it exists) ---
+        if ($pair.ForwardAlternatePath -or $pair.ReverseAlternatePath) {
+            $secondaryRow = [PSCustomObject]@{
                 PairKey            = $key
-                PathRole           = if ($i -eq 0) { "Primary" } else { "Alternate" }
+                PathRole           = "Secondary"
                 PathType           = $pathType
-                # --- MODIFICATION: Wrap device names in spans for interface pop-up ---
-                DeviceA            = "<span class='device-info-hover' data-device-name='$($pair.DeviceA)'>$($pair.DeviceA)</span>"
+                DeviceA            = $pair.DeviceA
                 DeviceA_Identifier = $pair.DeviceIdentifierA
                 SubnetA            = $pair.SubnetA
                 SubnetA_IsTransit  = $TransitSubnets.Contains($pair.SubnetA)
-                DeviceB            = "<span class='device-info-hover' data-device-name='$($pair.DeviceB)'>$($pair.DeviceB)</span>"
+                DeviceB            = $pair.DeviceB
                 DeviceB_Identifier = $pair.DeviceIdentifierB
                 SubnetB            = $pair.SubnetB
                 SubnetB_IsTransit  = $TransitSubnets.Contains($pair.SubnetB)
-                # --- MODIFICATION: Use new/updated helpers for all path formats ---
-                PathAtoB_Interface = & $formatPathWithInterfaces $fwdPath
-                PathAtoB_Host      = & $formatPathAsHostOnly $fwdPath
-                PathAtoB_IP        = & $formatPathWithIPs $fwdPath $pair.SubnetA
-                ResultAtoB         = if ($fwdPath) { $fwdPath.Status } else { "Not Traced" }
-                PathBtoA_Interface = & $formatPathWithInterfaces $revPath
-                PathBtoA_Host      = & $formatPathAsHostOnly $revPath
-                PathBtoA_IP        = & $formatPathWithIPs $revPath $pair.SubnetB
-                ResultBtoA         = if ($revPath) { $revPath.Status } else { "Not Traced" }
-                Symmetry           = $pair.Symmetry
-                # --- ADDITION: Add raw device names for filtering ---
-                DeviceA_Raw        = $pair.DeviceA
-                DeviceB_Raw        = $pair.DeviceB
+                PathAtoB_Interface = & $formatPathWithInterfaces $pair.ForwardAlternatePath
+                PathAtoB_Host      = if ($pair.ForwardAlternatePath) { $pair.ForwardAlternatePath.Hops.DeviceName -join ' -> ' } else { "" }
+                PathAtoB_IP        = & $formatPathWithIPs $pair.ForwardAlternatePath $pair.SubnetA
+                ResultAtoB         = if ($pair.ForwardAlternatePath) { $pair.ForwardAlternatePath.Status } else { "Not Traced" }
+                PathBtoA_Interface = & $formatPathWithInterfaces $pair.ReverseAlternatePath
+                PathBtoA_Host      = if ($pair.ReverseAlternatePath) { $pair.ReverseAlternatePath.Hops.DeviceName -join ' -> ' } else { "" }
+                PathBtoA_IP        = & $formatPathWithIPs $pair.ReverseAlternatePath $pair.SubnetB
+                ResultBtoA         = if ($pair.ReverseAlternatePath) { $pair.ReverseAlternatePath.Status } else { "Not Traced" }
+                Symmetry           = if ($pair.IsAsymmetric) { "Asymmetric" } else { "Symmetric" }
             }
-            $exportData.Add($row)
+            $exportData.Add($secondaryRow)
         }
     }
 
     $jsonData = $exportData | ConvertTo-Json -Depth 10 -Compress
-    # --- MODIFICATION: Add 'interfaces' to the exported device data for the new pop-up ---
-    $deviceDataForJson = $AllDeviceObjects | Select-Object hostname, RoutingTable, interfaces
-    $jsonDeviceData = $deviceDataForJson | ConvertTo-Json -Depth 5 -Compress
 
 $htmlTemplate = @'
 <!DOCTYPE html>
@@ -1419,9 +1102,7 @@ $htmlTemplate = @'
         .header-container { display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 20px;}
         #controls, #legend { background-color: #252526; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; align-items: center; border: 1px solid #333; }
         #controls div { display: flex; flex-direction: column; }
-        #controls input, #controls select, #controls button { background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box;}
-        #controls button { cursor: pointer; text-align: center; }
-        #controls button.active { background-color: #007acc; border-color: #007acc; font-weight: bold; }
+        #controls input, #controls select { background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box;}
         #controls label { margin-bottom: 5px; font-size: 0.9em; color: #aaa; }
         #pagination { text-align: center; margin-bottom: 20px; }
         #pagination button { margin: 0 10px; background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
@@ -1446,15 +1127,6 @@ $htmlTemplate = @'
         dl { display: grid; grid-template-columns: 150px 1fr; gap: 10px 20px; }
         dt { font-weight: bold; color: #4ec9b0; }
         dd { margin: 0; }
-        .device-hover, .device-info-hover { cursor: help; text-decoration: underline; text-decoration-style: dotted; }
-        #routeTooltip { display: none; position: absolute; z-index: 1001; width: auto; }
-        .tooltip-content { position: relative; background-color: #2d2d2d; border: 1px solid #555; border-radius: 5px; padding: 10px; max-width: 850px; max-height: 400px; overflow: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-        #routeTooltip.pinned .tooltip-content { border: 2px solid #007acc; }
-        #routeTooltip table { table-layout: auto; width: 100%; }
-        #routeTooltip th, #routeTooltip td { font-size: 0.8em; padding: 5px; border-bottom: 1px solid #444; white-space: nowrap; }
-        #routeTooltip .highlight-route td { background-color: #005a9e; color: #fff; }
-        .tooltip-close { position: absolute; top: -12px; right: -8px; font-size: 1.5em; color: #ccc; cursor: pointer; font-weight: bold; background-color: #3c3c3c; border-radius: 50%; width: 25px; height: 25px; line-height: 23px; text-align: center; border: 1px solid #555; z-index: 1002; }
-        .tooltip-close:hover { color: #fff; background-color: #f44747; }
     </style>
 </head>
 <body>
@@ -1477,7 +1149,6 @@ $htmlTemplate = @'
             <option value="Host">Host Only</option>
             <option value="IP">IP Only</option>
         </select></div>
-        <div><label for="toggleRouteViewBtn">Interface/Routing Table Pop-up</label><button id="toggleRouteViewBtn">Disabled</button></div>
     </div>
     <div id="pagination">
         <button id="prevBtn">Previous</button>
@@ -1503,8 +1174,6 @@ $htmlTemplate = @'
         <tbody></tbody>
     </table>
 
-    <div id="routeTooltip"><div class="tooltip-content"></div></div>
-
     <div id="helpModal" class="modal-overlay hidden" onclick="if (event.target === this) closeHelpModal()">
         <div class="modal-content">
             <span class="modal-close" onclick="closeHelpModal()">&times;</span>
@@ -1525,8 +1194,6 @@ $htmlTemplate = @'
                 <dd>Filters based on the final outcome of the path trace for either direction.</dd>
                 <dt>Path Type</dt>
                 <dd>Filters the type of device pairing. "Internal" pairs involve two internal devices. "External" pairs involve at least one external (virtual) gateway.</dd>
-                <dt>Interface/Routing Table Pop-up</dt>
-                <dd>Enables or disables the feature to show a device's routing table (in the path columns) or its interface list (in the Device A/B columns) when you hover over its name.</dd>
             </dl>
 
             <h3>Result Definitions</h3>
@@ -1554,24 +1221,22 @@ $htmlTemplate = @'
 
     <script>
         const allData = ##JSON_DATA##;
-        const allDeviceData = ##JSON_DEVICE_DATA##;
-        const deviceMap = new Map(allDeviceData.map(d => [d.hostname, d]));
         let currentFilteredData = [];
         let currentPage = 1;
         const rowsPerPage = 200;
         let debounceTimer;
-        let isRouteViewEnabled = false;
-        let hideTooltipTimer = null;
-        let pinnedTooltip = false;
 
         allData.forEach(row => {
-            // Add raw device names to searchable string, since the display properties now contain HTML
-            row.searchableString = Object.values(row).join(' ').toLowerCase() + ` ${row.DeviceA_Raw} ${row.DeviceB_Raw}`;
+            row.searchableString = Object.values(row).join(' ').toLowerCase();
         });
 
         const helpModal = document.getElementById('helpModal');
-        function openHelpModal() { helpModal.classList.remove('hidden'); }
-        function closeHelpModal() { helpModal.classList.add('hidden'); }
+        function openHelpModal() {
+            helpModal.classList.remove('hidden');
+        }
+        function closeHelpModal() {
+            helpModal.classList.add('hidden');
+        }
 
         const searchText = document.getElementById('searchText');
         const pathTypeFilter = document.getElementById('pathTypeFilter');
@@ -1584,152 +1249,17 @@ $htmlTemplate = @'
         const subnetBFilter = document.getElementById('subnetBFilter');
         const pathViewFilter = document.getElementById('pathViewFilter');
         const tableBody = document.querySelector("#dataTable tbody");
-        const toggleBtn = document.getElementById('toggleRouteViewBtn');
-        const tooltip = document.getElementById('routeTooltip');
-        const tooltipContent = tooltip.querySelector('.tooltip-content');
 
-        toggleBtn.addEventListener('click', () => {
-            isRouteViewEnabled = !isRouteViewEnabled;
-            toggleBtn.textContent = isRouteViewEnabled ? 'Enabled' : 'Disabled';
-            toggleBtn.classList.toggle('active', isRouteViewEnabled);
-            if (!isRouteViewEnabled && pinnedTooltip) {
-                unpinTooltip();
-            }
-        });
-
-        const showRoutingTooltip = (target, isClick) => {
-            const deviceName = target.dataset.deviceName;
-            const matchedRoute = target.dataset.matchedRoute;
-            const device = deviceMap.get(deviceName);
-            
-            let contentHtml = '';
-            if (!device || !device.RoutingTable || device.RoutingTable.length === 0) {
-                contentHtml = `No routing data for <b>${deviceName}</b>`;
-            } else {
-                let tableHtml = `<b>Routing Table: ${deviceName}</b><table><thead><tr><th>Subnet</th><th>Gateway</th><th>Interface</th><th>Protocol</th></tr></thead><tbody>`;
-                device.RoutingTable.forEach(route => {
-                    const highlightClass = route.Subnet === matchedRoute ? 'class="highlight-route"' : '';
-                    tableHtml += `<tr ${highlightClass}>
-                        <td>${route.Subnet || ''}</td>
-                        <td>${route.gateway || ''}</td>
-                        <td>${route.interface || ''}</td>
-                        <td>${route.RouteProtocol || ''}</td>
-                    </tr>`;
-                });
-                tableHtml += `</tbody></table>`;
-                contentHtml = tableHtml;
-            }
-            return contentHtml;
-        };
-        
-        const showInterfaceTooltip = (target, isClick) => {
-            const deviceName = target.dataset.deviceName;
-            const device = deviceMap.get(deviceName);
-
-            let contentHtml = '';
-            if (!device || !device.interfaces || device.interfaces.length === 0) {
-                contentHtml = `No interface data for <b>${deviceName}</b>`;
-            } else {
-                let listHtml = `<b>Interfaces: ${deviceName}</b><ul style="margin: 5px 0 0 15px; padding: 0; list-style-type: none;">`;
-                device.interfaces.forEach(intf => {
-                    if (!intf.shutdown && intf.Cidr) {
-                        listHtml += `<li>${intf.Interface}: ${intf.Cidr}</li>`;
-                    }
-                });
-                listHtml += '</ul>';
-                contentHtml = listHtml;
-            }
-            return contentHtml;
-        };
-
-        const showTooltip = (target, isClick, contentGenerator) => {
-            if (!isRouteViewEnabled) return;
-            if (pinnedTooltip && !isClick) return;
-
-            clearTimeout(hideTooltipTimer);
-            if (pinnedTooltip) unpinTooltip();
-
-            tooltipContent.innerHTML = contentGenerator(target, isClick);
-            tooltip.style.display = 'block';
-
-            if (isClick) {
-                tooltip.classList.add('pinned');
-                pinnedTooltip = true;
-                const closeButton = document.createElement('span');
-                closeButton.className = 'tooltip-close';
-                closeButton.innerHTML = '&times;';
-                tooltip.appendChild(closeButton);
-                closeButton.addEventListener('click', unpinTooltip);
-            }
-
-            const highlightedRow = tooltipContent.querySelector('.highlight-route');
-            if (highlightedRow) {
-                const scroller = tooltipContent;
-                scroller.scrollTop = highlightedRow.offsetTop - (scroller.clientHeight / 2) + (highlightedRow.offsetHeight / 2);
-            }
-        };
-
-        const hideTooltip = () => {
-            if (pinnedTooltip) return;
-            tooltip.style.display = 'none';
-        };
-
-        const unpinTooltip = () => {
-            tooltip.classList.remove('pinned');
-            pinnedTooltip = false;
-            tooltip.style.display = 'none';
-            const closeBtn = tooltip.querySelector('.tooltip-close');
-            if(closeBtn) closeBtn.remove();
-        }
-
-        tableBody.addEventListener('mouseover', (e) => {
-            let contentGenerator = null;
-            if (e.target.matches('.device-hover')) contentGenerator = showRoutingTooltip;
-            if (e.target.matches('.device-info-hover')) contentGenerator = showInterfaceTooltip;
-            
-            if (contentGenerator) {
-                showTooltip(e.target, false, contentGenerator);
-                tooltip.style.left = `${e.pageX + 15}px`;
-                tooltip.style.top = `${e.pageY + 15}px`;
-            }
-        });
-
-        tableBody.addEventListener('mouseout', (e) => {
-            if (e.target.matches('.device-hover') || e.target.matches('.device-info-hover')) {
-                clearTimeout(hideTooltipTimer);
-                hideTooltipTimer = setTimeout(hideTooltip, 200);
-            }
-        });
-        
-        tableBody.addEventListener('click', (e) => {
-            let contentGenerator = null;
-            if (e.target.matches('.device-hover')) contentGenerator = showRoutingTooltip;
-            if (e.target.matches('.device-info-hover')) contentGenerator = showInterfaceTooltip;
-
-            if (contentGenerator) {
-                e.preventDefault();
-                showTooltip(e.target, true, contentGenerator);
-                tooltip.style.left = `${e.pageX + 15}px`;
-                tooltip.style.top = `${e.pageY + 15}px`;
-            }
-        });
-
-        tooltip.addEventListener('mouseover', () => clearTimeout(hideTooltipTimer));
-        tooltip.addEventListener('mouseout', () => {
-            clearTimeout(hideTooltipTimer);
-            hideTooltipTimer = setTimeout(hideTooltip, 200);
-        });
-        
         function applyFilters() {
             const search = searchText.value.toLowerCase();
             const pathType = pathTypeFilter.value;
             const symmetry = symmetryFilter.value;
             const transit = transitFilter.value;
             const result = resultFilter.value;
-            const deviceA_val = deviceAFilter.value;
-            const subnetA_val = subnetAFilter.value;
-            const deviceB_val = deviceBFilter.value;
-            const subnetB_val = subnetBFilter.value;
+            const deviceA = deviceAFilter.value;
+            const subnetA = subnetAFilter.value;
+            const deviceB = deviceBFilter.value;
+            const subnetB = subnetBFilter.value;
             
             const pairs = new Map();
             allData.forEach(row => {
@@ -1746,42 +1276,14 @@ $htmlTemplate = @'
                     const pathTypeMatch = (pathType === 'all') || (row.PathType === pathType);
                     const symmetryMatch = (symmetry === 'all') || (row.Symmetry.toLowerCase().startsWith(symmetry));
                     const transitMatch = (transit === 'all') ||
-                                         (transit === 'transit' && (row.SubnetA_IsTransit || row.SubnetB_IsTransit)) ||
-                                         (transit === 'nontransit' && !row.SubnetA_IsTransit && !row.SubnetB_IsTransit);
+                                       (transit === 'transit' && (row.SubnetA_IsTransit || row.SubnetB_IsTransit)) ||
+                                       (transit === 'nontransit' && !row.SubnetA_IsTransit && !row.SubnetB_IsTransit);
                     const resultMatch = (result === 'all') || (row.ResultAtoB === result) || (row.ResultBtoA === result);
-
-                    // --- NEW FILTERING LOGIC ---
-                    const deviceA_isSet = deviceA_val !== 'all';
-                    const deviceB_isSet = deviceB_val !== 'all';
-                    let deviceMatch = false;
-                    if (!deviceA_isSet && !deviceB_isSet) {
-                        deviceMatch = true;
-                    } else if (deviceA_isSet && !deviceB_isSet) {
-                        deviceMatch = row.DeviceA_Raw === deviceA_val || row.DeviceB_Raw === deviceA_val;
-                    } else if (!deviceA_isSet && deviceB_isSet) {
-                        deviceMatch = row.DeviceA_Raw === deviceB_val || row.DeviceB_Raw === deviceB_val;
-                    } else { // Both are set
-                        deviceMatch = (row.DeviceA_Raw === deviceA_val && row.DeviceB_Raw === deviceB_val) ||
-                                      (row.DeviceA_Raw === deviceB_val && row.DeviceB_Raw === deviceA_val);
-                    }
-                    
-                    const subnetA_isSet = subnetA_val !== 'all';
-                    const subnetB_isSet = subnetB_val !== 'all';
-                    let subnetMatch = false;
-                    if (!subnetA_isSet && !subnetB_isSet) {
-                        subnetMatch = true;
-                    } else if (subnetA_isSet && !subnetB_isSet) {
-                        subnetMatch = row.SubnetA === subnetA_val || row.SubnetB === subnetA_val;
-                    } else if (!subnetA_isSet && subnetB_isSet) {
-                         subnetMatch = row.SubnetA === subnetB_val || row.SubnetB === subnetB_val;
-                    } else { // Both are set
-                         subnetMatch = (row.SubnetA === subnetA_val && row.SubnetB === subnetB_val) ||
-                                       (row.SubnetA === subnetB_val && row.SubnetB === subnetA_val);
-    
-                    }
-                    // --- END NEW FILTERING LOGIC ---
-
-                    return searchMatch && pathTypeMatch && symmetryMatch && transitMatch && resultMatch && deviceMatch && subnetMatch;
+                    const deviceAMatch = (deviceA === 'all') || row.DeviceA === deviceA;
+                    const subnetAMatch = (subnetA === 'all') || row.SubnetA === subnetA;
+                    const deviceBMatch = (deviceB === 'all') || row.DeviceB === deviceB;
+                    const subnetBMatch = (subnetB === 'all') || row.SubnetB === subnetB;
+                    return searchMatch && pathTypeMatch && symmetryMatch && transitMatch && resultMatch && deviceAMatch && subnetAMatch && deviceBMatch && subnetBMatch;
                 });
 
                 if (isMatch) {
@@ -1808,8 +1310,9 @@ $htmlTemplate = @'
                 let rowSpan = 1;
 
                 if (isFirstInPair) {
-                    const pairRows = currentFilteredData.filter(r => r.PairKey === row.PairKey);
-                    rowSpan = pairRows.length;
+                    if (i + 1 < paginatedData.length && paginatedData[i+1].PairKey === row.PairKey) {
+                        rowSpan = 2;
+                    }
                 }
                 
                 const tr = document.createElement('tr');
@@ -1818,12 +1321,12 @@ $htmlTemplate = @'
                 const resultAtoB_class = "result-" + (row.ResultAtoB || "unknown").replace(/\s/g, '-').replace(/[()]/g, '');
                 const resultBtoA_class = "result-" + (row.ResultBtoA || "unknown").replace(/\s/g, '-').replace(/[()]/g, '');
 
-                let deviceADisplay = row.DeviceA; // Already contains HTML span
-                if (row.DeviceA_Identifier && row.DeviceA_Identifier !== row.DeviceA_Raw) {
+                let deviceADisplay = row.DeviceA;
+                if (row.DeviceA_Identifier && row.DeviceA_Identifier !== row.DeviceA) {
                     deviceADisplay += ` (${row.DeviceA_Identifier})`;
                 }
-                let deviceBDisplay = row.DeviceB; // Already contains HTML span
-                if (row.DeviceB_Identifier && row.DeviceB_Identifier !== row.DeviceB_Raw) {
+                let deviceBDisplay = row.DeviceB;
+                if (row.DeviceB_Identifier && row.DeviceB_Identifier !== row.DeviceB) {
                     deviceBDisplay += ` (${row.DeviceB_Identifier})`;
                 }
                 
@@ -1877,9 +1380,9 @@ $htmlTemplate = @'
             symmetryFilter.innerHTML = '<option value="all">All Symmetries</option><option value="asymmetric">Asymmetric Only</option><option value="symmetric">Symmetric Only</option>';
             transitFilter.innerHTML = '<option value="all">All Subnet Types</option><option value="transit">Transit Only</option><option value="nontransit">Non-Transit Only</option>';
             populateSelect(resultFilter, 'ResultAtoB', 'Results');
-            populateSelect(deviceAFilter, 'DeviceA_Raw', 'Device A');
+            populateSelect(deviceAFilter, 'DeviceA', 'Device A');
             populateSelect(subnetAFilter, 'SubnetA', 'Subnet A');
-            populateSelect(deviceBFilter, 'DeviceB_Raw', 'Device B');
+            populateSelect(deviceBFilter, 'DeviceB', 'Device B');
             populateSelect(subnetBFilter, 'SubnetB', 'Subnet B');
         }
 
@@ -1905,17 +1408,18 @@ $htmlTemplate = @'
 </html>
 '@
 
-    $finalHtml = $htmlTemplate.Replace('##JSON_DATA##', $jsonData).Replace('##JSON_DEVICE_DATA##', $jsonDeviceData)
-
+    $htmlContent = $htmlTemplate.Replace('##JSON_DATA##', $jsonData)
 
     try {
-        Set-Content -Path $OutputPath -Value $finalHtml -Encoding UTF8
+        Set-Content -Path $OutputPath -Value $htmlContent -Encoding UTF8
         Write-Host "[INFO] Successfully exported analysis to '$OutputPath'" -ForegroundColor Green
     }
     catch {
         Write-Error "[ERROR] Failed to write to '$OutputPath'. Error: $_"
     }
 }
+
+
 
 
 
@@ -1967,13 +1471,10 @@ $GArrayOfObjectsFilter = Add-ConnectedInterfaceRoutes -DeviceObjects $GArrayOfOb
 $deviceLookupLogLevel = & $getLogLevel "DeviceLookup"
 $DeviceLookupTable = Create-DeviceLookupTable -GArrayOfObjectsFilter $GArrayOfObjectsFilter -LogLevel $deviceLookupLogLevel
 
-# The 'Attach-ExternalSubnets' function now handles external route discovery.
-# It modifies the $GArrayOfObjectsFilter in-place and flags routes, so we re-assign the variable.
-$externalSubnetLogLevel = & $getLogLevel "ExternalSubnet"
-$GArrayOfObjectsFilter = Attach-ExternalSubnets -AllDeviceObjects $GArrayOfObjectsFilter -DeviceLookupTable $DeviceLookupTable -LogLevel $externalSubnetLogLevel
+$virtualDeviceLogLevel = & $getLogLevel "VirtualDevice"
+$virtualDevices = Create-ExternalVirtualDevices -GArrayOfObjectsFilter $GArrayOfObjectsFilter -DeviceLookupTable $DeviceLookupTable -LogLevel $virtualDeviceLogLevel
 
-# There are no more 'virtualDevices'. All devices are the real devices from the filtered list.
-$AllDevices = $GArrayOfObjectsFilter
+$AllDevices = $GArrayOfObjectsFilter + $virtualDevices
 
 
 # --- Call the function to identify transit subnets ---
@@ -1982,7 +1483,7 @@ $transitSubnets = Create-TransitSubnetLookup -AllDeviceObjects $AllDevices
 $routeLookupLogLevel = & $getLogLevel "RouteLookup"
 $RouteLookupTableLPM = Create-RouteLookupTableLPM -AllDeviceObjects $AllDevices -LogLevel $routeLookupLogLevel
 
-Write-Host "[INFO] Data preparation complete. Processed $($GArrayOfObjectsFilter.Count) devices and their external routes." -ForegroundColor Green
+Write-Host "[INFO] Data preparation complete. Found $($GArrayOfObjectsFilter.Count) devices, created $($virtualDevices.Count) virtual devices." -ForegroundColor Green
 
 
 # =================================================================
@@ -1992,8 +1493,7 @@ Write-Host "`n[PHASE] Starting pair generation..." -ForegroundColor Cyan
 $pairGenLogLevel = & $getLogLevel "PairGeneration"
 
 $internalPairs = Generate-InternalPairs -InternalDeviceObjects $GArrayOfObjectsFilter -LogLevel $pairGenLogLevel
-# Generate-EgressPairs now works off the modified $GArrayOfObjectsFilter which contains ExternalSubnets.
-$egressPairs = Generate-EgressPairs -InternalDeviceObjects $GArrayOfObjectsFilter -LogLevel $pairGenLogLevel
+$egressPairs = Generate-EgressPairs -InternalDeviceObjects $GArrayOfObjectsFilter -ExternalVirtualDevices $virtualDevices -LogLevel $pairGenLogLevel
 
 # Combine the two hashtables of pairs into one master hashtable
 $allPairs = $internalPairs.Clone()
@@ -2002,59 +1502,50 @@ foreach ($key in $egressPairs.Keys) {
         $allPairs[$key] = $egressPairs[$key]
     }
 }
- 
 
 Write-Host "[INFO] Pair generation complete. Found $($allPairs.Count) total unique pairs to trace." -ForegroundColor Green
 
+
 # =================================================================
-# PHASE 3: Path Tracing and Symmetry Analysis (Parallel Version)
+# PHASE 3: Path Tracing and Symmetry Analysis
 # =================================================================
 Write-Host "`n[PHASE] Starting path tracing for all $($allPairs.Count) pairs..." -ForegroundColor Cyan
 $traceLogLevel = & $getLogLevel "PathTrace"
 $symmetryLogLevel = & $getLogLevel "SymmetryCheck"
+$pairCounter = 0
+$totalPairs = $allPairs.Count
 
-# Define a throttle limit to avoid overwhelming your system. A good starting point is the number of CPU cores.
-$ThrottleLimit = [System.Environment]::ProcessorCount
-
-# Use a thread-safe dictionary to collect results from multiple threads
-$resultsDictionary = [System.Collections.Concurrent.ConcurrentDictionary[string, psobject]]::new()
-
-# Convert the hashtable keys to an array to be used in the parallel pipeline
-$pairKeys = $allPairs.Keys | ForEach-Object { $_ }
-
-$pairKeys | ForEach-Object -Parallel {
-    # Inside a parallel script block, we must pass in variables using the '$using:' scope.
-    $key = $_
+foreach ($key in $allPairs.Keys) {
+    $pair = $allPairs[$key]
+    $pairCounter++
     
-    # --- FIX: First, reference the hashtable from the parent scope, then perform the lookup. ---
-    $pair = ($using:allPairs)[$key]
-
+    # Simple progress indicator
+    if ($pairCounter % 100 -eq 0) {
+        Write-Progress -Activity "Tracing Paths" -Status "Processing pair $pairCounter of $totalPairs" -PercentComplete (($pairCounter / $totalPairs) * 100)
+    }
+    
     # --- Trace Forward Path (A -> B) ---
     $forwardPaths = Trace-FullPath -StartDeviceName $pair.DeviceA -EndDeviceName $pair.DeviceB -EndSubnet $pair.SubnetB `
-        -DeviceLookupTable $using:DeviceLookupTable -RouteLookupTableLPM $using:RouteLookupTableLPM `
-        -AllDeviceObjects $using:AllDevices -MaxHops $using:MaxHops -LogLevel $using:traceLogLevel -DebugTargets $using:DebugTargets
+        -DeviceLookupTable $DeviceLookupTable -RouteLookupTableLPM $RouteLookupTableLPM `
+        -AllDeviceObjects $AllDevices -MaxHops $MaxHops -LogLevel $traceLogLevel -DebugTargets $DebugTargets
     
     # --- Trace Reverse Path (B -> A) ---
     $reversePaths = Trace-FullPath -StartDeviceName $pair.DeviceB -EndDeviceName $pair.DeviceA -EndSubnet $pair.SubnetA `
-        -DeviceLookupTable $using:DeviceLookupTable -RouteLookupTableLPM $using:RouteLookupTableLPM `
-        -AllDeviceObjects $using:AllDevices -MaxHops $using:MaxHops -LogLevel $using:traceLogLevel -DebugTargets $using:DebugTargets
+        -DeviceLookupTable $DeviceLookupTable -RouteLookupTableLPM $RouteLookupTableLPM `
+        -AllDeviceObjects $AllDevices -MaxHops $MaxHops -LogLevel $traceLogLevel -DebugTargets $DebugTargets
     
-    # Add the structured path arrays to the pair object
-    $pair.PathsForward = $forwardPaths
-    $pair.PathsReverse = $reversePaths
-
+    # Add the results to the pair object
+    $pair | Add-Member -MemberType NoteProperty -Name ForwardPrimaryPath -Value $forwardPaths[0] -Force
+    $pair | Add-Member -MemberType NoteProperty -Name ForwardAlternatePath -Value $forwardPaths[1] -Force
+    $pair | Add-Member -MemberType NoteProperty -Name ReversePrimaryPath -Value $reversePaths[0] -Force
+    $pair | Add-Member -MemberType NoteProperty -Name ReverseAlternatePath -Value $reversePaths[1] -Force
+    
     # --- Perform Symmetry Check ---
-    $isAsymmetric = Test-PathSymmetry -PairObject $pair -LogLevel $using:symmetryLogLevel -DebugTargets $using:DebugTargets
-    $pair.Symmetry = if ($isAsymmetric) { "Asymmetric" } else { "Symmetric" }
+    $isAsymmetric = Test-PathSymmetry -PairObject $pair -LogLevel $symmetryLogLevel -DebugTargets $DebugTargets
+    $pair | Add-Member -MemberType NoteProperty -Name IsAsymmetric -Value $isAsymmetric -Force
+}
 
-    # Add the completed pair object to the thread-safe dictionary
-    $using:resultsDictionary[$key] = $pair
-
-} -ThrottleLimit $ThrottleLimit
-
-# After the parallel loop finishes, copy the results back to the original hashtable
-$resultsDictionary.Keys | ForEach-Object { $allPairs[$_] = $resultsDictionary[$_] }
-
+Write-Progress -Activity "Tracing Paths" -Completed
 Write-Host "[INFO] Path tracing and analysis complete." -ForegroundColor Green
 
 # =================================================================
@@ -2063,9 +1554,7 @@ Write-Host "[INFO] Path tracing and analysis complete." -ForegroundColor Green
 Write-Host "`n[PHASE] Generating HTML report..." -ForegroundColor Cyan
 
 $OutputPath="$(get-date -Format yyyyMMdd-hhmmss)Analysis.html"
-Export-TraceAnalysisToHTML -PopulatedPairs $allPairs -OutputPath $OutputPath -TransitSubnets $transitSubnets -AllDeviceObjects $AllDevices
+Export-TraceAnalysisToHTML -PopulatedPairs $allPairs -OutputPath $OutputPath -TransitSubnets $transitSubnets
 
 Write-Host "`n[PHASE] Analysis complete." -ForegroundColor Cyan
-
-
 

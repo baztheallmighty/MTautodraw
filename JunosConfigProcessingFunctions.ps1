@@ -99,6 +99,7 @@ function Process-JunosHostFiles{
         #if ($hostid.ShowVlansDetail -and (Test-Path -Path $hostid.ShowVlansDetail)) {
         #    $device = Get-JunosVlansFromDetailXML -JunosVlansFile $hostid.ShowVlansDetail -Device $device
         #}
+        $Device = Update-LocalRoutesWithInterfaces -device $Device
         return $device
 }
 

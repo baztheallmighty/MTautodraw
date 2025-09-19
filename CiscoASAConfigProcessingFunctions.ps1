@@ -72,7 +72,7 @@ function Process-CiscoASAHostFiles{
             Add-HostDebugText -HostObject $Device "Processing Cisco ASA show bgp summary:$($hostid.ShowIPBGPSummary)"
             $Device=Get-BGPSummaryFromText -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
         }
-
+        $Device = Update-LocalRoutesWithInterfaces -device $Device
         return $device
 }
 

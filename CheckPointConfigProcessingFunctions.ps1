@@ -63,6 +63,7 @@ function Process-CheckPointHostFiles{
         Add-HostDebugText -HostObject $Device  "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
         $device=Get-CheckpointShowRouteFromText -device $device -ShowRouteFile $hostid.ShowRouteAll
     }
+    $Device = Update-LocalRoutesWithInterfaces -device $Device
     return $device
 }
 

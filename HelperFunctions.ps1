@@ -24,6 +24,53 @@ function Start-CleanupAndExit {
     Stop-Transcript
 }
 
+#
+# This function iterates through a device's routes. If a route is local, connected, or direct
+# and is missing an interface, it attempts to find the correct egress interface by matching
+# the route's destination network with the configured interface subnets.
+#
+function Update-LocalRoutesWithInterfaces {
+    param (
+        [parameter(Mandatory=$true)]
+        [PSObject]$device
+    )
+
+    # Ensure we have the necessary data to proceed.
+    if (-not $device.RoutingTable -or -not $device.interfaces) {
+        Add-HostDebugText -HostObject $device "Skipping local route update; routing table or interfaces not found." -BackgroundColor Yellow
+        return $device
+    }
+
+    # Filter for interfaces that have a network address (CIDR) for efficient searching.
+    $routableInterfaces = $device.interfaces | Where-Object { -not [string]::IsNullOrEmpty($_.Cidr) }
+
+    if ($routableInterfaces.Count -eq 0) {
+        Add-HostDebugText -HostObject $device "Skipping local route update; no routable interfaces with CIDR found." -BackgroundColor Yellow
+        return $device
+    }
+
+    # Iterate directly through each route that needs an interface assigned.
+    # Changes to $route will modify the object within $device.RoutingTable.
+    foreach ($route in $device.RoutingTable | Where-Object {
+        ('local', 'connected', 'direct' -contains $_.RouteProtocol) -and [string]::IsNullOrEmpty($_.interface)
+    }) {
+        # The destination subnet of the route we need to match.
+        $destinationSubnet = $route.Subnet
+
+        # Find the first interface whose network contains the route's destination.
+        foreach ($interface in $routableInterfaces) {
+            # Use the existing Find-Subnet utility to check if the destination is within the interface's network.
+            if ((Find-Subnet -addr1 $interface.Cidr -addr2 $destinationSubnet).condition) {
+                $route.interface = $interface.Interface
+                # Once found, we can stop searching for this route.
+                break
+            }
+        }
+    }
+
+    # Return the device object, now with updated routes.
+    return $device
+}
 
 #This Checks if the interface is a known valid interface type
 #It returns true if so

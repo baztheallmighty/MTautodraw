@@ -49,7 +49,7 @@ function Process-PaloAltoHostFiles {
     }
 
     # (Future processing functions for other Palo Alto commands like routes, etc., would be called here)
-
+    $Device = Update-LocalRoutesWithInterfaces -device $Device
     return $Device
 }
 
