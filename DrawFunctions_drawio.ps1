@@ -1073,20 +1073,25 @@ function Add-DrawioSpanningTreeHost {
             $vlanChunk = $vlanArray[$i..$endIndex]
             $formattedVlanLines += ($vlanChunk -join ", ")
         }
+        # Extract Root Priority for this VLAN group (take from first instance)
+        $rootPriority = if ($group.Group[0].RootIDPriority) { $group.Group[0].RootIDPriority } else { "N/A" }
 
         # --- START: Text Formatting Logic ---
         # This section creates the requested format by combining the title with the first line.
         $vlanTitleAndFirstLine = "<b>VLAN(s):</b> " + $formattedVlanLines[0]
         $remainingVlanLines = if ($formattedVlanLines.Count -gt 1) { $formattedVlanLines[1..($formattedVlanLines.Count - 1)] } else { @() }
         $multilineVlans = ($vlanTitleAndFirstLine + $remainingVlanLines) -join "<br>"
-
         $rootBridgeId = $group.Name
-        $vlanBoxText = "<b>Root:</b> $($rootBridgeId)<br><br>$($multilineVlans)"
+        # Add root priority line before VLAN details
+        $vlanBoxText = "<b>Root:</b> $($rootBridgeId)<br><b>Priority:</b> $rootPriority<br><br>$($multilineVlans)"
+        
         # --- END: Text Formatting Logic ---
 
         $baseHeight = 55
         $heightPerVlanLine = 18
-        $calculatedHeight = $baseHeight + (($formattedVlanLines.Count - 1) * $heightPerVlanLine)
+        # Add 1 extra line for the new Priority row
+        $extraLines = 1
+        $calculatedHeight = $baseHeight + (($formattedVlanLines.Count - 1 + $extraLines) * $heightPerVlanLine)
 
         $firstLineLength = ("VLAN(s): " + $formattedVlanLines[0]).Length
         $otherLinesMaxLength = if ($remainingVlanLines.Count -gt 0) { ($remainingVlanLines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum } else { 0 }

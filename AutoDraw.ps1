@@ -94,7 +94,8 @@ $GLibrariesToLoad=@(
     "CiscoASAConfigProcessingFunctions.ps1",
     "StartProcessingConfig.ps1",
     "JunosConfigProcessingFunctions.ps1",
-    "PaloAltoConfigProcessingFunctions.ps1"
+    "PaloAltoConfigProcessingFunctions.ps1",
+    "Network Path Analysis.ps1"
 )
 
 #Check all the templates exist
@@ -195,8 +196,15 @@ if($GExportData){
         $t
     } | select DeviceIdentifier,cidr,routedvlan,networkname,partentobject,DeviceInVlan | export-csv "$($GOutPutDirectory)cidr.csv" -NoTypeInformation
 
-    #$GArrayOfObjects | ConvertTo-Json -Depth 10 | Out-File "$($GOutPutDirectory)Objects.json" -Encoding utf8
 }
+
+# 2. Construct a full, unique file path for the report
+$reportFileName = "$((Get-Date).ToString('yyyyMMdd-HHmmss'))-Analysis.html"
+$fullReportPath = Join-Path -Path $GOutPutDirectory -ChildPath $reportFileName
+
+
+# 3. Call the analysis function with the specified output path
+Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $fullReportPath -Verbose
 
 
 if($GDrawMultipleDevicesDiagram){

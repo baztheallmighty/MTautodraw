@@ -598,21 +598,21 @@ function Get-JunosShowInterfaceTerseFromXML {
 
 
 #This takes and array of vlans and vlan name to search for and returns the vlan id. AKA 0 - 4096.
-function Get-JunosVlanFromVLANArray{
-    param (
-		[parameter(Mandatory=$true)]
-		$VlanArray,
-        $VlanName,
-        $Device
-    )
-    foreach($vlan in $VlanArray){
-        if($VlanName -eq $vlan.name){
-            return $vlan.number
-        }
-    }
-    Add-HostDebugText -HostObject $Device "Cant find vlan name in list. $($VlanName) in $($VlanArray)" -ForegroundColor red
-    return $null
-}
+#function Get-JunosVlanFromVLANArray{
+#    param (
+#		[parameter(Mandatory=$true)]
+#		$VlanArray,
+#        $VlanName,
+#        $Device
+#    )
+#    foreach($vlan in $VlanArray){
+#        if($VlanName -eq $vlan.name){
+#            return $vlan.number
+#        }
+#    }
+#    Add-HostDebugText -HostObject $Device "Cant find vlan name in list. $($VlanName) in $($VlanArray)" -ForegroundColor red
+#    return $null
+#}
 
 
 

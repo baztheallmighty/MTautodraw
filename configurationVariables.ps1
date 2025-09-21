@@ -27,6 +27,11 @@ $GPathToPythonExe="$($GPathToScript)\python\python.exe"
 #Path to Python script for converting config with TextFSM.
 $GPathToPythonTextFSMScript="$($GPathToScript)TextFSM.py"
 
+#Path the Bitvantage dll
+$GBitvantageNetworkPrefixDLL="$($GPathToScript)Bitvantage.InternetProtocol.NetworkPrefixLookup\Bitvantage.InternetProtocol.NetworkPrefix.dll"
+$GBitvantageNetworkPrefixLookupDLL="$($GPathToScript)Bitvantage.InternetProtocol.NetworkPrefixLookup\Bitvantage.InternetProtocol.NetworkPrefixLookup.dll"
+
+
 #This is the path to the TextFSm Templates. These are used to by a small python script to convert cisco config to Objects.
 #See https://pyneng.readthedocs.io/en/latest/book/21_textfsm/textfsm_examples.html for more details.
 #Templates come from here: https://github.com/networktocode/ntc-templates

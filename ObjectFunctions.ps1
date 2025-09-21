@@ -17,110 +17,100 @@
 
 #This contains all of the object definitions.
 
-
-
-
-
-
-function Create-ShowIPArpObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name PROTOCOL -value $null                      #PROTOCOL
-    $newObject| Add-Member -type NoteProperty -Name ipaddress -value $null                     #ADDRESS
-    $newObject| Add-Member -type NoteProperty -Name AGE -value $null                           #AGE
-    $newObject| Add-Member -type NoteProperty -Name MAC -value $null                           #MAC
-    $newObject| Add-Member -type NoteProperty -Name TYPE -value $null                          #TYPE
-    $newObject| Add-Member -type NoteProperty -Name INTERFACE -value $null                     #normally a vlan interface
-    $newObject| Add-Member -type NoteProperty -Name VendorCompanyName -value $null             #VendorCompanyName
-    $newObject| Add-Member -type NoteProperty -Name Cidr -value $null                          #cidr
-    return $newObject
+function Create-ShowIPArpObject() {
+    return [PSCustomObject]@{
+        PROTOCOL          = $null #PROTOCOL
+        ipaddress         = $null #ADDRESS
+        AGE               = $null #AGE
+        MAC               = $null #MAC
+        TYPE              = $null #TYPE
+        INTERFACE         = $null #normally a vlan interface
+        VendorCompanyName = $null #VendorCompanyName
+        Cidr              = $null #cidr
+    }
 }
 
-
-
-function Create-ShowVersionObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name OS -value $null                     #VERSION | OS
-    $newObject| Add-Member -type NoteProperty -Name ROMMON -value $null                 #ROMMON
-    $newObject| Add-Member -type NoteProperty -Name Hostname -value $null               #HOSTNAME
-    $newObject| Add-Member -type NoteProperty -Name Uptime -value $null                 #UPTIME
-    $newObject| Add-Member -type NoteProperty -Name UptimeYear -value $null             #UPTIME_YEARS
-    $newObject| Add-Member -type NoteProperty -Name UptimeWeeks -value $null            #UPTIME_WEEKS
-    $newObject| Add-Member -type NoteProperty -Name UptimeDays -value $null             #UPTIME_DAYS
-    $newObject| Add-Member -type NoteProperty -Name UpdateHours -value $null            #UPTIME_HOURS
-    $newObject| Add-Member -type NoteProperty -Name UptimeMinutes -value $null          #UPTIME_MINUTES
-    $newObject| Add-Member -type NoteProperty -Name ReasonForRelod -value $null         #RELOAD_REASON | LAST_REBOOT_REASON
-    $newObject| Add-Member -type NoteProperty -Name Image -value $null                  #RUNNING_IMAGE | BOOT_IMAGE
-    $newObject| Add-Member -type NoteProperty -Name Hardware -value @()                 #HARDWARE | PLATFORM
-    $newObject| Add-Member -type NoteProperty -Name Serial -value @()                   #SERIAL
-    $newObject| Add-Member -type NoteProperty -Name ConfigRegister -value $null         #CONFIG_REGISTER
-    $newObject| Add-Member -type NoteProperty -Name MacAddressArray -value @()          #MAC
-    $newObject| Add-Member -type NoteProperty -Name LastRestarted -value $null          #RESTARTED
-    $newObject| Add-Member -type NoteProperty -Name Type -value $null                   #OS type: XE-IOS,NXOS,IOS
-    return $newObject
+function Create-ShowVersionObject() {
+    return [PSCustomObject]@{
+        OS               = $null #VERSION | OS
+        ROMMON           = $null #ROMMON
+        Hostname         = $null #HOSTNAME
+        Uptime           = $null #UPTIME
+        UptimeYear       = $null #UPTIME_YEARS
+        UptimeWeeks      = $null #UPTIME_WEEKS
+        UptimeDays       = $null #UPTIME_DAYS
+        UpdateHours      = $null #UPTIME_HOURS
+        UptimeMinutes    = $null #UPTIME_MINUTES
+        ReasonForRelod   = $null #RELOAD_REASON | LAST_REBOOT_REASON
+        Image            = $null #RUNNING_IMAGE | BOOT_IMAGE
+        Hardware         = @() #HARDWARE | PLATFORM
+        Serial           = @() #SERIAL
+        ConfigRegister   = $null #CONFIG_REGISTER
+        MacAddressArray  = @() #MAC
+        LastRestarted    = $null #RESTARTED
+        Type             = $null #OS type: XE-IOS,NXOS,IOS
+    }
 }
 
 
 #LLDP Neighbour object
 #Data from show cdp neighbours details
-function Create-LLDPNeighborObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name PartnerEthernetInterface -value $null
-    $newObject| Add-Member -type NoteProperty -Name InterfaceLocalDevice -value $null               #LOCAL_INTERFACE this is the interface on the local device
-    $newObject| Add-Member -type NoteProperty -Name ChassisID -value $null
-    $newObject| Add-Member -type NoteProperty -Name InterfaceRemoteDevice -value $null              #Hostname_PORT_ID remote port id
-    $newObject| Add-Member -type NoteProperty -Name NeighborInterfaceDescription -value $null       #Hostname_INTERFACE
-    $newObject| Add-Member -type NoteProperty -Name Hostname -value $null
-    $newObject| Add-Member -type NoteProperty -Name SystemDescription -value $null
-    $newObject| Add-Member -type NoteProperty -Name Capabilities -value $null
-    $newObject| Add-Member -type NoteProperty -Name ManagementIP -value $null
-    $newObject| Add-Member -type NoteProperty -Name VLAN -value $null
-    $newObject| Add-Member -type NoteProperty -Name SERIAL -value $null
-    $newObject| Add-Member -type NoteProperty -Name PortID -value $null                             #The port id normally is just a mac address. This can be used for matching show lldp neighbors to show lldp neighbors details
-    $newObject| Add-Member -type NoteProperty -Name ParentObject -value $null                       #This will be filled for each host object created from LLDP Neighbors config data
-    $newObject| Add-Member -type NoteProperty -Name HasCDPNeighborEntry -value $false               #This device has a cdp neighbors entry already. This is used to not draw duplicate entries from CDP neighbors and LLDP Neighbors
-    return $newObject
+function Create-LLDPNeighborObject() {
+    return [PSCustomObject]@{
+        PartnerEthernetInterface   = $null
+        InterfaceLocalDevice       = $null #LOCAL_INTERFACE this is the interface on the local device
+        ChassisID                  = $null
+        InterfaceRemoteDevice      = $null #Hostname_PORT_ID remote port id
+        NeighborInterfaceDescription = $null #Hostname_INTERFACE
+        Hostname                   = $null
+        SystemDescription          = $null
+        Capabilities               = $null
+        ManagementIP               = $null
+        VLAN                       = $null
+        SERIAL                     = $null
+        PortID                     = $null #The port id normally is just a mac address. This can be used for matching show lldp neighbors to show lldp neighbors details
+        ParentObject               = $null #This will be filled for each host object created from LLDP Neighbors config data
+        HasCDPNeighborEntry        = $false #This device has a cdp neighbors entry already. This is used to not draw duplicate entries from CDP neighbors and LLDP Neighbors
+    }
 }
-
-
 
 #CDP Neighbour object
 #Data from show cdp neighbours details
-function Create-CDPNeighborObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name PartnerEthernetInterface -value $null
-    $newObject| Add-Member -type NoteProperty -Name DeviceID                 -value $null
-    $newObject| Add-Member -type NoteProperty -Name SystemName               -value $null
-    $newObject| Add-Member -type NoteProperty -Name InterfaceAddress         -value $null
-    $newObject| Add-Member -type NoteProperty -Name Platform                 -value $null
-    $newObject| Add-Member -type NoteProperty -Name InterfaceLocalDevice     -value $null
-    $newObject| Add-Member -type NoteProperty -Name InterfaceRemoteDevice    -value $null
-    $newObject| Add-Member -type NoteProperty -Name Version                  -value $null
-    $newObject| Add-Member -type NoteProperty -Name NativeVLAN               -value $null
-    $newObject| Add-Member -type NoteProperty -Name Duplex                   -value $null
-    $newObject| Add-Member -type NoteProperty -Name MTU                      -value $null
-    $newObject| Add-Member -type NoteProperty -Name PhysicalLocation         -value $null
-    $newObject| Add-Member -type NoteProperty -Name InterfaceIPAddresses     -value $null
-    $newObject| Add-Member -type NoteProperty -Name Capabilities		     -value $null
-    $newObject| Add-Member -type NoteProperty -Name ParentObject             -value $null                #This will be filled for each host object created from CDPNeighbors config data
-    return $newObject
+function Create-CDPNeighborObject() {
+    return [PSCustomObject]@{
+        PartnerEthernetInterface = $null
+        DeviceID                 = $null
+        SystemName               = $null
+        InterfaceAddress         = $null
+        Platform                 = $null
+        InterfaceLocalDevice     = $null
+        InterfaceRemoteDevice    = $null
+        Version                  = $null
+        NativeVLAN               = $null
+        Duplex                   = $null
+        MTU                      = $null
+        PhysicalLocation         = $null
+        InterfaceIPAddresses     = $null
+        Capabilities             = $null
+        ParentObject             = $null #This will be filled for each host object created from CDPNeighbors config data
+    }
 }
 
-
 #Data from show ip route
-function Create-RouteObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name RouteProtocol -value $null         #BGP,EIRGP,OSPF,static,etc
-    $newObject| Add-Member -type NoteProperty -Name RouteSubType -value $null          #OSPF O1/O2, IS-IS L1/L2
-    $newObject| Add-Member -type NoteProperty -Name Subnet -value $null                #The subnet we are routing to.
-    $newObject| Add-Member -type NoteProperty -Name gateway -value $null               #The gateway IP for this Subnet
-    $newObject| Add-Member -type NoteProperty -Name defaultgateway -value $false       #Is this a default gateway?
-    $newObject| Add-Member -type NoteProperty -Name interface -value $null             #The interface if any that this
-    $newObject| Add-Member -type NoteProperty -Name GatewayCidr -value $null           #Calculate the gateway subnet to make it easier to connect, Note:This comes from the show run data.
-    $newObject| Add-Member -type NoteProperty -Name VRF -value $null                   #VRF for the route
-    $newObject| Add-Member -type NoteProperty -Name DISTANCE -value $null              #Nexus routes have a DISTANCE
-    $newObject| Add-Member -type NoteProperty -Name METRIC -value $null                #Nexus routes have a METRIC
-    $newObject| Add-Member -type NoteProperty -Name GatewayLink -value $null                #Nexus routes have a METRIC
-    return $newObject
+function Create-RouteObject() {
+    return [PSCustomObject]@{
+        RouteProtocol = $null #BGP,EIRGP,OSPF,static,etc
+        RouteSubType  = $null #OSPF O1/O2, IS-IS L1/L2
+        Subnet        = $null #The subnet we are routing to.
+        gateway       = $null #The gateway IP for this Subnet
+        defaultgateway = $false #Is this a default gateway?
+        interface     = $null #The interface if any that this
+        GatewayCidr   = $null #Calculate the gateway subnet to make it easier to connect, Note:This comes from the show run data.
+        VRF           = $null #VRF for the route
+        DISTANCE      = $null #Nexus routes have a DISTANCE
+        METRIC        = $null #Nexus routes have a METRIC
+        GatewayLink   = $null #Nexus routes have a METRIC
+    }
 }
 
 #Spanning tree port array
@@ -128,275 +118,266 @@ function Create-RouteObject(){
 #------------------- ---- --- --------- -------- --------------------------------
 #Po1                 Root FWD 3         128.1281 P2p
 #Po2                 Desg FWD 3         128.1282 P2p
-function Create-SpanningTreeInterface(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name Interface  -value $null
-    $newObject| Add-Member -type NoteProperty -Name Role       -value $null
-    $newObject| Add-Member -type NoteProperty -Name Status     -value $null
-    $newObject| Add-Member -type NoteProperty -Name Cost       -value $null
-    $newObject| Add-Member -type NoteProperty -Name PrioNbr    -value $null
-    $newObject| Add-Member -type NoteProperty -Name Type       -value $null
-    return $newObject
+function Create-SpanningTreeInterface() {
+    return [PSCustomObject]@{
+        Interface = $null
+        Role      = $null
+        Status    = $null
+        Cost      = $null
+        PrioNbr   = $null
+        Type      = $null
+    }
 }
-
 
 #Spanning tree Object per vlan
 #Data from show spanning
-function Create-SpanningTreeVlan(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name VlanID                        -value $null # The VLAN ID for this spanning-tree instance
-    $newObject| Add-Member -type NoteProperty -Name port                        -value $null # The root port for this instance
-    $newObject| Add-Member -type NoteProperty -Name protocol                      -value $null # Protocol in use (e.g., rstp)
-    $newObject| Add-Member -type NoteProperty -Name RootIDPriority                -value $null # Priority of the Root Bridge
-    $newObject| Add-Member -type NoteProperty -Name Address                       -value $null # MAC Address of the Root Bridge
-    $newObject| Add-Member -type NoteProperty -Name RootBridge                    -value $false # Is this local device the root bridge for this instance?
-    $newObject| Add-Member -type NoteProperty -Name RootBridgeHelloTime           -value $null # Hello time of the root bridge
-    $newObject| Add-Member -type NoteProperty -Name RootBridgeCost                -value $null # Cost to reach the root bridge
-    $newObject| Add-Member -type NoteProperty -Name RootBridgePort                -value $null # Port used to reach the root bridge
-    $newObject| Add-Member -type NoteProperty -Name RootBridgeAgingTime           -value $null # Aging time of the root bridge
-    $newObject| Add-Member -type NoteProperty -Name BridgeIDPriority              -value $null # Priority of the local bridge
-    $newObject| Add-Member -type NoteProperty -Name BridgeIDPriorityaddress       -value $null # MAC address of the local bridge
-    $newObject| Add-Member -type NoteProperty -Name BridgeIDPriorityHelloTime     -value $null # Hello time of the local bridge
-    $newObject| Add-Member -type NoteProperty -Name SpanningTreeInterfaces        -value @()  # Array of interface states for this spanning-tree instance
-    $newObject| Add-Member -type NoteProperty -Name Shape                    -value $null
-    return $newObject
+function Create-SpanningTreeVlan() {
+    return [PSCustomObject]@{
+        VlanID                     = $null # The VLAN ID for this spanning-tree instance
+        port                       = $null # The root port for this instance
+        protocol                   = $null # Protocol in use (e.g., rstp)
+        RootIDPriority             = $null # Priority of the Root Bridge
+        Address                    = $null # MAC Address of the Root Bridge
+        RootBridge                 = $false # Is this local device the root bridge for this instance?
+        RootBridgeHelloTime        = $null # Hello time of the root bridge
+        RootBridgeCost             = $null # Cost to reach the root bridge
+        RootBridgePort             = $null # Port used to reach the root bridge
+        RootBridgeAgingTime        = $null # Aging time of the root bridge
+        BridgeIDPriority           = $null # Priority of the local bridge
+        BridgeIDPriorityaddress    = $null # MAC address of the local bridge
+        BridgeIDPriorityHelloTime  = $null # Hello time of the local bridge
+        SpanningTreeInterfaces     = @() # Array of interface states for this spanning-tree instance
+        Shape                      = $null
+    }
 }
 
 #The different file associated with each device.
-function Create-FileObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name DeviceType -value $null
-    $newObject| Add-Member -type NoteProperty -Name HOSTID -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowRun -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowCDPNeighborsDetails -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPInterfaceBrief -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceStatus -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowMacAddressTable -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowSpanningTree -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPRoute -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPRouteVRFstar -value $null #This is for cisco devices to get all of the routes for each VRF: show ip route vrf *
-    $newObject| Add-Member -type NoteProperty -Name ShowLLDPNeighborsDetails -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowLLDPNeighbors -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowVersion -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPArp -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowInterface -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceDetail -value $null  #This is used by Junos devices at the time of writing.
-    $newObject| Add-Member -type NoteProperty -Name ShowRouteAll -value $null
-    $newObject| Add-Member -type NoteProperty -Name CiscoASAShowRoute -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowSpanningTreeInterface -value $null
-    $newObject| Add-Member -type NoteProperty -Name JunosShowSpanningTreeBridgeFromXML -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPBGPSummary  -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowIPBGPVPNv4Neighbors -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowSystemInfo -value $null # Add this line
-    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceAll -value $null # Add this line
-    $newObject| Add-Member -type NoteProperty -Name ShowArp -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowEthernetSwitchingTable -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowVlansDetail -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowAssetAll -value $null
-    $newObject| Add-Member -type NoteProperty -Name ShowInterfaceTerse -value $null # Used for Junos 'show interfaces terse'
-    return $newObject
+function Create-FileObject() {
+    return [PSCustomObject]@{
+        DeviceType                       = $null
+        HOSTID                           = $null
+        ShowRun                          = $null
+        ShowCDPNeighborsDetails          = $null
+        ShowIPInterfaceBrief             = $null
+        ShowInterfaceStatus              = $null
+        ShowMacAddressTable              = $null
+        ShowSpanningTree                 = $null
+        ShowIPRoute                      = $null
+        ShowIPRouteVRFstar               = $null #This is for cisco devices to get all of the routes for each VRF: show ip route vrf *
+        ShowLLDPNeighborsDetails         = $null
+        ShowLLDPNeighbors                = $null
+        ShowVersion                      = $null
+        ShowIPArp                        = $null
+        ShowInterface                    = $null
+        ShowInterfaceDetail              = $null #This is used by Junos devices at the time of writing.
+        ShowRouteAll                     = $null
+        CiscoASAShowRoute                = $null
+        ShowSpanningTreeInterface        = $null
+        JunosShowSpanningTreeBridgeFromXML = $null
+        ShowIPBGPSummary                 = $null
+        ShowIPBGPVPNv4Neighbors          = $null
+        ShowSystemInfo                   = $null # Add this line
+        ShowInterfaceAll                 = $null # Add this line
+        ShowArp                          = $null
+        ShowEthernetSwitchingTable       = $null
+        ShowVlansDetail                  = $null
+        ShowAssetAll                     = $null
+        ShowInterfaceTerse               = $null # Used for Junos 'show interfaces terse'
+    }
 }
 
-
-
-
-
 #Data from show run
-function Create-VlanObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name number -value $null
-    $newObject| Add-Member -type NoteProperty -Name name -value $null
-    $newObject| Add-Member -type NoteProperty -Name description -value $null
-    return $newObject
+function Create-VlanObject() {
+    return [PSCustomObject]@{
+        number      = $null
+        name        = $null
+        description = $null
+    }
 }
 
 #Data from show mac address-table
-function Create-MacAddressObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name MacAddress -value $null
-    $newObject| Add-Member -type NoteProperty -Name Vlan -value $null
-    $newObject| Add-Member -type NoteProperty -Name Interface -value $null
-    $newObject| Add-Member -type NoteProperty -Name VendorCompanyName -value $null
-    $newObject| Add-Member -type NoteProperty -Name Type -value $null
-    $newObject| Add-Member -type NoteProperty -Name protocols -value $null
-    return $newObject
+function Create-MacAddressObject() {
+    return [PSCustomObject]@{
+        MacAddress        = $null
+        Vlan              = $null
+        Interface         = $null
+        VendorCompanyName = $null
+        Type              = $null
+        protocols         = $null
+    }
 }
+
 #Data from show run
 #Data for spanning tree comes from show spanning-tree
-function Create-InterfaceObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name Interface -value $null                  #Interface number and type e.g Gi0/0/1
-    $newObject| Add-Member -type NoteProperty -Name Description -value $null                #Interface description / port description
-    $newObject| Add-Member -type NoteProperty -Name IPAddress -value $null                  #Ipaddress for routed interfaces
-    $newObject| Add-Member -type NoteProperty -Name SubnetMask -value $null                 #SubnetMask for routed interfaces
-    $newObject| Add-Member -type NoteProperty -Name Cidr -value $null                       #network cidr
-    $newObject| Add-Member -type NoteProperty -Name SecondaryIPAddress -value $null         #SecondaryIpaddress for routed interfaces
-    $newObject| Add-Member -type NoteProperty -Name SecondarySubnetMask -value $null        #SecondarySubnetMask for routed interfaces
-    $newObject| Add-Member -type NoteProperty -Name SecondaryCidr -value $null              #Secondary network cidr
-    $newObject| Add-Member -type NoteProperty -Name SwitchportMode -value $null             #switch port mode access,trunk,etc
-    $newObject| Add-Member -type NoteProperty -Name SwitchportAccessVlan -value $null       #the access vlan
-    $newObject| Add-Member -type NoteProperty -Name SwitchportTrunkVlan -value $null        #the trunk vlans
-    $newObject| Add-Member -type NoteProperty -Name shutdown -value $null                   #Is this port shutdown
-    $newObject| Add-Member -type NoteProperty -Name vrf -value $null                        #VRF this interface is part of
-    $newObject| Add-Member -type NoteProperty -Name RoutedVlan -value $null                 #If this is a routed interfaces and it is a vlan the vlan number will live here
-    $newObject| Add-Member -type NoteProperty -Name vpc -value $null                        #Is this part of a vpc
-    $newObject| Add-Member -type NoteProperty -Name ChannelGroup -value $null               #is this part of a port channel
-    $newObject| Add-Member -type NoteProperty -Name ChannelGroupMode -value $null           #What type of mode is the port channel in
-    $newObject| Add-Member -type NoteProperty -Name NativeVlan -value $null                 #What is our native vlan
-    $newObject| Add-Member -type NoteProperty -Name SpanningTreePortType -value $null       #The mode of spanning tree
-    $newObject| Add-Member -type NoteProperty -Name bpdufilter -value $null                 #Is bpdufilter enabled
-    $newObject| Add-Member -type NoteProperty -Name SwitchPortType -value $null             #Is this a routed or switched port
-    $newObject| Add-Member -type NoteProperty -Name IntStatus -value $null                  #Interface status from show ip int brief or show interface
-    $newObject| Add-Member -type NoteProperty -Name INTProtocolStatus -value $null          #Protocol status from show ip int brief or show interface
-    $newObject| Add-Member -type NoteProperty -Name MacAddressArray -value @()            #All mac addresses obtained from show mac address-table
-    $newObject| Add-Member -type NoteProperty -Name STRootInterfaceForVlans -value @()    #List of all the vlans this interface is root for in spanning tree. This is for PVST or RPVST.
-    $newObject| Add-Member -type NoteProperty -Name STALTnInterfaceForVlans -value @()    #List of all the vlans this interface is ALT for in spanning tree. This is for PVST or RPVST.
-    $newObject| Add-Member -type NoteProperty -Name STDesgnInterfaceForVlans -value @()   #List of all the vlans this interface is Desg for in spanning tree. This is for PVST or RPVST.
-    $newObject| Add-Member -type NoteProperty -Name STState -value $null                    #Spanning Tree state
-    $newObject| Add-Member -type NoteProperty -Name STRole -value $null                     #Spanning tree role
-    $newObject| Add-Member -type NoteProperty -Name Speed -value $null                      #Interface speed
-    $newObject| Add-Member -type NoteProperty -Name Duplex -value $null                     #Duplex of the interface
-    $newObject| Add-Member -type NoteProperty -Name Zone -value $null                       #Zone of this interface. This is used for the ASA. This just gives extra information.
-    $newObject| Add-Member -type NoteProperty -Name Standbyip -value $null                  #Standby address of interface. This is used to store the HSRP address of the interface.
-    $newObject| Add-Member -type NoteProperty -Name StandbyNumber -value $null              #Standby address of interface. This is used to store the HSRP address of the interface.
-    $newObject| Add-Member -type NoteProperty -Name StandbyPriority -value $null            #Standby Priority. This is used to determined which one is active.
-    $newObject| Add-Member -type NoteProperty -Name macaddress -value $null                 #This is the MacAddress used by this interface. These are not the mac addresses in the show mac address table command. These are the addresses attached to this interface for either ip addresses or LACP.
-    $newObject| Add-Member -type NoteProperty -Name ClusterIP -value $null                  #Standby address of interface. This is the cluster ip address of a checkpoint device.
-    $newObject| Add-Member -type NoteProperty -Name HardwareType -value $null               #The hardware type returned by the show interface command Python textfsm reference. HARDWARE_TYPE
-    $newObject| Add-Member -type NoteProperty -Name MediaType -value $null                  #The media type is the type of hardware interface e.g. 1000BaseT. This is from the show interface command and the pythong textfsm reference is MEDIA_TYPE.
-    $newObject| Add-Member -type NoteProperty -Name HasCPDNieghbor -value $false            #If there is a cdpneighbor attach to this interface set to true
-    $newObject| Add-Member -type NoteProperty -Name HasLLDPNeighbor -value $false           #If there is a LLDPneighbor attach to this interface set to true
-    $newObject| Add-Member -type NoteProperty -Name IsLinkedToByCDPorLLDP -value $false     #Something we have CDP or LLDP config for links to this port. Therefore we need to mark it so we can draw it.
-    $newObject| Add-Member -type NoteProperty -Name RoutesForInterface -value @()         #A list of all the routes that flow out of this interface.
-    $newObject| Add-Member -type NoteProperty -Name ShapeColor -value $null                 #Add colors for better representation of port-channels etc
-    $newObject| Add-Member -type NoteProperty -Name VRFColor -value $null                   #Add colors for better representation of VRF's etc
-    $newObject| Add-Member -type NoteProperty -Name Physicalshape -value $null              #The shape object associated with this interface. This is the dot we connect the lines to.
-    $newObject| Add-Member -type NoteProperty -Name PhysicalshapeGroup -value $null         #The shape object associated with this interface. This is a group of shapes that make up the interface.
-    $newObject| Add-Member -type NoteProperty -Name Logicalshape -value $null               #The shape object associated with this interface.
-    $newObject| Add-Member -type NoteProperty -Name ConnectedLayer3 -value $false           #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
-    $newObject| Add-Member -type NoteProperty -Name ConnectedCDPnieghbors -value $false     #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
-    $newObject| Add-Member -type NoteProperty -Name InterfaceAlreadyDrawn -value $false     #This is used to track if we have already drawn the interface, so we don't draw it twice.
-    $newObject| Add-Member -type NoteProperty -Name MacAddressShape -value $null            #If we are drawing an object to represent all of the mac addresses attached to this interface, store the object here. This is used as an extension to show CDP nieghbors drawing. $GDrawPortsWithMacs is used to turn this feature on and off.
-    $newObject| Add-Member -type NoteProperty -Name PhysicalDrawioId -value $null             #The unique ID for the physical interface shape in the draw.io diagram.
-    $newObject| Add-Member -type NoteProperty -Name LogicalDrawioId -value $null              #The unique ID for the logical interface shape in the draw.io diagram.
-    $newObject| Add-Member -type NoteProperty -Name DrawOnRoutesOnlyDiagram -value $false
-
-    return $newObject
+function Create-InterfaceObject() {
+    return [PSCustomObject]@{
+        Interface              = $null #Interface number and type e.g Gi0/0/1
+        Description            = $null #Interface description / port description
+        IPAddress              = $null #Ipaddress for routed interfaces
+        SubnetMask             = $null #SubnetMask for routed interfaces
+        Cidr                   = $null #network cidr
+        SecondaryIPAddress     = $null #SecondaryIpaddress for routed interfaces
+        SecondarySubnetMask    = $null #SecondarySubnetMask for routed interfaces
+        SecondaryCidr          = $null #Secondary network cidr
+        SwitchportMode         = $null #switch port mode access,trunk,etc
+        SwitchportAccessVlan   = $null #the access vlan
+        SwitchportTrunkVlan    = $null #the trunk vlans
+        shutdown               = $null #Is this port shutdown
+        vrf                    = $null #VRF this interface is part of
+        RoutedVlan             = $null #If this is a routed interfaces and it is a vlan the vlan number will live here
+        vpc                    = $null #Is this part of a vpc
+        ChannelGroup           = $null #is this part of a port channel
+        ChannelGroupMode       = $null #What type of mode is the port channel in
+        NativeVlan             = $null #What is our native vlan
+        SpanningTreePortType   = $null #The mode of spanning tree
+        bpdufilter             = $null #Is bpdufilter enabled
+        SwitchPortType         = $null #Is this a routed or switched port
+        IntStatus              = $null #Interface status from show ip int brief or show interface
+        INTProtocolStatus      = $null #Protocol status from show ip int brief or show interface
+        MacAddressArray        = @() #All mac addresses obtained from show mac address-table
+        STRootInterfaceForVlans = @() #List of all the vlans this interface is root for in spanning tree. This is for PVST or RPVST.
+        STALTnInterfaceForVlans = @() #List of all the vlans this interface is ALT for in spanning tree. This is for PVST or RPVST.
+        STDesgnInterfaceForVlans = @() #List of all the vlans this interface is Desg for in spanning tree. This is for PVST or RPVST.
+        STState                = $null #Spanning Tree state
+        STRole                 = $null #Spanning tree role
+        Speed                  = $null #Interface speed
+        Duplex                 = $null #Duplex of the interface
+        Zone                   = $null #Zone of this interface. This is used for the ASA. This just gives extra information.
+        Standbyip              = $null #Standby address of interface. This is used to store the HSRP address of the interface.
+        StandbyNumber          = $null #Standby address of interface. This is used to store the HSRP address of the interface.
+        StandbyPriority        = $null #Standby Priority. This is used to determined which one is active.
+        macaddress             = $null #This is the MacAddress used by this interface. These are not the mac addresses in the show mac address table command. These are the addresses attached to this interface for either ip addresses or LACP.
+        ClusterIP              = $null #Standby address of interface. This is the cluster ip address of a checkpoint device.
+        HardwareType           = $null #The hardware type returned by the show interface command Python textfsm reference. HARDWARE_TYPE
+        MediaType              = $null #The media type is the type of hardware interface e.g. 1000BaseT. This is from the show interface command and the pythong textfsm reference is MEDIA_TYPE.
+        HasCPDNieghbor         = $false #If there is a cdpneighbor attach to this interface set to true
+        HasLLDPNeighbor        = $false #If there is a LLDPneighbor attach to this interface set to true
+        IsLinkedToByCDPorLLDP  = $false #Something we have CDP or LLDP config for links to this port. Therefore we need to mark it so we can draw it.
+        RoutesForInterface     = @() #A list of all the routes that flow out of this interface.
+        ShapeColor             = $null #Add colors for better representation of port-channels etc
+        VRFColor               = $null #Add colors for better representation of VRF's etc
+        Physicalshape          = $null #The shape object associated with this interface. This is the dot we connect the lines to.
+        PhysicalshapeGroup     = $null #The shape object associated with this interface. This is a group of shapes that make up the interface.
+        Logicalshape           = $null #The shape object associated with this interface.
+        ConnectedLayer3        = $false #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
+        ConnectedCDPnieghbors  = $false #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
+        InterfaceAlreadyDrawn  = $false #This is used to track if we have already drawn the interface, so we don't draw it twice.
+        MacAddressShape        = $null #If we are drawing an object to represent all of the mac addresses attached to this interface, store the object here. This is used as an extension to show CDP nieghbors drawing. $GDrawPortsWithMacs is used to turn this feature on and off.
+        PhysicalDrawioId       = $null #The unique ID for the physical interface shape in the draw.io diagram.
+        LogicalDrawioId        = $null #The unique ID for the logical interface shape in the draw.io diagram.
+        DrawOnRoutesOnlyDiagram = $false
+    }
 }
 
 #Data from show run
-function Create-ConfigStaticRouteObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name vrf -value $null
-    $newObject| Add-Member -type NoteProperty -Name type -value $null
-    $newObject| Add-Member -type NoteProperty -Name networks -value @()
-    $newObject| Add-Member -type NoteProperty -Name gateway -value $null
-    $newObject| Add-Member -type NoteProperty -Name name -value $null
-    $newObject| Add-Member -type NoteProperty -Name interface -value $null
-    $newObject| Add-Member -type NoteProperty -Name GatewayCidr -value $null
-    $newObject| Add-Member -type NoteProperty -Name shape -value $null
-    return $newObject
+function Create-ConfigStaticRouteObject() {
+    return [PSCustomObject]@{
+        vrf         = $null
+        type        = $null
+        networks    = @()
+        gateway     = $null
+        name        = $null
+        interface   = $null
+        GatewayCidr = $null
+        shape       = $null
+    }
 }
 
 #Data from show run
-function Create-ConfigStaticRouteNetworkObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name network -value $null
-    $newObject| Add-Member -type NoteProperty -Name subnet -value $null
-    return $newObject
+function Create-ConfigStaticRouteNetworkObject() {
+    return [PSCustomObject]@{
+        network = $null
+        subnet  = $null
+    }
 }
 
 #Data from show run
-function Create-vrfObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name name -value $null
-    $newObject| Add-Member -type NoteProperty -Name rd -value $null
-    $newObject| Add-Member -type NoteProperty -Name RouteTarget -value $null
-    $newObject| Add-Member -type NoteProperty -Name export -value $null
-    $newObject| Add-Member -type NoteProperty -Name shape -value $null
-    return $newObject
+function Create-vrfObject() {
+    return [PSCustomObject]@{
+        name        = $null
+        rd          = $null
+        RouteTarget = $null
+        export      = $null
+        shape       = $null
+    }
 }
 
-
-function Create-NetworkObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name cidr -value $null
-    $newObject| Add-Member -type NoteProperty -Name RoutedVlan -value $null
-    $newObject| Add-Member -type NoteProperty -Name NetworkName -value $null
-    $newObject| Add-Member -type NoteProperty -Name ARPEntries -value @()
-    $newObject| Add-Member -type NoteProperty -Name Shape -value $null
-    $newObject| Add-Member -type NoteProperty -Name Color -value $null
-    $newObject| Add-Member -type NoteProperty -Name NumberOfConnectors -value 0
-    $newObject| Add-Member -type NoteProperty -Name NumberOfRoutedConnectors -value 0
-    # --- Shape with a specific Drawio ID property ---
-    $newObject| Add-Member -type NoteProperty -Name LogicalDrawioId -value $null
-    return $newObject
-    return $newObject
+function Create-NetworkObject() {
+    return [PSCustomObject]@{
+        cidr                    = $null
+        RoutedVlan              = $null
+        NetworkName             = $null
+        ARPEntries              = @()
+        Shape                   = $null
+        Color                   = $null
+        NumberOfConnectors      = 0
+        NumberOfRoutedConnectors = 0
+        # --- Shape with a specific Drawio ID property ---
+        LogicalDrawioId         = $null
+    }
 }
 
 #Data from show spanning-tree
-function Create-SpanningTreeObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name SpanningTreeMode -value $null       # The mode of STP (e.g., rstp, pvst, mst)
-    $newObject| Add-Member -type NoteProperty -Name SpanningTreeExtended -value $null    # Spanning-tree system-id extension state
-    $newObject| Add-Member -type NoteProperty -Name SpanningTreeArray -value @()        # Array of spanning tree instances/VLANs
-    $newObject| Add-Member -type NoteProperty -Name RootBridgeForVlans -value @()       # Array of VLAN IDs for which this device is the root bridge
-    return $newObject
+function Create-SpanningTreeObject() {
+    return [PSCustomObject]@{
+        SpanningTreeMode   = $null # The mode of STP (e.g., rstp, pvst, mst)
+        SpanningTreeExtended = $null # Spanning-tree system-id extension state
+        SpanningTreeArray  = @() # Array of spanning tree instances/VLANs
+        RootBridgeForVlans = @() # Array of VLAN IDs for which this device is the root bridge
+    }
 }
 
-function Create-HostObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name hostname -value $null                    #Hostname of the device data from show run
-    $newObject| Add-Member -type NoteProperty -Name Description -value $null                 #Description used to store system description from LLDP or CDP neighbours
-    $newObject| Add-Member -type NoteProperty -Name vlans -value @()                       #Array of vlans configured on the device from show run
-    $newObject| Add-Member -type NoteProperty -Name interfaces -value @()                  #Array of interfaces on the device from show run
-    $newObject| Add-Member -type NoteProperty -Name ConfigStaticRouteObjects -value @()    #Array of static routes configured on the device from show run
-    $newObject| Add-Member -type NoteProperty -Name vrfs -value @()                        #Array of vrfs configured on the device from show run
-    $newObject| Add-Member -type NoteProperty -Name BGPConfig -value $null                   #Array of configured bgp information from show run
-    $newObject| Add-Member -type NoteProperty -Name BGPNeighborData -value @()             #Array of neighbor data from show bgp neighbors
-    $newObject| Add-Member -type NoteProperty -Name CDPNeighbors -value @()                #Array of neighbours  from show cdp neighbours details
-    $newObject| Add-Member -type NoteProperty -Name ArrayOfNetworks -value @()             #Array of subnets found on the device from show run
-    $newObject| Add-Member -type NoteProperty -Name ArrayOfIPAddresses -value @()          #Array of ip addresses found on the device  from show run
-    $newObject| Add-Member -type NoteProperty -Name SpanningTree -value $null                #Object containing Spanning tree configuration data from show spanning-tree
-    $newObject| Add-Member -type NoteProperty -Name RoutingTable -value @()                #Array of routes data from show ip route
-    $newObject| Add-Member -type NoteProperty -Name ParentObject -value $null                #This will be filled for each host object created from CDP/lldp config data
-    $newObject| Add-Member -type NoteProperty -Name LLDPNeighbors -value @()               #Array of LLDP Neighbours
-    $newObject| Add-Member -type NoteProperty -Name IPArpEntries -value @()                #Array of show ip arp entries
-    $newObject| Add-Member -type NoteProperty -Name Version -value $null                     #Show version information
-    $newObject| Add-Member -type NoteProperty -Name DeviceType -value $null                  #Type of Device Cisco, Checkpoint,ASA,etc
-    $newObject| Add-Member -type NoteProperty -Name Origin -value $null                      #This is used show where the data was collected from. e.g a host we have config for, cdp/lldp or it's a arp entry.
-    $newObject| Add-Member -type NoteProperty -Name Platform -value $null                    #This is used for CDP information and contains the platform that is pulled from cdp neighbors
-    $newObject| Add-Member -type NoteProperty -Name Capabilities -value $null                #This is used for CDP information and contains the platform that is pulled from cdp neighbors
-    $newObject| Add-Member -type NoteProperty -Name DeviceIdentifier  -value $null           #Part of the file name used to identify this device.
-    $newObject| Add-Member -type NoteProperty -Name Shape -value $null                       #Shape object used to hold the shape information for drawing in visio
-    $newObject| Add-Member -type NoteProperty -Name BGP_AS_Number -value $null                #store the bgp AS
-    $newObject| Add-Member -type NoteProperty -Name BGPNeighbors -value @()                   #Array of BGP neighbor objects
-    $newObject| Add-Member -type NoteProperty -Name DebugLog -value @()                       #debug logs created when processing config files.
-	$newObject| Add-Member -type NoteProperty -Name ProcessOutputObjects -value @()                       #Stores raw objects after processing of Execute-PythonTextFSM
-    $newObject| Add-Member -type NoteProperty -Name HostTypeIfCDPorLLDP -value @()                       #If this device is a lldp or cdp neighbor and it's name is a mac address we store it's make here. e.g HP or Dell or whatever
-    $newObject| Add-Member -type NoteProperty -Name CPDHostLocation -value $null              #The location on the diagram where this object is drawn.
-    return $newObject
+function Create-HostObject() {
+    return [PSCustomObject]@{
+        hostname              = $null #Hostname of the device data from show run
+        Description           = $null #Description used to store system description from LLDP or CDP neighbours
+        vlans                 = @() #Array of vlans configured on the device from show run
+        interfaces            = @() #Array of interfaces on the device from show run
+        ConfigStaticRouteObjects = @() #Array of static routes configured on the device from show run
+        vrfs                  = @() #Array of vrfs configured on the device from show run
+        BGPConfig             = $null #Array of configured bgp information from show run
+        BGPNeighborData       = @() #Array of neighbor data from show bgp neighbors
+        CDPNeighbors          = @() #Array of neighbours  from show cdp neighbours details
+        ArrayOfNetworks       = @() #Array of subnets found on the device from show run
+        ArrayOfIPAddresses    = @() #Array of ip addresses found on the device  from show run
+        SpanningTree          = $null #Object containing Spanning tree configuration data from show spanning-tree
+        RoutingTable          = @() #Array of routes data from show ip route
+        ParentObject          = $null #This will be filled for each host object created from CDP/lldp config data
+        LLDPNeighbors         = @() #Array of LLDP Neighbours
+        IPArpEntries          = @() #Array of show ip arp entries
+        Version               = $null #Show version information
+        DeviceType            = $null #Type of Device Cisco, Checkpoint,ASA,etc
+        Origin                = $null #This is used show where the data was collected from. e.g a host we have config for, cdp/lldp or it's a arp entry.
+        Platform              = $null #This is used for CDP information and contains the platform that is pulled from cdp neighbors
+        Capabilities          = $null #This is used for CDP information and contains the platform that is pulled from cdp neighbors
+        DeviceIdentifier      = $null #Part of the file name used to identify this device.
+        Shape                 = $null #Shape object used to hold the shape information for drawing in visio
+        BGP_AS_Number         = $null #store the bgp AS
+        BGPNeighbors          = @() #Array of BGP neighbor objects
+        DebugLog              = @() #debug logs created when processing config files.
+        ProcessOutputObjects  = @() #Stores raw objects after processing of Execute-PythonTextFSM
+        HostTypeIfCDPorLLDP   = @() #If this device is a lldp or cdp neighbor and it's name is a mac address we store it's make here. e.g HP or Dell or whatever
+        CPDHostLocation       = $null #The location on the diagram where this object is drawn.
+    }
 }
 
-
-
-function Create-BGPNeighborObject(){
-    $newObject = New-Object -TypeName PSObject
-    $newObject| Add-Member -type NoteProperty -Name NEIGHBOR -value $null
-    $newObject| Add-Member -type NoteProperty -Name DESCRIPTION -value $null # <-- Add this
-    $newObject| Add-Member -type NoteProperty -Name SOURCE_IFACE -value $null # <-- Add this
-    $newObject| Add-Member -type NoteProperty -Name VRF -value "default"
-    $newObject| Add-Member -type NoteProperty -Name REMOTE_AS -value $null
-    $newObject| Add-Member -type NoteProperty -Name LOCAL_AS -value $null
-    $newObject| Add-Member -type NoteProperty -Name PEER_GROUP -value $null
-    $newObject| Add-Member -type NoteProperty -Name REMOTE_ROUTER_ID -value $null
-    $newObject| Add-Member -type NoteProperty -Name BGP_STATE -value $null
-    $newObject| Add-Member -type NoteProperty -Name LOCALHOST_IP -value $null
-    $newObject| Add-Member -type NoteProperty -Name LOCALHOST_PORT -value $null
-    $newObject| Add-Member -type NoteProperty -Name REMOTE_IP -value $null
-    $newObject| Add-Member -type NoteProperty -Name REMOTE_PORT -value $null
-    $newObject| Add-Member -type NoteProperty -Name INBOUND_ROUTEMAP -value $null
-    $newObject| Add-Member -type NoteProperty -Name OUTBOUND_ROUTEMAP -value $null
-    $newObject| Add-Member -type NoteProperty -Name AdvertisedRoutes -value @()
-    return $newObject
+function Create-BGPNeighborObject() {
+    return [PSCustomObject]@{
+        NEIGHBOR            = $null
+        DESCRIPTION         = $null # <-- Add this
+        SOURCE_IFACE        = $null # <-- Add this
+        VRF                 = "default"
+        REMOTE_AS           = $null
+        LOCAL_AS            = $null
+        PEER_GROUP          = $null
+        REMOTE_ROUTER_ID    = $null
+        BGP_STATE           = $null
+        LOCALHOST_IP        = $null
+        LOCALHOST_PORT      = $null
+        REMOTE_IP           = $null
+        REMOTE_PORT         = $null
+        INBOUND_ROUTEMAP    = $null
+        OUTBOUND_ROUTEMAP   = $null
+        AdvertisedRoutes    = @()
+    }
 }

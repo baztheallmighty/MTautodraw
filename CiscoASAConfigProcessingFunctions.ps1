@@ -68,10 +68,10 @@ function Process-CiscoASAHostFiles{
             $device=Get-CiscoASAShowRouteFromText -device $device -ShowRouteFile $hostid.CiscoASAShowRoute
         }
 
-        if($hostid.ShowIPBGPSummary){
-            Add-HostDebugText -HostObject $Device "Processing Cisco ASA show bgp summary:$($hostid.ShowIPBGPSummary)"
-            $Device=Get-BGPSummaryFromText -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
-        }
+        #if($hostid.ShowIPBGPSummary){
+        #    Add-HostDebugText -HostObject $Device "Processing Cisco ASA show bgp summary:$($hostid.ShowIPBGPSummary)"
+        #    $Device=Get-BGPSummaryFromText -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
+        #}
         $Device = Update-LocalRoutesWithInterfaces -device $Device
         return $device
 }
