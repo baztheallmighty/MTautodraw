@@ -271,7 +271,7 @@ $Commands= @(
 
 ### PA firewall
 ```powershell
-$PaloAltoCommands = @(
+$Commands = @(
     # --- System, Hardware & Configuration ---
     "show system info",
     "show config running",
@@ -493,7 +493,7 @@ $Commands= @(
 
 ### Fortigate 
 ```powershell
-$FortiGateCommands = @(
+$Commands = @(
     # --- System, Hardware & Configuration ---
     "get system status",
     "show full-configuration",
