@@ -271,34 +271,43 @@ $Commands= @(
 
 ### PA firewall
 ```powershell
-$Commands= @(
-    # --- System & Configuration ---
+$PaloAltoCommands = @(
+    # --- System, Hardware & Configuration ---
     "show system info",
     "show config running",
     "request license info",
-    "show chassis inventory",
+    "show system environment", # More detailed than chassis inventory
+    "show running resource-monitor",
     "show ntp",
-    
+    "show running snmp-server",
+
     # --- Interfaces & Layer 2 ---
-    "show interface all",
-    "show lldp neighbors all",
+    "show interface all",      # Shows both physical and logical with status
+    "show interface logical",  # Best for getting IP, Zone, and VRF info
+    "show lldp neighbors-info all",
+    "show cdp neighbors-info all",
     "show lacp aggregate-ethernet all",
-    "show vlan all",
-    "show mac all",
+    "show mac all",            # For interfaces in L2/v-wire mode
 
     # --- Routing & Layer 3 ---
-    "show routing route",
-    "show routing summary",
+    "show routing route all",  # 'all' is crucial for multi-VRF environments
+    "show routing virtual-router",
     "show arp all",
-
+    "show routing fib",        # The actual hardware forwarding table
+    "show routing protocol bgp summary",
+    "show routing protocol ospf neighbor",
+    
     # --- High Availability ---
     "show high-availability all",
-    
+    "show high-availability state", # Concise summary of HA status
+
     # --- Security, Policy & VPN ---
+    "show zone",
+    "show session info",
     "show running security-policy",
     "show running nat-policy",
-    "show config pushed-shared-policy",
-    "show vpn tunnel"
+    "show vpn ike-gateway all",
+    "show vpn ipsec-sa all"
 )
 ```
 
@@ -481,6 +490,47 @@ $Commands= @(
     "show chassis  | no-more"
 )
 ```
+
+### Fortigate 
+```powershell
+$FortiGateCommands = @(
+    # --- System, Hardware & Configuration ---
+    "get system status",
+    "show full-configuration",
+    "get system fortiguard",
+    "get system performance status",
+    "get system ntp",
+    "show system snmp sysinfo",
+
+    # --- Interfaces & Layer 2 ---
+    "show system interface",            # Master command for all interface types, IPs, and status
+    "get system lldp neighbors",
+    "get system cdp neighbors",
+    "show system interface",            # LACP/LAG info is part of the interface configuration
+
+    # --- Routing & Layer 3 ---
+    "get router info routing-table all", # 'all' is crucial for multi-VDOM/VRF environments
+    "config system vrf", "show",         # Two commands to list VRFs
+    "get system arp",
+    "get router info kernel",            # The actual hardware forwarding table (FIB)
+    "get router info bgp summary",
+    "get router info ospf neighbor",
+
+    # --- High Availability ---
+    "get system ha status",
+
+    # --- Security, Policy & VPN ---
+    "show firewall zone",
+    "diagnose sys session stat",
+    "show firewall policy",
+    "show firewall central-snat-map",   # For Central NAT policies
+    "get vpn ipsec tunnel summary",
+    "show vpn ipsec phase1-interface",
+    "show vpn ipsec phase2-interface"
+)
+```
+
+
 
 # Step 7
 Run the below and the output of the show commands will be put into files for you. 
