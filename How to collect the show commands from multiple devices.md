@@ -493,41 +493,30 @@ $Commands= @(
 
 ### Fortigate 
 ```powershell
-$Commands = @(
-    # --- System, Hardware & Configuration ---
-    "get system status",
-    "show full-configuration",
-    "get system fortiguard",
-    "get system performance status",
-    "get system ntp",
-    "show system snmp sysinfo",
-
-    # --- Interfaces & Layer 2 ---
-    "show system interface",            # Master command for all interface types, IPs, and status
-    "get system lldp neighbors",
-    "get system cdp neighbors",
-    "show system interface",            # LACP/LAG info is part of the interface configuration
-
-    # --- Routing & Layer 3 ---
-    "get router info routing-table all", # 'all' is crucial for multi-VDOM/VRF environments
-    "config system vrf", "show",         # Two commands to list VRFs
-    "get system arp",
-    "get router info kernel",            # The actual hardware forwarding table (FIB)
-    "get router info bgp summary",
-    "get router info ospf neighbor",
-
-    # --- High Availability ---
-    "get system ha status",
-
-    # --- Security, Policy & VPN ---
-    "show firewall zone",
-    "diagnose sys session stat",
-    "show firewall policy",
-    "show firewall central-snat-map",   # For Central NAT policies
-    "get vpn ipsec tunnel summary",
-    "show vpn ipsec phase1-interface",
-    "show vpn ipsec phase2-interface"
-)
+diagnose lldprx neighbor summary 
+diagnose lldprx neighbor details 
+diagnose lldprx port details
+diagnose lldprx port summary 
+diagnose lldprx port neighbor 
+get system status
+show full-configuration
+get system fortiguard
+get system performance status
+get system ntp
+show system snmp sysinfo
+show system interface     
+get router info routing-table all 
+get system arp
+get router info kernel  
+get router info bgp summary
+get router info ospf neighbor
+get system ha status
+diagnose sys session stat
+show firewall policy
+show firewall central-snat-map   
+get vpn ipsec tunnel summary
+show vpn ipsec phase1-interface
+show vpn ipsec phase2-interface
 ```
 
 
