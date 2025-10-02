@@ -538,6 +538,37 @@ foreach ($Device in $NetworkDevices){
 }
 ```
 
+# Step 7 V2
+If you have powershell 7 you can do Parallel. This will do 10 devices at a time. 
+Run the below and the output of the show commands will be put into files for you. 
+
+```powershell
+$NetworkDevices | ForEach-Object -Parallel {
+    $Device = $_
+    Write-Host $Device[0] -BackgroundColor Red
+
+    foreach ($command in $using:Commands) {
+        Write-Host $command -BackgroundColor Red
+        $CommandResults = .\plink.exe -batch -a "$($Device[1])@$($Device[0])" -pw "$($Device[2])" "$command"
+
+        $SafeCommand = $command -replace "\*", "star" `
+                                -replace "\s*\|\s*display\s*xml\s*", "" `
+                                -replace "\s*\|\s*no-more\s*", "" `
+                                -replace "\s*\|\s*display set\s*", "displayset"
+
+        $OutFile = Join-Path $using:Folder "$($Device[0]).$SafeCommand.txt"
+        $CommandResults | Out-File $OutFile -Force
+    }
+
+    Write-Host (Get-Date) -BackgroundColor Red
+} -ThrottleLimit 10
+```
+
+
+
+
+
+
 # known issues
 * Plink has issues with paging on some devices.
 * Plink also doesn't support enable passwords or expert passwords. 
