@@ -1,6 +1,6 @@
 # MTAudotDraw
 
-MTAudotDraw is a powerful PowerShell-based tool designed to automate the creation of detailed network diagrams by parsing configuration files from various network devices. It intelligently processes device configs, discovers network topology using protocols like CDP and LLDP, and generates diagrams in the **.drawio (diagrams.net)** format. It can also perform **Network Path Analysis**, exporting a **Route Analysis Report** in `HTML` format for hop-by-hop routing insights.
+MTAudotDraw is a powerful PowerShell-based tool designed to automate the creation of detailed network diagrams by parsing configuration files from various network devices. It intelligently processes device configs, discovers network topology using protocols like CDP and LLDP, and generates diagrams in the **.drawio (diagrams.net)** format. It can also perform **Network Path Analysis**, exporting a **Route Analysis Report** (Currently in development) in `HTML` format for hop-by-hop routing insights.
 
 ---
 
@@ -28,6 +28,22 @@ This tool is incredibly useful for a variety of tasks:
 * **Change Validation**: Generate "before" and "after" diagrams to visually confirm the impact of network changes.
 * **Routing & Path Analysis**: Trace routing paths, detect asymmetric routing, and export full route analysis reports.
 * **Operational Insight**: Gain a better general understanding of network topology and routing.
+
+
+## Screenshots Example networks
+## **CDP-LLDP brief**
+<img width="5144" height="3484" alt="image" src="https://github.com/user-attachments/assets/0088029e-30db-43c8-9aa9-64db3909b3e4" />
+
+
+## **Layer 3 Routes only Diagram**
+<img width="4064" height="4284" alt="image" src="https://github.com/user-attachments/assets/ba4e1a39-dac2-4ed7-87a0-871db056de9b" />
+
+## **Layer 3 Routes only Diagram**
+
+<img width="8368" height="7324" alt="image" src="https://github.com/user-attachments/assets/9d0d0c07-23e8-4ddf-92df-d3fbc74e0759" />
+
+
+
 
 ## ⚙️ How It Works
 
@@ -95,9 +111,8 @@ MTAudotDraw has explicit support for parsing configurations from the following p
 
 ### **Palo Alto Networks** *(Work in progress)*
 
-* Parsing logic is stubbed but not fully implemented; expected commands will include:
+* Parsing logic is **implemented and functional** for the following core commands.  
 
-  * `show config running`
   * `show system info`
   * `show routing route`
   * `show interface all`
@@ -158,7 +173,7 @@ MTAudotDraw/
 ├── GETIPV4Subnet
     └──GETIPV4Subnet.psm1
 
-# --- Optional Python Environment ---
+# --- Python Environment ---
 └── python/
     └── python.exe
 ```
@@ -263,7 +278,7 @@ MAC Address to Vendor Mapping
 
 * **`Purpose:`** To provide more useful information in diagrams and data exports, the script maps MAC addresses to their respective hardware vendors (e.g., Cisco, Juniper, Dell). To do this, it needs a list of Organizationally Unique Identifiers (OUIs).
 * **` Trigger:`** This connection is only attempted if the file MacAddressToVendorsMapping.csv is not present in the script's root directory.
-* **` Process:`** On its first run (or if the file is deleted), the script will attempt to download the OUI list from devtools360.com. Once downloaded, it saves the data locally as MacAddressToVendorsMapping.csv.
+* **` Process:`** On its first run (or if the file is deleted), **the script will attempt to download** the OUI list from devtools360.com. Once downloaded, it saves the data locally as MacAddressToVendorsMapping.csv.
 
 ---
 
@@ -273,7 +288,7 @@ The script will generate the following files in your output directory:
 
 * **`MTAudotDraw-MultiDevice-YYYYMMDD-HHMM.drawio`**: The main diagram file with multi-device physical and logical views.
 * **`MTAudotDraw-Singles-YYYYMMDD-HHMM.drawio`**: A diagram where each page is dedicated to a single device's L3 layout.
-* **`RouteAnalysis-YYYYMMDD-HHMM.html/csv/json`**: Full routing analysis including hop-by-hop paths and symmetry checks.
+* **`RouteAnalysis-YYYYMMDD-HHMM.html`**: Full routing analysis including hop-by-hop paths and symmetry checks.
 * **`LogYYYYMMDDHHMMSS.txt`**: A transcript of the script's execution, useful for debugging.
 * **(If `$GExportData` is `$true`)**: `vlans.csv`, `cidr.csv`, `CDPNeighbors.csv`, `LLDPNeighbors.csv`, and `Objects.json`.
 
@@ -297,6 +312,7 @@ The script will generate the following files in your output directory:
 * Logging is very noisy.
 * Collection of configuration files/data is not done by the script.
 * Diagrams have to be manually arranged.
+* If you have lots of routes or arp addresses processing can be very slow
 
 ---
 
