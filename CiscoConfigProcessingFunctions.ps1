@@ -1978,7 +1978,7 @@ function Get-ShowSpanningTreeFromText(){
 
 
 
-write-warning "broken code:foreach ($Interface in $ActiveInterfaces) it's slow.'"
+#TODO:broken code:foreach ($Interface in $ActiveInterfaces) it's slow.
 ##Process the show ip route file
 function Get-ShowIPRouteFromText(){
     param (

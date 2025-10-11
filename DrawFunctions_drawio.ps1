@@ -1164,3 +1164,156 @@ function Add-DrawioSpanningTreeHost {
     return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
 }
 
+
+
+#-----------------------------------------------------------------------------------------
+# Helper Function: Add-DrawioSimpleHost
+#-----------------------------------------------------------------------------------------
+# Draws a single, simplified host shape for the L2 overview diagram.
+function Add-DrawioSimpleHost {
+    [CmdletBinding()]
+    param(
+        # The full device object, used to get the hostname.
+        [parameter(Mandatory = $true)]
+        $Device,
+        # A PSCustomObject with .X and .Y for the top-left corner of the shape.
+        [parameter(Mandatory = $true)]
+        [PSCustomObject]$Location
+    )
+
+    # --- Configuration ---
+    $hostWidth = 220
+    $hostHeight = 60
+    
+    # --- Text and Style ---
+    # The value is simply the device's hostname, bolded.
+    $hostText = "<b>$($Device.HostName)</b>"
+    $encodedHostText = [System.Web.HttpUtility]::HtmlEncode($hostText)
+
+    # Use a style consistent with other host shapes (green, rounded, bold text).
+    $hostStyle = "rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=14;fontStyle=1;verticalAlign=middle;"
+    
+    # --- XML Generation ---
+    # Generate a unique ID for this shape.
+    $hostId = "l2-overview-host-$((New-Guid).ToString())"
+
+    # CRITICAL: Store the new ID on the device object using a unique property.
+    # This allows the main function to find this shape later to draw connectors.
+    $Device.L2OverviewDrawioId = $hostId
+
+    # Append the XML for the host cell to the global XML string.
+    $global:drawioXml += "        <mxCell id=`"$hostId`" value=`"$encodedHostText`" style=`"$hostStyle`" vertex=`"1`" parent=`"1`">
+            <mxGeometry x=`"$($Location.X)`" y=`"$($Location.Y)`" width=`"$hostWidth`" height=`"$hostHeight`" as=`"geometry`" />
+    </mxCell>`n"
+
+    # Return the dimensions so the calling function can calculate the layout.
+    return [PSCustomObject]@{ Width = $hostWidth; Height = $hostHeight }
+}
+
+
+#-----------------------------------------------------------------------------------------
+# Main Function: Draw-L2OverviewDiagram
+#-----------------------------------------------------------------------------------------
+# Creates a high-level L2 topology diagram showing devices and their direct connections.
+function Draw-L2OverviewDiagram {
+    [CmdletBinding()]
+    param (
+        # An array of all configured device objects processed from the config files.
+        [parameter(Mandatory = $true)]
+        $ArrayOfObjects
+    )
+
+    # 1. Initialize the diagram page and layout variables.
+    Start-DrawioDiagram -Name "L2 Overview"
+    
+    $currentX = 100
+    $currentY = 100
+    $horizontalPadding = 150
+    $verticalPadding = 100
+    $itemsPerRow = 5 # How many devices to draw before starting a new row.
+    $itemCounter = 0
+
+    # 2. PHASE 1: Draw all Host Shapes (Nodes)
+    # This loop places all the devices on the canvas first.
+    Write-Host "Drawing L2 Overview: Placing all host shapes..." -ForegroundColor Cyan
+    foreach ($device in ($ArrayOfObjects | Sort-Object HostName)) {
+        # Call the helper to draw the simple host shape at the current coordinates.
+        $dimensions = Add-DrawioSimpleHost -Device $device -Location ([PSCustomObject]@{X = $currentX; Y = $currentY})
+        
+        # Update layout coordinates for the next host.
+        $currentX += $dimensions.Width + $horizontalPadding
+        $itemCounter++
+
+        # If we've reached the max items for this row, start a new row.
+        if ($itemCounter -ge $itemsPerRow) {
+            $itemCounter = 0
+            $currentX = 100
+            $currentY += $dimensions.Height + $verticalPadding
+        }
+    }
+
+    # 3. PHASE 2: Draw All Unique Connections (Edges)
+    # Now that all shapes exist and have IDs, we can connect them.
+    Write-Host "Drawing L2 Overview: Connecting hosts..." -ForegroundColor Cyan
+    $drawnConnections = @{} # Hashtable to track drawn pairs and prevent duplicates.
+
+    foreach ($sourceDevice in $ArrayOfObjects) {
+        
+        # Combine CDP and LLDP neighbors into a single list of partner hostnames.
+        $neighborHostNames = [System.Collections.Generic.List[string]]::new()
+
+        # Get neighbors from CDP links
+        if ($sourceDevice.CDPNeighbors) {
+            foreach($neighbor in $sourceDevice.CDPNeighbors){
+                # Clean up the DeviceID to get a simple hostname
+                $cleanHostName = ($neighbor.DeviceID -split '\(')[0].Split('.')[0]
+                $neighborHostNames.Add($cleanHostName)
+            }
+        }
+        # Get neighbors from LLDP links
+        if ($sourceDevice.LLDPNeighbors) {
+            foreach($neighbor in $sourceDevice.LLDPNeighbors){
+                 $cleanHostName = ($neighbor.HostName -split '\(')[0].Split('.')[0]
+                 if(-not $neighborHostNames.Contains($cleanHostName)){
+                    $neighborHostNames.Add($cleanHostName)
+                 }
+            }
+        }
+        
+        # Process the unique list of neighbors
+        foreach ($neighborName in ($neighborHostNames | Select-Object -Unique)) {
+            
+            # Find the full device object for the neighbor.
+            $targetDevice = $ArrayOfObjects | Where-Object { $_.HostName -eq $neighborName } | Select-Object -First 1
+
+            # Proceed only if the neighbor is a configured device in our main array.
+            if ($targetDevice) {
+                
+                # Create a unique, sorted key for this pair to avoid duplicates (A->B is the same as B->A).
+                $connectionKey = ($sourceDevice.HostName, $targetDevice.HostName | Sort-Object) -join '--'
+
+                # If we haven't drawn this connection yet...
+                if (-not $drawnConnections.ContainsKey($connectionKey)) {
+                    
+                    # Get the shape IDs that were stored in Phase 1.
+                    $sourceId = $sourceDevice.L2OverviewDrawioId
+                    $targetId = $targetDevice.L2OverviewDrawioId
+
+                    # Ensure both shapes were actually drawn and have an ID.
+                    if ($sourceId -and $targetId) {
+                        # Draw a single, simple connector between the two host shapes.
+                        Add-DrawioConnector -SourceId $sourceId -TargetId $targetId -Style "endArrow=none;strokeWidth=3;strokeColor=#434343;"
+                        
+                        # Add the key to our tracking hashtable so we don't draw it again.
+                        $drawnConnections[$connectionKey] = $true
+                    }
+                }
+            }
+        }
+    }
+
+    # 4. Finalize the diagram page.
+    End-DrawioDiagram
+    Write-Host "L2 Overview diagram page has been created." -ForegroundColor Green
+}
+

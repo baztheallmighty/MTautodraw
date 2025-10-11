@@ -256,51 +256,14 @@ function Create-InterfaceObject() {
         RoutesForInterface     = @() #A list of all the routes that flow out of this interface.
         ShapeColor             = $null #Add colors for better representation of port-channels etc
         VRFColor               = $null #Add colors for better representation of VRF's etc
-        Physicalshape          = $null #The shape object associated with this interface. This is the dot we connect the lines to.
-        PhysicalshapeGroup     = $null #The shape object associated with this interface. This is a group of shapes that make up the interface.
-        Logicalshape           = $null #The shape object associated with this interface.
         ConnectedLayer3        = $false #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
         ConnectedCDPnieghbors  = $false #Has the shape been connected to already. This is used so we don't draw two lines to connect objects we have configuration for.
-        InterfaceAlreadyDrawn  = $false #This is used to track if we have already drawn the interface, so we don't draw it twice.
-        MacAddressShape        = $null #If we are drawing an object to represent all of the mac addresses attached to this interface, store the object here. This is used as an extension to show CDP nieghbors drawing. $GDrawPortsWithMacs is used to turn this feature on and off.
         PhysicalDrawioId       = $null #The unique ID for the physical interface shape in the draw.io diagram.
         LogicalDrawioId        = $null #The unique ID for the logical interface shape in the draw.io diagram.
         DrawOnRoutesOnlyDiagram = $false
     }
 }
 
-#Data from show run
-function Create-ConfigStaticRouteObject() {
-    return [PSCustomObject]@{
-        vrf         = $null
-        type        = $null
-        networks    = @()
-        gateway     = $null
-        name        = $null
-        interface   = $null
-        GatewayCidr = $null
-        shape       = $null
-    }
-}
-
-#Data from show run
-function Create-ConfigStaticRouteNetworkObject() {
-    return [PSCustomObject]@{
-        network = $null
-        subnet  = $null
-    }
-}
-
-#Data from show run
-function Create-vrfObject() {
-    return [PSCustomObject]@{
-        name        = $null
-        rd          = $null
-        RouteTarget = $null
-        export      = $null
-        shape       = $null
-    }
-}
 
 function Create-NetworkObject() {
     return [PSCustomObject]@{
@@ -333,7 +296,6 @@ function Create-HostObject() {
         Description           = $null #Description used to store system description from LLDP or CDP neighbours
         vlans                 = @() #Array of vlans configured on the device from show run
         interfaces            = @() #Array of interfaces on the device from show run
-        ConfigStaticRouteObjects = @() #Array of static routes configured on the device from show run
         vrfs                  = @() #Array of vrfs configured on the device from show run
         BGPConfig             = $null #Array of configured bgp information from show run
         BGPNeighborData       = @() #Array of neighbor data from show bgp neighbors
@@ -358,6 +320,7 @@ function Create-HostObject() {
         ProcessOutputObjects  = @() #Stores raw objects after processing of Execute-PythonTextFSM
         HostTypeIfCDPorLLDP   = @() #If this device is a lldp or cdp neighbor and it's name is a mac address we store it's make here. e.g HP or Dell or whatever
         CPDHostLocation       = $null #The location on the diagram where this object is drawn.
+        L2OverviewDrawioId      = $null # ID for the simplified L2 overview shape
     }
 }
 

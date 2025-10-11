@@ -944,6 +944,10 @@ function Get-JunosShowRunFromXML {
                         $obj.shutdown = $true
                         $obj.IntStatus = "down" 
                         $obj.INTProtocolStatus = "down"                        
+                    }else{
+                        $obj.shutdown = $false
+                        $obj.IntStatus = "up" 
+                        $obj.INTProtocolStatus = "up" 
                     }
                     $obj.SwitchPortType = 'routed'
                     $obj.RoutedVlan = $unit.name
@@ -960,7 +964,11 @@ function Get-JunosShowRunFromXML {
 								$obj.shutdown = $true
                                 $obj.IntStatus = "down" 
                                 $obj.INTProtocolStatus = "down"
-							}
+							}else{
+                                $obj.shutdown = $false
+                                $obj.IntStatus = "up" 
+                                $obj.INTProtocolStatus = "up" 
+                            }
 
  								# Validate that the address name exists and is not empty before processing.
                             if ($addressEntry -and -not [string]::IsNullOrWhiteSpace($addressEntry.name)) {
@@ -1014,6 +1022,10 @@ function Get-JunosShowRunFromXML {
                                 $obj.shutdown = $true
                                 $obj.IntStatus = "down" 
                                 $obj.INTProtocolStatus = "down"                                
+                            }else{
+                                $obj.shutdown = $false
+                                $obj.IntStatus = "up" 
+                                $obj.INTProtocolStatus = "up" 
                             }
                             if ($configToApply.'native-vlan-id') { $obj.NativeVlan = $configToApply.'native-vlan-id' }
 
@@ -1055,6 +1067,10 @@ function Get-JunosShowRunFromXML {
                     $obj.shutdown = $true
                     $obj.IntStatus = "down" 
                     $obj.INTProtocolStatus = "down"                    
+                }else{
+                    $obj.shutdown = $false
+                    $obj.IntStatus = "up" 
+                    $obj.INTProtocolStatus = "up" 
                 }
                 if ($ifaceNode.'native-vlan-id') { $obj.NativeVlan = $ifaceNode.'native-vlan-id' }
 

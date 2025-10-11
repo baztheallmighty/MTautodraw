@@ -38,7 +38,7 @@ function Process-PaloAltoHostFiles {
             return $null
         }
     } else {
-        Write-host "Required file 'show system info' was not found for hostid '$($hostid.HOSTID)'"
+        Add-HostDebugText -HostObject $Device "Required file 'show system info' was not found for hostid '$($hostid.HOSTID)'"
         return $null
     }
 
@@ -48,7 +48,9 @@ function Process-PaloAltoHostFiles {
         $Device = Get-PaloAltoShowInterfaceAllFromText -ShowInterfaceFile $hostid.ShowInterfaceAll -Device $Device
     }
 
-    # (Future processing functions for other Palo Alto commands like routes, etc., would be called here)
+    if($hostid.ShowRouteAll){
+        $Device = Get-PaloAltoRouteFromText -ShowRouteAllFile $hostid.ShowRouteAll -Device $Device
+    }
     $Device = Update-LocalRoutesWithInterfaces -device $Device
     return $Device
 }
@@ -102,6 +104,7 @@ function Get-PaloAltoSystemInfoFromText {
 
     return $Device
 }
+
 # Processes the 'show interface all' command output using two TextFSM templates to build a complete interface list.
 function Get-PaloAltoShowInterfaceAllFromText {
     param (
@@ -110,7 +113,8 @@ function Get-PaloAltoShowInterfaceAllFromText {
         [parameter(Mandatory=$true)]
         $Device
     )
-
+    
+    [array]$AllInterfaces=@()
     # --- Step 1: Process HARDWARE interface details first to create base objects ---
     Add-HostDebugText -HostObject $Device "  -> Processing hardware interfaces..."
     $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.PaloAltoShowInterfaceHardware -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
@@ -132,7 +136,7 @@ function Get-PaloAltoShowInterfaceAllFromText {
         $interfaceObject.Interface = $hardwareInt[0]
         $interfaceObject.Speed = $hardwareInt[2]
         $interfaceObject.Duplex = $hardwareInt[3]
-        $interfaceObject.IntStatus = $hardwareInt[4]
+        $interfaceObject.IntStatus = ($hardwareInt[4] -replace 'down\(autoneg\)',"down")
         $interfaceObject.macaddress = $hardwareInt[5]
 
         # Set the shutdown status based on the interface state
@@ -141,9 +145,10 @@ function Get-PaloAltoShowInterfaceAllFromText {
         } else {
             $interfaceObject.shutdown = $false
         }
-        $Device.interfaces += $interfaceObject
-    }
 
+        $AllInterfaces += $interfaceObject
+    }
+    
     # --- Step 2: Process LOGICAL interface details and merge them with existing objects ---
     Add-HostDebugText -HostObject $Device "  -> Processing and merging logical interfaces..."
     $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.PaloAltoShowInterfaceLogical -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
@@ -161,14 +166,14 @@ function Get-PaloAltoShowInterfaceAllFromText {
 
     foreach ($logicalInt in $Device.ProcessOutputObjects) {
         # Find the corresponding interface object we created in the hardware step
-        $interfaceToUpdate = $Device.interfaces | Where-Object { $_.Interface -eq $logicalInt[0] } | Select-Object -First 1
+        $interfaceToUpdate = $AllInterfaces | Where-Object { $_.Interface -eq $logicalInt[0] } | Select-Object -First 1
 
         if ($interfaceToUpdate) {
             # If it exists, UPDATE it with the logical details
             $interfaceToUpdate.Zone = $logicalInt[3]
 
             # Check for and process IP address information
-            if ($logicalInt[6] -and $logicalInt[6] -ne "[n/a]") {
+            if ($logicalInt[6] -and $logicalInt[6].tolower() -ne "[n/a]" -and $logicalInt[6] -ne "N/A") {
                 $interfaceToUpdate.IPAddress = ($logicalInt[6] -split "/")[0]
                 $interfaceToUpdate.SubnetMask = ($logicalInt[6] -split "/")[1]
                 $interfaceToUpdate.SwitchPortType = "Routed"
@@ -205,9 +210,121 @@ function Get-PaloAltoShowInterfaceAllFromText {
                     }
                 }
             }
-            $Device.interfaces += $interfaceObject
+            $AllInterfaces += $interfaceObject
         }
     }
-
+    $Device.interfaces = $AllInterfaces
     return $Device
 }
+
+
+
+
+
+# Main function to parse the Palo Alto routing table text.
+# Main function to parse the Palo Alto routing table text.
+function Get-PaloAltoRouteFromText {
+    param (
+        [parameter(Mandatory=$true)]
+        [string]$ShowRouteAllFile,
+
+        [parameter(Mandatory=$true)]
+        $Device
+    )
+    Add-HostDebugText -HostObject $Device "  -> Processing Palo Alto show route all..."
+    if (-not (Test-Path -Path $ShowRouteAllFile -PathType Leaf)) {
+        Add-HostDebugText -HostObject $Device "Error processing Palo Alto show route all from '$($ShowRouteAllFile)'." -BackgroundColor Red
+        return $Device 
+    }
+    $ShowRouteText = Get-Content -Raw -Path $ShowRouteAllFile
+    if ([string]::IsNullOrWhiteSpace($ShowRouteText) -or ($ShowRouteText | Select-String "(Invalid input|Command fail|Unknown command)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "File '$ShowRouteAllFile' contains invalid data or is empty." -BackgroundColor Red
+        return $Device 
+    }
+
+    $AllRouteObjects = [System.Collections.Generic.List[object]]::new()
+    $currentVRF = "default" 
+
+    $lines = $ShowRouteText -split '\r?\n'
+
+    foreach ($line in $lines) {
+        # Capture the current Virtual Router (VRF) name
+        if ($line -match 'VIRTUAL ROUTER: (.*) \(id \d+\)') {
+            $currentVRF = $matches[1].Trim()
+            continue 
+        }
+
+        # Basic check to see if it looks like a route line before splitting
+        if ($line -notmatch '^\s*(\d{1,3}\.|\S+/)') {
+            continue
+        }
+
+        # --- CORRECTED LOGIC: Tokenize the line instead of using a single complex regex ---
+        $tokens = $line.Trim() -split '\s+'
+        
+        # A valid route must have at least the destination, nexthop, metric, and one flag.
+        if ($tokens.Count -lt 4) {
+            continue
+        }
+
+        $RouteObject = Create-RouteObject
+        $RouteObject.VRF = $currentVRF
+
+        # Handle routes where the nexthop is another VR (e.g., "vr VR-vsys1")
+        if ($tokens[1] -eq 'vr') {
+            $RouteObject.Subnet    = $tokens[0]
+            $RouteObject.gateway   = "$($tokens[1]) $($tokens[2])" # Combine "vr" and its name
+            $RouteObject.DISTANCE  = [int]$tokens[3]
+            $startIndexForFlags = 4 # Flags start at the 5th token
+        } else {
+            # Handle standard routes with an IP nexthop
+            $RouteObject.Subnet    = $tokens[0]
+            $RouteObject.gateway   = $tokens[1]
+            $RouteObject.DISTANCE  = [int]$tokens[2]
+            $startIndexForFlags = 3 # Flags start at the 4th token
+        }
+        
+        if ($RouteObject.Subnet -eq "0.0.0.0/0") {
+            $RouteObject.defaultgateway = $true
+        }
+
+        $interface = $null
+        $flagAndAgeTokens = @()
+
+        # Reliably determine if an interface exists by checking the last token's pattern.
+        if ($tokens[-1] -match '[\/\.]') {
+            $interface = $tokens[-1]
+            $flagAndAgeTokens = $tokens[$startIndexForFlags..($tokens.Count - 2)]
+        } else {
+            # NO interface exists (e.g., host route), so all remaining tokens are flags/age
+            $flagAndAgeTokens = $tokens[$startIndexForFlags..($tokens.Count - 1)]
+        }
+        
+        $RouteObject.interface = $interface
+        
+        $actualFlags = $flagAndAgeTokens | Where-Object { $_ -notmatch '^\d+$' }
+        
+        if ($actualFlags.Count -gt 0) {
+            $primaryFlag = $actualFlags[-1]
+            $RouteObject.RouteSubType = $primaryFlag
+
+            switch ($primaryFlag[0]) {
+                'S' { $RouteObject.RouteProtocol = "static" }
+                'O' { $RouteObject.RouteProtocol = "OSPF" }
+                'C' { $RouteObject.RouteProtocol = "connect" }
+                'B' { $RouteObject.RouteProtocol = "BGP" }
+                'R' { $RouteObject.RouteProtocol = "RIP" }
+                'H' { $RouteObject.RouteProtocol = "host" }
+                default { $RouteObject.RouteProtocol = "unknown" }
+            }
+        }
+        
+        $AllRouteObjects.Add($RouteObject)
+    }
+
+    Add-HostDebugText -HostObject $Device "Found $($AllRouteObjects.Count) Palo Alto routes."
+    $device.RoutingTable = $AllRouteObjects
+    return $device
+}
+
+

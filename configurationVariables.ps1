@@ -27,9 +27,6 @@ $GPathToPythonExe="$($GPathToScript)\python\python.exe"
 #Path to Python script for converting config with TextFSM.
 $GPathToPythonTextFSMScript="$($GPathToScript)TextFSM.py"
 
-#Path the Bitvantage dll
-$GBitvantageNetworkPrefixDLL="$($GPathToScript)Bitvantage.InternetProtocol.NetworkPrefixLookup\Bitvantage.InternetProtocol.NetworkPrefix.dll"
-$GBitvantageNetworkPrefixLookupDLL="$($GPathToScript)Bitvantage.InternetProtocol.NetworkPrefixLookup\Bitvantage.InternetProtocol.NetworkPrefixLookup.dll"
 
 
 #This is the path to the TextFSm Templates. These are used to by a small python script to convert cisco config to Objects.
@@ -96,6 +93,10 @@ $GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -
 ## These boolean variables control which types of diagrams are generated.
 ################################################################################
 
+
+$GDrawL2Overview = $true
+$GNetworkPathAnalysis = $ture
+
 # This draws the diagrams with multiple devices per page and links them together.
 # This is the primary diagram you are probably after.
 $GDrawMultipleDevicesDiagram=$true
@@ -128,17 +129,11 @@ $GDrawLayer3RoutesOnly=$true
 $GDrawSpanningTree=$true
 
 
-# Draws all of the ports of a switch. (DEPRECATED/UNUSED)
-#$GDrawEthernet=$false #Note this is quiet slow
-
-
 ################################################################################
 ## --- Processing and Behavior Toggles ---
 ## These variables control how the script processes data and handles specific cases.
 ################################################################################
 
-#If set to true this will draw all interfaces that are blocked by spanning tree.
-$GdrawBlockedStpPorts = $true
 
 
 # Skip HSRP routes. Use this option to not see HSRP routes in the routing protocol as they are mostly just noise.
@@ -167,8 +162,6 @@ $GDrawAprEntries=$true
 # If drawing ARP entries, set to $true to draw full details (IP, MAC, Vendor) instead of a summary.
 $GDrawAprEntriesDetails=$true
 
-# Shorten interface names (e.g., GigabitEthernet0/1 becomes Gi0/1).
-$GShortenInterfacesNames=$true
 
 # Export processed data (VLANs, CIDR, etc.) to CSV and JSON files in the output directory.
 $GExportData=$true

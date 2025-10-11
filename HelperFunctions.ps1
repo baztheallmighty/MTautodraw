@@ -52,7 +52,7 @@ function Update-LocalRoutesWithInterfaces {
     # Iterate directly through each route that needs an interface assigned.
     # Changes to $route will modify the object within $device.RoutingTable.
     foreach ($route in $device.RoutingTable | Where-Object {
-        ('local', 'connected', 'direct' -contains $_.RouteProtocol) -and [string]::IsNullOrEmpty($_.interface)
+        ('connect','host','local', 'connected', 'direct' -contains $_.RouteProtocol) -and [string]::IsNullOrEmpty($_.interface)
     }) {
         # The destination subnet of the route we need to match.
         $destinationSubnet = $route.Subnet

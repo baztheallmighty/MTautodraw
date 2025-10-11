@@ -183,34 +183,36 @@ $global:drawioXml = ""
 #Output data to csv and json
 if($GExportData){
     write-HostDebugText "Exporting data to files"
-    $GArrayOfObjects | where { $_.vlans} | % { $t=$_.vlans; $t |Add-Member -Name partentobject -Type NoteProperty -Value $_.hostname -Force; $t } | export-csv "$($GOutPutDirectory)vlans.csv" -NoTypeInformation
+    $GArrayOfObjects | where { $_.vlans} | % { $t=$_.vlans; $t |Add-Member -Name ParentObject -Type NoteProperty -Value $_.hostname -Force; $t } | export-csv "$($GOutPutDirectory)vlans.csv" -NoTypeInformation
     $GArrayOfObjects | % { $_.CDPNeighbors } | select DeviceID,SystemName,Platform,InterfaceLocalDevice,InterfaceRemoteDevice,Version,InterfaceIPAddresses,Capabilities,ParentObject | Export-Csv -Path "$($GOutPutDirectory)CDPNeighbors.csv" -NoTypeInformation
     $GArrayOfObjects | % { $_.LLDPNeighbors } | select PartnerEthernetInterface,InterfaceLocalDevice,ChassisID,InterfaceRemoteDevice,NeighborInterfaceDescription,Hostname,SystemDescription,Capabilities,ManagementIP,VLAN,SERIAL,PortID,ParentObject | Export-Csv -Path "$($GOutPutDirectory)LLDPNeighbors.csv" -NoTypeInformation
 
     $GArrayOfObjects | % {
         $t=$_.ArrayOfNetworks;
-        $t |Add-Member -Name partentobject -Type NoteProperty -Value $_.hostname -Force;
+        $t |Add-Member -Name ParentObject -Type NoteProperty -Value $_.hostname -Force;
         $t |Add-Member -Name DeviceIdentifier -Type NoteProperty -Value $_.DeviceIdentifier -Force;
         $t |Add-Member -Name DeviceInVlan -Type NoteProperty -Value $null -Force;
         $t | % { $_.DeviceInVlan = (($_.ARPEntries | group VendorCompanyName | select count,name | sort count -Descending | ft -HideTableHeaders | out-string) -replace "(?smi)^\s+",""  ).trim() }
         $t
-    } | select DeviceIdentifier,cidr,routedvlan,networkname,partentobject,DeviceInVlan | export-csv "$($GOutPutDirectory)cidr.csv" -NoTypeInformation
+    } | select DeviceIdentifier,cidr,routedvlan,networkname,ParentObject,DeviceInVlan | export-csv "$($GOutPutDirectory)cidr.csv" -NoTypeInformation
 
 }
 
-# 2. Construct a full, unique file path for the report
-$reportFileName = "$((Get-Date).ToString('yyyyMMdd-HHmmss'))-Analysis.html"
-$fullReportPath = Join-Path -Path $GOutPutDirectory -ChildPath $reportFileName
 
 
+if($GNetworkPathAnalysis){
 # 3. Call the analysis function with the specified output path
-Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $fullReportPath -Verbose
-
+    Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $GOutPutDirectory -Verbose
+}
 
 if($GDrawMultipleDevicesDiagram){
     write-HostDebugText "Initializing Multi-Device Draw.io file..." -ForegroundColor Cyan
     Initialize-DrawioFile
-
+    
+    
+    if($GDrawL2Overview){
+        Draw-L2OverviewDiagram -ArrayOfObjects $GArrayOfObjects
+    }
     if($GDrawCDPALL){
         Draw-AllNeighborsDrawio -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs -DrawAllNeighbors $true
     }

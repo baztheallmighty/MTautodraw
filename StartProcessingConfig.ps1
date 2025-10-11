@@ -117,6 +117,10 @@ function Create-FileHostObjects{
                     $hostid.ShowRouteAll=$file.fullname
                     break
                 }
+                if($file.name -like "*show routing route*"){ #Checkpoint/PaloAlto routing table
+                    $hostid.ShowRouteAll=$file.fullname
+                    break
+                }
                 if($file.name -like "*show route*" ){ #Cisco ASA routing table and JUNOS
                     $hostid.CiscoASAShowRoute=$file.fullname  #Cisco ASA
                     $hostid.ShowRouteAll=$file.fullname #JUNOS
@@ -480,19 +484,20 @@ function Start-ProcessingFiles(){
     write-HostDebugText "Calculating routes on each interface." -ForegroundColor green
     foreach ($Device in $ArrayOfObjects){
         foreach ($interface in $Device.interfaces | where { $_.ipaddress -and $_.shutdown -eq $false -and $_.IntStatus -notlike "*down*"}){
-            $interface.RoutesForInterface=$Device.RoutingTable| where { $_.interface -eq $interface.Interface -and $_.routeprotocol -notmatch "Access-internal|local|connected|direct" } | sort gateway,subnet
+            $interface.RoutesForInterface=$Device.RoutingTable| where { $_.interface -eq $interface.Interface -and $_.routeprotocol -notmatch "connect|host|Access-internal|local|connected|direct" } | sort gateway,subnet
             #$Device.RoutingTable| where { !($_.interface) -and $_.routeprotocol -notmatch "local|connected|direct"}
         }
     }
 
 
-    write-HostDebugText "Processing Network Objects" -ForegroundColor green
+    write-HostDebugText "Processing Network Objects $($ArrayOfNetworks.count)" -ForegroundColor green
     #Create a list of all networks shared across all devices.
     #Remove duplicates
     $ArrayOfNetworks = $ArrayOfNetworks | sort cidr -Unique |sort vlan
     #Add a color for every network
     $ArrayOfNetworks | % { $_.color = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)" }
     $ArrayOfNetworks = $ArrayOfNetworks | sort  NumberOfConnectors,vlan,cidr
+    write-HostDebugText "Total networks1 $($ArrayOfNetworks.count)" -ForegroundColor green
     #Count the number of connectors to each network.
     foreach ($Device in $ArrayOfObjects){
         foreach ($interface in ($Device.interfaces | where { $null -ne $_.ipaddress   -and $_.shutdown -eq $false})){
@@ -515,6 +520,7 @@ function Start-ProcessingFiles(){
 
     #We don't care about vlans that have no layer 3 interface in the array of networks.
     $ArrayOfNetworks= $ArrayOfNetworks| where {$_.NumberOfConnectors -gt 0}
+    write-HostDebugText "Total networks2 $($ArrayOfNetworks.count)" -ForegroundColor green
     write-HostDebugText "Processing network layer 3 ARP Entries and VLAN names" -ForegroundColor green
     #Get the name of the vlan and add the ARP entries to the object
     foreach ($network in $ArrayOfNetworks){
@@ -542,39 +548,39 @@ function Start-ProcessingFiles(){
 
     # Display a status message for the user.
     write-HostDebugText "Linking cdp neighbours we have config for together" -ForegroundColor green
-
+    $deviceLookup = @{}
+    foreach ($device in $ArrayOfObjects) {
+        $deviceLookup[$device.hostname] = $device
+    }
     # Iterate through each device object that has been created from a config file.
     foreach ($Device in $ArrayOfObjects){
         # For each device, iterate through its list of discovered CDP neighbors.
         foreach ( $cdpneighbor in $Device.cdpneighbors){
+            # Determine the correct hostname to search for. Prioritize the clean SystemName.
+            $neighborHostname = if (-not [string]::IsNullOrEmpty($cdpneighbor.SystemName)) {
+                $cdpneighbor.SystemName
+            } else {
+                # Fallback to cleaning the DeviceID if SystemName is missing.
+                ($cdpneighbor.DeviceID -replace "\(.*?\)",'' -replace "(.*?)\..*",'$1').trim()
+            }
 
-            # CASE 1: The neighbor's SystemName is missing. We must rely on the DeviceID, which might be messy.
-            if($null -eq $cdpneighbor.SystemName -or $cdpneighbor.SystemName -eq ""){
+            # Use the fast lookup table to find the neighbor device.
+            $neighborDevice = $deviceLookup[$neighborHostname]
 
-                # Search for the neighbor device in our master list ($ArrayOfObjects).
-                # The pipeline finds a device whose hostname matches the neighbor's DeviceID after cleaning it up.
-                # REGEX CLEANUP:
-                #   -replace "\(.*?\)",''       -> Removes serial numbers in parentheses, e.g., "device(FOC123456)".
-                #   -replace "(.*?)\..*",'$1' -> Removes domain suffixes, e.g., "device.cisco.com".
-                #   .trim()                    -> Removes any leading/trailing whitespace.
-                # Then, it finds the specific interface on that neighbor that matches the remote port from the CDP data.
-                if($ArrayOfObjects | where { $_.hostname -eq ($cdpneighbor.DeviceID -replace "\(.*?\)",'' -replace "(.*?)\..*",'$1').trim() } | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice }){
+            if ($neighborDevice) {
+                # Once the device is found, search only its interfaces for a match.
+                $remoteInterfaceObject = $neighborDevice.interfaces | Where-Object { $_.interface -eq $cdpneighbor.InterfaceRemoteDevice } | Select-Object -First 1
+                
+                if ($remoteInterfaceObject) {
+                    # Find the index of that specific object in the original array to ensure correct scope.
+                    $interfaceIndex = [array]::IndexOf([array]$neighborDevice.interfaces, $remoteInterfaceObject)
 
-                    # If a match is found, create a direct REFERENCE to the neighbor's interface object.
-                    # This links the two objects in memory for easy traversal later.
-                    $cdpneighbor.PartnerEthernetInterface = [ref]($ArrayOfObjects | where { $_.hostname -eq ($cdpneighbor.DeviceID -replace "\(.*?\)",'' -replace "(.*?)\..*",'$1').trim() } | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice })
-
-                    # Also, set a flag on the NEIGHBOR'S interface object to mark it as successfully linked.
-                    # This is useful for drawing diagrams, as it confirms this interface is part of a known connection.
-                    ($ArrayOfObjects | where { $_.hostname -eq ($cdpneighbor.DeviceID -replace "\(.*?\)",'' -replace "(.*?)\..*",'$1').trim() } | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice } ).IsLinkedToByCDPorLLDP = $true
-                }
-
-            # CASE 2: The neighbor's SystemName is available. This is a much cleaner and more reliable match.
-            }else{
-                # Find the neighbor by its SystemName and remote interface, then perform the same linking as above.
-                if( $ArrayOfObjects | where { $_.hostname -eq $cdpneighbor.SystemName} | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice } ){
-                    $cdpneighbor.PartnerEthernetInterface = [ref]($ArrayOfObjects | where { $_.hostname -eq $cdpneighbor.SystemName} | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice } )
-                    ($ArrayOfObjects | where { $_.hostname -eq $cdpneighbor.SystemName} | %{ $_.interfaces} | where { $_.interface -eq  $cdpneighbor.InterfaceRemoteDevice } ).IsLinkedToByCDPorLLDP = $true
+                    if ($interfaceIndex -ge 0) {
+                        # Create a reference directly to the object at its index, which persists outside this scope.
+                        $cdpneighbor.PartnerEthernetInterface = [ref]$neighborDevice.interfaces[$interfaceIndex]
+                        # Set the flag on the original object.
+                        $neighborDevice.interfaces[$interfaceIndex].IsLinkedToByCDPorLLDP = $true
+                    }
                 }
             }
         }
@@ -825,133 +831,133 @@ function Start-ProcessingFiles(){
     # This is the matching logic behind linking interfaces which have a gateway so we can draw a route diagram.
     write-HostDebugText "Linking Layer 3 interfaces to Gateways and creating ARP hosts." -ForegroundColor green
 
-###################################################################################################################################################
+    ###################################################################################################################################################
 
-###################################################################################################################################################
-# This is the matching logic behind linking interfaces which have a gateway so we can draw a route diagram.
-write-HostDebugText "Linking Layer 3 interfaces to Gateways and creating ARP hosts." -ForegroundColor green
+    ###################################################################################################################################################
+    # This is the matching logic behind linking interfaces which have a gateway so we can draw a route diagram.
+    write-HostDebugText "Linking Layer 3 interfaces to Gateways and creating ARP hosts." -ForegroundColor green
 
-# Pre-build lookup tables for faster searching
-$InterfaceLookup = @{}
-foreach ($device in $ArrayOfObjects) {
-    foreach ($intf in $device.interfaces) {
-        if (-not $intf.shutdown) {
-            foreach ($key in @($intf.IPAddress, $intf.ClusterIP, $intf.Standbyip, $intf.SecondaryIPAddress)) {
-                if ($key) { $InterfaceLookup[$key] = $intf }
+    # Pre-build lookup tables for faster searching
+    $InterfaceLookup = @{}
+    foreach ($device in $ArrayOfObjects) {
+        foreach ($intf in $device.interfaces) {
+            if (-not $intf.shutdown) {
+                foreach ($key in @($intf.IPAddress, $intf.ClusterIP, $intf.Standbyip, $intf.SecondaryIPAddress)) {
+                    if ($key) { $InterfaceLookup[$key] = $intf }
+                }
             }
         }
     }
-}
 
-$GatewayHostsLookup = @{}
-foreach ($gwHost in $ArrayofGatewayHosts) {
-    # Filter for non-null IPs before adding to the lookup
-    foreach ($ip in ($gwHost.arrayofipaddresses | Where-Object { $_ })) {
-        $GatewayHostsLookup[$ip] = $true
+    $GatewayHostsLookup = @{}
+    foreach ($gwHost in $ArrayofGatewayHosts) {
+        # Filter for non-null IPs before adding to the lookup
+        foreach ($ip in ($gwHost.arrayofipaddresses | Where-Object { $_ })) {
+            $GatewayHostsLookup[$ip] = $true
+        }
     }
-}
 
-$CDPLookup = @{}
-foreach ($CDPDevice in $ArrayOfCDPDeviceIDs) {
-    foreach ($ip in ($CDPDevice.ArrayOfIPAddresses | Where-Object { $_ })) {
-        $CDPLookup[$ip] = $CDPDevice
+    $CDPLookup = @{}
+    foreach ($CDPDevice in $ArrayOfCDPDeviceIDs) {
+        foreach ($ip in ($CDPDevice.ArrayOfIPAddresses | Where-Object { $_ })) {
+            $CDPLookup[$ip] = $CDPDevice
+        }
     }
-}
 
-$LLDPLookup = @{}
-foreach ($LLDPDevice in $ArrayOfLLDPDeviceIDs) {
-    foreach ($ip in ($LLDPDevice.ArrayOfIPAddresses | Where-Object { $_ })) {
-        $LLDPLookup[$ip] = $LLDPDevice
+    $LLDPLookup = @{}
+    foreach ($LLDPDevice in $ArrayOfLLDPDeviceIDs) {
+        foreach ($ip in ($LLDPDevice.ArrayOfIPAddresses | Where-Object { $_ })) {
+            $LLDPLookup[$ip] = $LLDPDevice
+        }
     }
-}
 
-# Cache last gateway so we don't reprocess the same one
-$LastGatewayCache = @{}
+    # Cache last gateway so we don't reprocess the same one
+    $LastGatewayCache = @{}
 
-foreach ($device in $ArrayOfObjects) {
-    foreach ($interface in $device.interfaces | Where-Object { $_.RoutesForInterface }) {
-        foreach ($route in ($interface.RoutesForInterface | Where-Object { $_.gateway } | Sort-Object gateway)) {
+    foreach ($device in $ArrayOfObjects) {
+        foreach ($interface in $device.interfaces | Where-Object { $_.RoutesForInterface }) {
+            foreach ($route in ($interface.RoutesForInterface | Where-Object { $_.gateway } | Sort-Object gateway)) {
 
-            if ($LastGatewayCache.ContainsKey($route.gateway)) {
-                $route.GatewayLink = $LastGatewayCache[$route.gateway]
-                continue
-            }
+                if ($LastGatewayCache.ContainsKey($route.gateway)) {
+                    $route.GatewayLink = $LastGatewayCache[$route.gateway]
+                    continue
+                }
 
-            # Step 1: Direct interface match in a device we have config for.
-            if ($InterfaceLookup.ContainsKey($route.gateway)) {
-                $route.GatewayLink = [ref]$InterfaceLookup[$route.gateway]
+                # Step 1: Direct interface match in a device we have config for.
+                if ($InterfaceLookup.ContainsKey($route.gateway)) {
+                    $route.GatewayLink = [ref]$InterfaceLookup[$route.gateway]
+                    $LastGatewayCache[$route.gateway] = $route.GatewayLink
+                    continue
+                }
+
+                # Step 2: Gateway already created as a gateway host object?
+                if ($GatewayHostsLookup.ContainsKey($route.gateway)) {
+                    continue
+                }
+
+                # Step 3: No direct match, so create a new gateway host from ARP or as a placeholder.
+                $HostGatewayObject = $null
+                $interfaceObject = $null
+                $NewObjectToCreate = $device.IPArpEntries | Where-Object { $_.ipaddress -eq $route.gateway }
+
+                if ($NewObjectToCreate) {
+                    $HostGatewayObject = Create-HostObject
+                    $HostGatewayObject.Origin = "ARP"
+                    [array]$HostGatewayObject.arrayofipaddresses += [array]$NewObjectToCreate.ipaddress
+                    $HostGatewayObject.hostname = "$($NewObjectToCreate.VendorCompanyName)`r`n$($NewObjectToCreate.MAC)"
+                }
+                else {
+                    # No ARP entry, create a basic placeholder
+                    $HostGatewayObject = Create-HostObject
+                    $HostGatewayObject.Origin = "RoutingTable"
+                    $HostGatewayObject.hostname = "Unknown`r`n$($route.gateway)"
+                    [array]$HostGatewayObject.arrayofipaddresses += [array]$route.gateway
+                }
+
+                # Create the interface for the new HostGatewayObject
+                $interfaceObject = Create-InterfaceObject
+                $interfaceObject.shutdown = $false
+                $interfaceObject.interface = "Unknown Interface"
+                $interfaceObject.IPAddress = $route.gateway
+                $interfaceObject.cidr = $interface.cidr # Inherit CIDR from the source interface
+                $HostGatewayObject.interfaces += $interfaceObject
+
+
+                # Step 4: Enrich the new gateway object with CDP/LLDP info if available.
+                # This section does NOT set the GatewayLink, it only adds data to the HostGatewayObject.
+                if ($CDPLookup.ContainsKey($route.gateway)) {
+                    $CDPDevice = $CDPLookup[$route.gateway]
+                    $HostGatewayObject.Description = $CDPDevice.Description
+                    [array]$HostGatewayObject.arrayofipaddresses += $CDPDevice.arrayofipaddresses
+                }
+                elseif ($LLDPLookup.ContainsKey($route.gateway)) {
+                    $LLDPDevice = $LLDPLookup[$route.gateway]
+                    $HostGatewayObject.Description = $LLDPDevice.Description
+                    [array]$HostGatewayObject.arrayofipaddresses += $LLDPDevice.arrayofipaddresses
+                }
+
+                # Step 5: Finalize the link. THIS IS THE CRITICAL FIX.
+                # Just like the old code, we ALWAYS link to the interface object of the gateway.
+                $route.GatewayLink = [ref]$interfaceObject
+
+                # Clean up the IP list and save the new gateway host
+                $HostGatewayObject.arrayofipaddresses = $HostGatewayObject.arrayofipaddresses | Where-Object { $_ } | Sort-Object -Unique
+                $ArrayofGatewayHosts += $HostGatewayObject
+
+                foreach ($ip in $HostGatewayObject.arrayofipaddresses) {
+                    $GatewayHostsLookup[$ip] = $true
+                }
+
+                # Cache this gateway result for the next route
                 $LastGatewayCache[$route.gateway] = $route.GatewayLink
-                continue
             }
-
-            # Step 2: Gateway already created as a gateway host object?
-            if ($GatewayHostsLookup.ContainsKey($route.gateway)) {
-                continue
-            }
-
-            # Step 3: No direct match, so create a new gateway host from ARP or as a placeholder.
-            $HostGatewayObject = $null
-            $interfaceObject = $null
-            $NewObjectToCreate = $device.IPArpEntries | Where-Object { $_.ipaddress -eq $route.gateway }
-
-            if ($NewObjectToCreate) {
-                $HostGatewayObject = Create-HostObject
-                $HostGatewayObject.Origin = "ARP"
-                [array]$HostGatewayObject.arrayofipaddresses += [array]$NewObjectToCreate.ipaddress
-                $HostGatewayObject.hostname = "$($NewObjectToCreate.VendorCompanyName)`r`n$($NewObjectToCreate.MAC)"
-            }
-            else {
-                # No ARP entry, create a basic placeholder
-                $HostGatewayObject = Create-HostObject
-                $HostGatewayObject.Origin = "RoutingTable"
-                $HostGatewayObject.hostname = "Unknown`r`n$($route.gateway)"
-                [array]$HostGatewayObject.arrayofipaddresses += [array]$route.gateway
-            }
-
-            # Create the interface for the new HostGatewayObject
-            $interfaceObject = Create-InterfaceObject
-            $interfaceObject.shutdown = $false
-            $interfaceObject.interface = "Unknown Interface"
-            $interfaceObject.IPAddress = $route.gateway
-            $interfaceObject.cidr = $interface.cidr # Inherit CIDR from the source interface
-            $HostGatewayObject.interfaces += $interfaceObject
-
-
-            # Step 4: Enrich the new gateway object with CDP/LLDP info if available.
-            # This section does NOT set the GatewayLink, it only adds data to the HostGatewayObject.
-            if ($CDPLookup.ContainsKey($route.gateway)) {
-                $CDPDevice = $CDPLookup[$route.gateway]
-                $HostGatewayObject.Description = $CDPDevice.Description
-                [array]$HostGatewayObject.arrayofipaddresses += $CDPDevice.arrayofipaddresses
-            }
-            elseif ($LLDPLookup.ContainsKey($route.gateway)) {
-                $LLDPDevice = $LLDPLookup[$route.gateway]
-                $HostGatewayObject.Description = $LLDPDevice.Description
-                [array]$HostGatewayObject.arrayofipaddresses += $LLDPDevice.arrayofipaddresses
-            }
-
-            # Step 5: Finalize the link. THIS IS THE CRITICAL FIX.
-            # Just like the old code, we ALWAYS link to the interface object of the gateway.
-            $route.GatewayLink = [ref]$interfaceObject
-
-            # Clean up the IP list and save the new gateway host
-            $HostGatewayObject.arrayofipaddresses = $HostGatewayObject.arrayofipaddresses | Where-Object { $_ } | Sort-Object -Unique
-            $ArrayofGatewayHosts += $HostGatewayObject
-
-            foreach ($ip in $HostGatewayObject.arrayofipaddresses) {
-                $GatewayHostsLookup[$ip] = $true
-            }
-
-            # Cache this gateway result for the next route
-            $LastGatewayCache[$route.gateway] = $route.GatewayLink
         }
     }
-}
-###################################################################################################################################################
+    ###################################################################################################################################################
 
 
 
-###################################################################################################################################################
+    ###################################################################################################################################################
     # This loop enriches the gateway host objects with BGP ASN information if available.
     write-HostDebugText "Updating BGP ASN for gateway hosts." -ForegroundColor green
     foreach ($device in $ArrayOfObjects) {
