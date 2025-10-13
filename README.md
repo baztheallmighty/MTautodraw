@@ -14,10 +14,10 @@
 6. [Supported Platforms](#️-supported-platforms)
 7. [Prerequisites](#-prerequisites)
 8. [How do i use it? Step-by-step](#-how-to-use)
-9. [Outbound Network Connections](#-outbound-network-connections)
-10. [Output](#️-output)
-11. [Troubleshooting & Limitations](#-troubleshooting--limitations)
-12. [Best Practices](#-best-practices)
+9.  [Output](#️-output)
+10. [Troubleshooting & Limitations](#-troubleshooting--limitations)
+11. [Best Practices](#-best-practices)
+12. [Outbound Network Connections](#-outbound-network-connections)
 13. [Acknowledgements](#-acknowledgements)
 14. [Copyright and License](#-copyright-and-license)
 15. [Application Workflow](#how-the-application-works)
@@ -292,17 +292,6 @@ Open a PowerShell terminal, navigate to the script's folder, and run it with the
 
 The diagrams come out pretty flat and need to be arranged and quite often resized to be of use. This is a manual task at this stage.
 
----
-
-## 🔒 Outbound Network Connections
-
-For security and operational transparency, it's important to know what network connections a script makes. MTAudotDraw is designed to work primarily on local files and does not require an active internet connection to perform its main functions, provided one file is present.
-
-MAC Address to Vendor Mapping
-
-* **`Purpose:`** To provide more useful information in diagrams and data exports, the script maps MAC addresses to their respective hardware vendors (e.g., Cisco, Juniper, Dell). To do this, it needs a list of Organizationally Unique Identifiers (OUIs).
-* **` Trigger:`** This connection is only attempted if the file MacAddressToVendorsMapping.csv is not present in the script's root directory.
-* **` Process:`** On its first run (or if the file is deleted), **the script will attempt to download** the OUI list from devtools360.com. Once downloaded, it saves the data locally as MacAddressToVendorsMapping.csv.
 
 ---
 
@@ -344,6 +333,17 @@ The script will generate the following files in your output directory:
 
 * **File Encoding**: The script attempts to clean files, but starting with **ASCII** encoding is recommended.
 * **Break Up the Work**: For large networks, process devices in logical groups (e.g., by building or function) to keep diagrams clean. A diagram with more than 25-30 devices can become very cluttered.
+---
+
+## 🔒 Outbound Network Connections
+
+For security and operational transparency, it's important to know what network connections a script makes. MTAudotDraw is designed to work primarily on local files and does not require an active internet connection to perform its main functions, provided one file is present.
+
+MAC Address to Vendor Mapping
+
+* **`Purpose:`** To provide more useful information in diagrams and data exports, the script maps MAC addresses to their respective hardware vendors (e.g., Cisco, Juniper, Dell). To do this, it needs a list of Organizationally Unique Identifiers (OUIs).
+* **` Trigger:`** This connection is only attempted if the file MacAddressToVendorsMapping.csv is not present in the script's root directory.
+* **` Process:`** On its first run (or if the file is deleted), **the script will attempt to download** the OUI list from devtools360.com. Once downloaded, it saves the data locally as MacAddressToVendorsMapping.csv.
 
 ---
 
