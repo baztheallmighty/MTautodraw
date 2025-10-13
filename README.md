@@ -161,9 +161,9 @@ Before running the script, ensure your environment meets the following requireme
 
 ## 🚀 How to Use
 
-### 1. Project File Structure
+### 1. Download the script
 
-Place all the script files (`.ps1`, `.py`) and the `Templates` directory together. The script relies on this structure to find its modules and templates.
+Download and place all the script files (`.ps1`, `.py`) and the `Templates` directory together. The script relies on this structure to find its modules and templates.
 
 ```
 MTAudotDraw/
