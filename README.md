@@ -13,7 +13,7 @@
 5. [How It Works](#️-how-it-works)
 6. [Supported Platforms](#️-supported-platforms)
 7. [Prerequisites](#-prerequisites)
-8. [How to Use](#-how-to-use)
+8. [How do i use it? Step-by-step](#-how-to-use)
 9. [Outbound Network Connections](#-outbound-network-connections)
 10. [Output](#️-output)
 11. [Troubleshooting & Limitations](#-troubleshooting--limitations)
@@ -53,16 +53,16 @@ This tool is incredibly useful for a variety of tasks:
 * **Operational Insight**: Gain a better general understanding of network topology and routing.
 
 
-## Screenshots Example networks
-## **CDP-LLDP brief**
+## Screenshots
+### **CDP-LLDP brief**
 <img width="4344" height="2564" alt="image" src="https://github.com/user-attachments/assets/9354a623-15cf-4347-8dfb-a2d5bfed993a" />
 
 
 
-## **Layer 3 Routes only Diagram**
+### **Layer 3 Routes only Diagram**
 <img width="4064" height="4284" alt="image" src="https://github.com/user-attachments/assets/ba4e1a39-dac2-4ed7-87a0-871db056de9b" />
 
-## **Layer 3 Routes only Diagram**
+### **Layer 3 Routes only Diagram**
 
 <img width="8368" height="7324" alt="image" src="https://github.com/user-attachments/assets/9d0d0c07-23e8-4ddf-92df-d3fbc74e0759" />
 
