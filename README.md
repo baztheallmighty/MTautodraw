@@ -4,7 +4,26 @@
 MTAudotDraw is a powerful PowerShell-based tool designed to automate the creation of detailed network diagrams by parsing configuration files from various network devices. It intelligently processes device configs, discovers network topology using protocols like CDP and LLDP, and generates diagrams in the **.drawio (diagrams.net)** format. It can also perform **Network Path Analysis**, exporting a **Route Analysis Report** (Currently in development) in `HTML` format for hop-by-hop routing insights.
 
 ---
+# Table of Contents
 
+1. [What is MTAudotDraw](#what-is-it)
+2. [Key Features](#-key-features)
+3. [Use Cases](#-use-cases)
+4. [How It Works](#️-how-it-works)
+5. [Supported Platforms](#️-supported-platforms)
+6. [Prerequisites](#-prerequisites)
+7. [How to Use](#-how-to-use)
+8. [Outbound Network Connections](#-outbound-network-connections)
+9. [Output](#️-output)
+10. [Troubleshooting & Limitations](#-troubleshooting--limitations)
+11. [Best Practices](#-best-practices)
+12. [Acknowledgements](#-acknowledgements)
+13. [Copyright and License](#-copyright-and-license)
+14. [Application Workflow](#how-the-application-works)
+15. [Host Object Structure](#what-is-inside-the-host-object)
+
+
+---
 ## ✨ Key Features
 
 * **Automated Diagram Generation**: Automatically creates multi-page `.drawio` files from your device configuration backups.
@@ -33,7 +52,8 @@ This tool is incredibly useful for a variety of tasks:
 
 ## Screenshots Example networks
 ## **CDP-LLDP brief**
-<img width="5144" height="3484" alt="image" src="https://github.com/user-attachments/assets/0088029e-30db-43c8-9aa9-64db3909b3e4" />
+<img width="4344" height="2564" alt="image" src="https://github.com/user-attachments/assets/9354a623-15cf-4347-8dfb-a2d5bfed993a" />
+
 
 
 ## **Layer 3 Routes only Diagram**
