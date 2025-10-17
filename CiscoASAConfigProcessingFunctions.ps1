@@ -101,32 +101,7 @@ function Get-CiscoASAShowRunFromText{
 #Get all of the interfaces out of the show interfaces all command.
 #Input:show interfaces all file
 #Output:Interfaces objects.
-#Notes:
-#$int[0]=INTERFACE
-#$int[1]=INTERFACE_ZONE
-#$int[2]=LINK_STATUS
-#$int[3]=PROTOCOL_STATUS
-#$int[4]=HARDWARE_TYPE
-#$int[5]=BANDWIDTH
-#$int[6]=DELAY
-#$int[7]=DUPLEX
-#$int[8]=SPEED
-#$int[9]=DESCRIPTION
-#$int[10]=ADDRESS
-#$int[11]=MTU
-#$int[12]=VLAN
-#$int[13]=IP_ADDRESS
-#$int[14]=NET_MASK
-#$int[15]=ONEMIN_IN_PPS
-#$int[16]=ONEMIN_IN_RATE
-#$int[17]=ONEMIN_OUT_PPS
-#$int[18]=ONEMIN_OUT_RATE
-#$int[19]=ONEMIN_DROP_RATE
-#$int[20]=FIVEMIN_IN_PPS
-#$int[21]=FIVEMIN_IN_RATE
-#$int[22]=FIVEMIN_OUT_PPS
-#$int[23]=FIVEMIN_OUT_RATE
-#$int[24]=FIVEMIN_DROP_RATE
+
 function Get-CiscoASAShowInterfaceFromText(){
     param (
         [parameter(Mandatory=$true)]
@@ -168,11 +143,11 @@ function Get-CiscoASAShowInterfaceFromText(){
         $interfaceObject.speed=$int[8]
         $interfaceObject.Description=$int[9]
 
-        if($int[13]){
+        if($int[15]){
 
-            $interfaceObject.IPAddress=$int[13]
+            $interfaceObject.IPAddress=$int[15]
 
-            $interfaceObject.SubnetMask=Covert-NetMaskToCIDR -SubnetMask $int[14]
+            $interfaceObject.SubnetMask=Covert-NetMaskToCIDR -SubnetMask $int[16]
 
             $interfaceObject.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
             $interfaceObject.SwitchPortType="Routed"
@@ -203,16 +178,7 @@ function Get-CiscoASAShowInterfaceFromText(){
 #Process the show route from a Cisco ASA
 #Input:Cisco ASA show route all file
 #Output: Routing table object.
-#Notes:
-#$int[0]=PROTOCOL
-#$int[1]=TYPE
-#$int[2]=NETWORK
-#$int[3]=MASK
-#$int[4]=DISTANCE
-#$int[5]=METRIC
-#$int[6]=NEXTHOPIP
-#$int[7]=NEXTHOPIF
-#$int[8]=UPTIME
+
 function Get-CiscoASAShowRouteFromText(){
     param (
         [parameter(Mandatory=$true)]

@@ -130,11 +130,11 @@ function Get-CheckPointShowInterfaceFromText(){
             $interfaceObject.shutdown=$true
         }
 
-        $interfaceObject.speed=$int[7]
-        $interfaceObject.Description=$int[8]
-        if($int[9]){
-            $interfaceObject.SubnetMask=($int[9] -split "/")[1]
-            $interfaceObject.IPAddress=($int[9] -split "/")[0]
+        $interfaceObject.speed=$int[8]
+        $interfaceObject.Description=$int[9]
+        if($int[10]){
+            $interfaceObject.SubnetMask=($int[10] -split "/")[1]
+            $interfaceObject.IPAddress=($int[10] -split "/")[0]
             $interfaceObject.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
             $interfaceObject.SwitchPortType="Routed"
             if($null -ne $interfaceObject.Cidr){

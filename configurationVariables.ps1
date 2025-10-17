@@ -92,10 +92,10 @@ $GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -
 ## --- Diagram Generation Toggles ---
 ## These boolean variables control which types of diagrams are generated.
 ################################################################################
-
+$GNetworkTracePathAnalysis = $ture
 
 $GDrawL2Overview = $true
-$GNetworkPathAnalysis = $ture
+
 
 # This draws the diagrams with multiple devices per page and links them together.
 # This is the primary diagram you are probably after.

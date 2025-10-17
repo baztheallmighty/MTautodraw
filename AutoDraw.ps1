@@ -199,11 +199,8 @@ if($GExportData){
 }
 
 
+Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $GOutPutDirectory
 
-if($GNetworkPathAnalysis){
-# 3. Call the analysis function with the specified output path
-    Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $GOutPutDirectory -Verbose
-}
 
 if($GDrawMultipleDevicesDiagram){
     write-HostDebugText "Initializing Multi-Device Draw.io file..." -ForegroundColor Cyan

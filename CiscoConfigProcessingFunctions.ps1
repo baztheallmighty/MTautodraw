@@ -200,19 +200,19 @@ function Get-ShowInterfaceFromText(){
                     $Interface.shutdown = $true
                 }
                 $interface.macaddress = $int[4]
-                $Interface.Duplex = $int[10]
-                if($int[11] -eq "1000Mb/s"){
+                $Interface.Duplex = $int[11]
+                if($int[12] -eq "1000Mb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[11] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[11] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[11]
+                    $Interface.Speed = $int[12]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
@@ -237,24 +237,24 @@ function Get-ShowInterfaceFromText(){
                 if($Interface.IPAddress -and $Interface.SubnetMask){
                     $Interface.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
                 }
-                $Interface.Duplex = $int[10]
-                if($int[11] -eq "1000Mb/s"){
+                $Interface.Duplex = $int[11]
+                if($int[12] -eq "1000Mb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[11] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[11] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[11]
+                    $Interface.Speed = $int[12]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
                 }
-                if($int[18] -like "*802.1Q*" -or $Interface.IPAddress){
+                if($int[19] -like "*802.1Q*" -or $Interface.IPAddress){
                     $Interface.RoutedVlan = $true
                 }
                 $interface.macaddress = $int[4]
@@ -319,22 +319,22 @@ function Get-ShowInterfaceFromText(){
                     $Interface.shutdown = $true
                 }
                 $interface.macaddress = $int[4]
-                $Interface.Duplex = $int[9]
-                if($int[10] -eq "1000Mb/s" -or $int[10] -eq "1000Mbps"){
+                $Interface.Duplex = $int[11]
+                if($int[12] -eq "1000Mb/s" -or $int[12] -eq "1000Mbps"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[10] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[10] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[10]
+                    $Interface.Speed = $int[12]
                 }
-                if($int[11]){
-                    $Interface.MediaType=$int[11]
+                if($int[12]){
+                    $Interface.MediaType=$int[13]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
@@ -360,27 +360,27 @@ function Get-ShowInterfaceFromText(){
                 if($Interface.IPAddress -and $Interface.SubnetMask){
                     $Interface.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
                 }
-                $Interface.Duplex = $int[9]
-                if($int[10] -eq "1000Mb/s"){
+                $Interface.Duplex = $int[11]
+                if($int[11] -eq "1000Mb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[10] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[10] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[10]
+                    $Interface.Speed = $int[12]
                 }
-                if($int[11]){
-                    $Interface.MediaType=$int[11]
+                if($int[12]){
+                    $Interface.MediaType=$int[13]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
                 }
-                if($int[14] -like "*802.1Q*" -or $Interface.IPAddress){
+                if($int[19] -like "*802.1Q*" -or $Interface.IPAddress){
                     $Interface.RoutedVlan = $true
                 }
                 $interface.macaddress = $int[4]
@@ -606,7 +606,7 @@ function Get-ShowLLDPDetailsFromText(){
             $LLDPObject.NeighborInterfaceDescription=$LLDPNeighbor[3].trim()
             $LLDPObject.ManagementIP=$LLDPNeighbor[7].trim()
             $LLDPObject.VLAN=$LLDPNeighbor[8].trim()
-            $LLDPObject.SERIAL=$LLDPNeighbor[9].trim()
+            $LLDPObject.SERIAL=$LLDPNeighbor[10].trim()
             $LLDPObject.ParentObject=$device.hostname
             if($LLDPObject.Hostname -eq "" -or $LLDPObject.Hostname -eq "null"){
                 $LLDPObject.Hostname=$LLDPObject.ChassisID
@@ -1163,7 +1163,7 @@ function Get-CdpNeighborsFromText(){
             $NeighborObject.InterfaceLocalDevice   = $neighbor[4].trim()
             $NeighborObject.Version                = $neighbor[5].trim()
             $NeighborObject.Capabilities		   = $neighbor[6].trim()
-            $NeighborObject.NativeVLAN             = $neighbor[7].trim()
+            #$NeighborObject.NativeVLAN             = $neighbor[7].trim()
             $NeighborObject.ParentObject           = $device.hostname
             #note that the interface has a CDP nieghbor
             $device.interfaces | where { $_.interface -eq $NeighborObject.InterfaceLocalDevice} | % { $_.HasCPDNieghbor = $true}
@@ -1199,14 +1199,14 @@ function Get-CdpNeighborsFromText(){
             }
             $NeighborObject=Create-CDPNeighborObject
             $NeighborObject.DeviceID               = $neighbor[0].trim()
-            $NeighborObject.SystemName             = $neighbor[1].trim()
-            $NeighborObject.InterfaceIPAddresses   = $neighbor[2].trim()
-            $NeighborObject.Platform               = $neighbor[3].trim()
-            $NeighborObject.InterfaceRemoteDevice  = $neighbor[4].trim()
-            $NeighborObject.InterfaceLocalDevice   = $neighbor[5].trim()
-            $NeighborObject.Version                = $neighbor[6].trim()
-            $NeighborObject.InterfaceAddress       = $neighbor[7].trim()
-            $NeighborObject.Capabilities		   = $neighbor[8].trim()
+            $NeighborObject.SystemName             = $neighbor[1].trim() 
+            $NeighborObject.InterfaceIPAddresses   = $neighbor[7].trim() # Changed from index 2 to 7
+            $NeighborObject.Platform               = $neighbor[3].trim() 
+            $NeighborObject.InterfaceRemoteDevice  = $neighbor[4].trim() 
+            $NeighborObject.InterfaceLocalDevice   = $neighbor[5].trim() 
+            $NeighborObject.Version                = $neighbor[6].trim() 
+            $NeighborObject.InterfaceAddress       = $neighbor[2].trim() # This is the Mgmt Address
+            $NeighborObject.Capabilities           = $neighbor[8].trim()
             $NeighborObject.NativeVLAN             = $neighbor[9].trim()
             $NeighborObject.ParentObject           = $device.hostname
             #note that the interface has a CDP nieghbor
@@ -1579,17 +1579,18 @@ function Get-BGPNeighborsStandardFromText(){
     # Process each neighbor found by TextFSM
     foreach ($NeighborData in $Device.ProcessOutputObjects){
         $NeighborObject = Create-BGPNeighborObject
-        $NeighborObject.NEIGHBOR           = $NeighborData[0]
-        $NeighborObject.REMOTE_AS          = $NeighborData[1]
-        $NeighborObject.PEER_GROUP         = $NeighborData[2]
-        $NeighborObject.REMOTE_ROUTER_ID   = $NeighborData[3]
-        $NeighborObject.BGP_STATE          = $NeighborData[4]
-        $NeighborObject.LOCALHOST_IP       = $NeighborData[5]
-        $NeighborObject.LOCALHOST_PORT     = $NeighborData[6]
-        $NeighborObject.REMOTE_IP          = $NeighborData[7]
-        $NeighborObject.REMOTE_PORT        = $NeighborData[8]
-        $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[9]
-        $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[10]
+        $NeighborObject.NEIGHBOR           = $NeighborData[0] 
+        $NeighborObject.VRF                = $NeighborData[1] 
+        $NeighborObject.REMOTE_AS          = $NeighborData[2] 
+        $NeighborObject.PEER_GROUP         = $NeighborData[3] 
+        $NeighborObject.REMOTE_ROUTER_ID   = $NeighborData[4] 
+        $NeighborObject.BGP_STATE          = $NeighborData[5] 
+        $NeighborObject.LOCALHOST_IP       = $NeighborData[6] 
+        $NeighborObject.LOCALHOST_PORT     = $NeighborData[7] 
+        $NeighborObject.REMOTE_IP          = $NeighborData[8] 
+        $NeighborObject.REMOTE_PORT        = $NeighborData[9] 
+        $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[10]
+        $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[11]
 
         $AllBGPNeighbors += $NeighborObject
     }
