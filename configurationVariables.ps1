@@ -92,7 +92,7 @@ $GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -
 ## --- Diagram Generation Toggles ---
 ## These boolean variables control which types of diagrams are generated.
 ################################################################################
-$GNetworkTracePathAnalysis = $ture
+$GNetworkTracePathAnalysis = $true
 
 $GDrawL2Overview = $true
 

@@ -168,40 +168,89 @@ function Get-Encoding{
     }
 }
 
+function Remove-DevicePrompt {
+    param(
+        [string]$Text
+    )
 
-# This is used to run the python TextFSM library. It takes a paths to the various files and returns a json copy of the config or an error.
-function Execute-PythonTextFSM() {
-    param (
-        $TextFSTETemplate,
-        $ShowFile,
-        $ReturnArray,
-        $HostObject
-    )
-    $HostObject.ProcessOutputObjects =@()
+    $Clean = $Text -split "`n" |
+        Where-Object { $_ -notmatch '^[A-Za-z0-9._-]+[#>]\s*$' } |
+        Out-String
 
-    # Python doesn't like UTF-8, UTF16 or UTF16LE. Convert it to ASCII file.
-    if ((Get-Encoding $ShowFile).encoding.EncodingName -ne "US-ASCII") {
-        Add-HostDebugText -HostObject $HostObject   "Converting $($ShowFile) to Ascii"
-        $TempFile = Get-Content $ShowFile | Where-Object { $_ -cmatch '[\x20-\x7F]' } #Trim out non-ascii Char's
-        Set-Content -Value $TempFile -Encoding Ascii -Path $ShowFile #rewrite the file as Ascii.
-    }
-
-    # Execute the Python TextFSM script.
-    $ProcessOutput = & $GPathToPythonExe $GPathToPythonTextFSMScript $TextFSTETemplate $ShowFile
-
-    # Error handling for the script output.
-    if (($ProcessOutput -like "Traceback*") -or ($ProcessOutput -like "An exception occurred*") -or ($ProcessOutput -eq "`[`]") -or ([string]::IsNullOrEmpty($ProcessOutput))) {
-        Add-HostDebugText -HostObject $HostObject   "Error with TextFSM Processing $($ProcessOutput)."
-        $HostObject.ProcessOutputObjects = "ERROR"
-        return $HostObject
-    }
-
-    # Convert the JSON output from the script into PowerShell objects.
-    $Objects = $ProcessOutput | ConvertFrom-Json -Depth 10
-
-    $HostObject.ProcessOutputObjects = $Objects
-    return $HostObject
+    return $Clean
 }
+
+function Execute-PythonTextFSM() {
+    param (
+        $TextFSTETemplate,
+        $ShowFile,
+        $ReturnArray,
+        $HostObject
+    )
+
+    $HostObject.ProcessOutputObjects = @()
+
+    # Python doesn't like UTF-8, UTF16 or UTF16LE. Convert it to ASCII file.
+    if ((Get-Encoding $ShowFile).encoding.EncodingName -ne "US-ASCII") {
+        Add-HostDebugText -HostObject $HostObject "Converting $ShowFile to Ascii"
+        $TempFileAscii = Get-Content $ShowFile | Where-Object { $_ -cmatch '[\x20-\x7F]' }
+        Set-Content -Value $TempFileAscii -Encoding Ascii -Path $ShowFile
+    }
+
+    # Run TextFSM the first time
+    $ProcessOutput = & $GPathToPythonExe $GPathToPythonTextFSMScript $TextFSTETemplate $ShowFile
+
+    $ErrorDetected = (
+        $ProcessOutput -like "Traceback*" -or
+        $ProcessOutput -like "An exception occurred*" -or
+        $ProcessOutput -eq "`[`]" -or
+        [string]::IsNullOrEmpty($ProcessOutput)
+    )
+
+    if ($ErrorDetected) {
+
+        Add-HostDebugText -HostObject $HostObject "Primary TextFSM run failed. Attempting cleanup and retry."
+
+        # Create a temporary cleaned file
+        $TempCleanedFile = [System.IO.Path]::GetTempFileName()
+
+        # Clean the prompt out using your function
+        $CleanedText = Remove-DevicePrompt -Text (Get-Content $ShowFile -Raw)
+
+        # Write cleaned text to the temp file
+        Set-Content -Path $TempCleanedFile -Value $CleanedText -Encoding Ascii
+
+        # Try running TextFSM again on cleaned file
+        $RetryOutput = & $GPathToPythonExe $GPathToPythonTextFSMScript $TextFSTETemplate $TempCleanedFile
+
+        # Remove temp file no matter what
+        Remove-Item -Path $TempCleanedFile -Force -ErrorAction Ignore
+
+        $RetryError = (
+            $RetryOutput -like "Traceback*" -or
+            $RetryOutput -like "An exception occurred*" -or
+            $RetryOutput -eq "`[`]" -or
+            [string]::IsNullOrEmpty($RetryOutput)
+        )
+
+        if ($RetryError) {
+            Add-HostDebugText -HostObject $HostObject "Retry also failed: $RetryOutput"
+            $HostObject.ProcessOutputObjects = "ERROR"
+            return $HostObject
+        }
+
+        # Retry succeeded
+        $Objects = $RetryOutput | ConvertFrom-Json -Depth 10
+        $HostObject.ProcessOutputObjects = $Objects
+        return $HostObject
+    }
+
+    # First run succeeded
+    $Objects = $ProcessOutput | ConvertFrom-Json -Depth 10
+    $HostObject.ProcessOutputObjects = $Objects
+    return $HostObject
+}
+
 
 
 #Import mac to vendor mapping or get the MAC address xml file from devtools360.com and make a hash table with it.

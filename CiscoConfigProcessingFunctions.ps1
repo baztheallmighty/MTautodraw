@@ -235,7 +235,7 @@ function Get-ShowInterfaceFromText(){
                 $Interface.IPAddress = $int[7] -replace "\/.*",''
                 $Interface.SubnetMask = $int[7] -replace ".*\/",''
                 if($Interface.IPAddress -and $Interface.SubnetMask){
-                    $Interface.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
+                    $Interface.Cidr = (Get-IPv4Subnet -IPAddress $Interface.IPAddress -PrefixLength $Interface.SubnetMask).cidrid
                 }
                 $Interface.Duplex = $int[11]
                 if($int[12] -eq "1000Mb/s"){
@@ -292,7 +292,7 @@ function Get-ShowInterfaceFromText(){
 
 
 
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a XE-IOS or IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -475,7 +475,7 @@ function Get-ShowLLDPNeighborsText(){
         return $device
     }
 
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a  XE-IOS IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -552,7 +552,7 @@ function Get-ShowLLDPDetailsFromText(){
             return $device
         }
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a IOS or XR IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -970,7 +970,7 @@ function Get-ShowIPInterfaceBriefFromText(){
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPIntBrief -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show IP Int Brief on IOS or XE-IOS."
@@ -1027,11 +1027,11 @@ function Get-ShowInterfaceStatusFromText(){
     $ShowInterfaceStatusText = Get-Content -raw $ShowInterfaceStatusFile
     #Invalid data in file or file empty
     if(($ShowInterfaceStatusText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand)").Matches.Success){
-        Add-HostDebugText -HostObject $Device "$($ShowInterfaceStatus)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "$($ShowInterfaceStatusText)" -BackgroundColor Magenta
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty: $($ShowInterfaceStatusText)"  -BackgroundColor  red
         return $device
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowInterfaceStatus -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show Interface status IOS or XE-IOS."
@@ -1122,11 +1122,11 @@ function Get-CdpNeighborsFromText(){
     $ShowCdpNeighborText = Get-Content -raw $CdpNeighborFile
     $ArrayOfNeighborObjects=@()
     if(($ShowCdpNeighborText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
-        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "$($ShowCdpNeighborText)" -BackgroundColor Magenta
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a  NXOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -1163,7 +1163,7 @@ function Get-CdpNeighborsFromText(){
             $NeighborObject.InterfaceLocalDevice   = $neighbor[4].trim()
             $NeighborObject.Version                = $neighbor[5].trim()
             $NeighborObject.Capabilities		   = $neighbor[6].trim()
-            #$NeighborObject.NativeVLAN             = $neighbor[7].trim()
+            if($neighbor[7]){$NeighborObject.NativeVLAN             = $neighbor[7].trim()}
             $NeighborObject.ParentObject           = $device.hostname
             #note that the interface has a CDP nieghbor
             $device.interfaces | where { $_.interface -eq $NeighborObject.InterfaceLocalDevice} | % { $_.HasCPDNieghbor = $true}
@@ -1207,7 +1207,7 @@ function Get-CdpNeighborsFromText(){
             $NeighborObject.Version                = $neighbor[6].trim() 
             $NeighborObject.InterfaceAddress       = $neighbor[2].trim() # This is the Mgmt Address
             $NeighborObject.Capabilities           = $neighbor[8].trim()
-            $NeighborObject.NativeVLAN             = $neighbor[9].trim()
+            if($neighbor[9]){$NeighborObject.NativeVLAN             = $neighbor[9].trim()}
             $NeighborObject.ParentObject           = $device.hostname
             #note that the interface has a CDP nieghbor
             $device.interfaces | where { $_.interface -eq $NeighborObject.InterfaceLocalDevice} | % { $_.HasCPDNieghbor = $true}
@@ -1360,8 +1360,10 @@ function Get-InterfacesFromText(){
         if( (-not $interfaceObject.SwitchportMode) -and $interfaceObject.SwitchportTrunkvlan){
             $interfaceObject.SwitchportMode = "Probably Trunk mode"
         }
-        if ( ($interface | Select-String "[^no]\s+shutdown").Matches.success ){
+        if ($interface -match '(?m)^\s*shutdown\s*$') {
             $interfaceObject.shutdown = $true
+        } else {
+            $interfaceObject.shutdown = $false
         }
         if($null -ne $interfaceObject.Cidr){
             $NetworkObject = Create-NetworkObject
@@ -1473,8 +1475,6 @@ function Get-ShowRunFromText(){
 
     $HostObject.vlans = $vlans
     $HostObject.interfaces = $interfaces
-    $HostObject.vrfs = $vrfs
-    $HostObject.BGPConfig = $BGP
     $ArrayOfHostNetworks | % { $_.color = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)" }
     $HostObject.ArrayOfNetworks=$ArrayOfHostNetworks
     return $HostObject
@@ -1795,7 +1795,7 @@ function Get-ShowIPArpText(){
         return $device
     }
 
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Start Python process with TextFSM to convert the Text to a Object
         $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPArpTemplate -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
@@ -1874,8 +1874,9 @@ function Get-ShowSpanningTreeFromText(){
         return $Device
     }
 
-    $ShowSpanningTreeText = $ShowSpanningTreeText -replace "(?smi)^(VLAN\d+)",'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA$1'
-    $SpanningTreeVlans = ([regex]::split($ShowSpanningTreeText,"(?smi)^AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")).trim()
+    # Split before any line beginning with "VLAN <number>"
+    $SpanningTreeVlans = [regex]::split($ShowSpanningTreeText,'(?=^VLAN\s*\d+)') |
+        Where-Object { $_.Trim() -ne "" }
 
     foreach ($vlan in $SpanningTreeVlans) {
         if ([string]::IsNullOrWhiteSpace($vlan)) {
@@ -1963,9 +1964,9 @@ function Get-ShowSpanningTreeFromText(){
                 }
                 foreach ($DeviceInterface in $foundInterfaces) {
                     Switch ($SpanningTreeInterface.Role) {
-                        Root { $DeviceInterface.STRootInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
-                        Desg { $DeviceInterface.STDesgnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
-                        Altn { $DeviceInterface.STALTnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        "Root" { $DeviceInterface.STRootInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        "Desg" { $DeviceInterface.STDesgnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        "Altn" { $DeviceInterface.STALTnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
                     }
                     $DeviceInterface.STState = $SpanningTreeInterface.Status
                     $DeviceInterface.STRole = $SpanningTreeInterface.Role

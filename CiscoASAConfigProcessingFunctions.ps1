@@ -132,13 +132,17 @@ function Get-CiscoASAShowInterfaceFromText(){
         $interfaceObject = Create-InterfaceObject
         $interfaceObject.Interface=$int[0]
         $interfaceObject.zone=$int[1]
-        if($int[2] -eq "up"){
-            $interfaceObject.shutdown=$false
-        }else{
-            $interfaceObject.shutdown=$true
+        # --- FIX: Distinguish between admin-down and operational down ---
+        $status = $int[2].Trim().ToLower()
+        $interfaceObject.IntStatus = $int[2]
+        $interfaceObject.INTProtocolStatus = $int[3]
+
+        switch -regex ($status) {
+            '^up$'                              { $interfaceObject.shutdown = $false }
+            'administratively\s*down'            { $interfaceObject.shutdown = $true }
+            'down'                              { $interfaceObject.shutdown = $false }  # operational down but not admin-down
+            default                             { $interfaceObject.shutdown = $false }
         }
-        $interfaceObject.IntStatus=$int[2]
-        $interfaceObject.INTProtocolStatus=$int[3]
 
         $interfaceObject.speed=$int[8]
         $interfaceObject.Description=$int[9]

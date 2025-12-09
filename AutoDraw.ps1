@@ -198,9 +198,9 @@ if($GExportData){
 
 }
 
-
-Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $GOutPutDirectory
-
+if($GNetworkTracePathAnalysis){
+    Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $GOutPutDirectory
+}
 
 if($GDrawMultipleDevicesDiagram){
     write-HostDebugText "Initializing Multi-Device Draw.io file..." -ForegroundColor Cyan
