@@ -320,6 +320,7 @@ $Commands= @(
     "show sysinfo",
     "show logging",
     "show license all",
+    "sh tech wireless",
     
     # --- AP & Wireless Management ---
     "show ap summary",
