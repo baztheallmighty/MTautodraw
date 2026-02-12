@@ -1,0 +1,21 @@
+Value Filldown VRF (\d+)
+Value Filldown TYPE ((?:K|C|S|R|B|O|IA|N1|N2|E1|E2|i|L1|L2|ia|\*|\s)+?)
+Value Filldown DESTINATION (\S+)
+Value DISTANCE (\d+)
+Value METRIC (\d+)
+Value Required GATEWAY (\S+|is\s+directly\s+connected)
+Value Required INTERFACE (\S+)
+Value LAST_TIME_UPDATE (\S+)
+
+Start
+  ^\s*Codes:.*$$
+  ^\s*O\s+-.*$$
+  ^\s*N1\s+-.*$$
+  ^\s*E1\s+-.*$$
+  ^\s*i\s+-.*$$
+  ^\s*\*\s+-.*$$
+  ^\s*Routing\s+table\s+for\s+VRF=${VRF}\s*$$
+  ^\s*${TYPE}\s+${DESTINATION}(?:\s+\[${DISTANCE}/${METRIC}\]\s+via)?\s+${GATEWAY},\s*${INTERFACE}(?:\s*,\s*${LAST_TIME_UPDATE})?\s*$$ -> Record
+  ^\s*(?:\[${DISTANCE}/${METRIC}\]\s+via\s+)?${GATEWAY},\s*${INTERFACE}(?:\s*,\s*${LAST_TIME_UPDATE})?\s*$$ -> Record
+  ^\s*$$
+  ^. -> Error

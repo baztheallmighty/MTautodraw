@@ -91,52 +91,52 @@ function Process-CiscoHostFiles{
         }
 
         # Check if ANY BGP neighbor file property has been populated for this host
-        if ($hostid.ShowIPBGPNeighbors -or $hostid.ShowIPBGPVPNv4Neighbors) {
-           # Check the OS type determined from 'show version'
-           if ($Device.version.type -eq "NXOS") {
-               # --- NX-OS LOGIC ---
-               Add-HostDebugText -HostObject $Device "Device is NX-OS. Checking NX-OS BGP file."
-               if ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
-                   Add-HostDebugText -HostObject $Device "Processing NX-OS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
-                   $Device = Get-BGPNeighborsNXOSFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
-               }
-               else {
-                   Add-HostDebugText -HostObject $Device "NX-OS BGP file is not valid or was not found." -BackgroundColor Yellow
-               }
-           }
-           else {
-               # --- IOS/IOS-XE LOGIC ---
-               Add-HostDebugText -HostObject $Device "Device is IOS/XE. Checking IOS BGP files."
-               # Check the more specific VPNv4 neighbors file first for valid data
-               if ($hostid.ShowIPBGPVPNv4Neighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPVPNv4Neighbors)) {
-                   Add-HostDebugText -HostObject $Device "Processing IOS BGP VPNv4 Neighbors: $($hostid.ShowIPBGPVPNv4Neighbors)"
-                   $Device=Get-BGPNeighborsFromText -BGPNeighborsFile $hostid.ShowIPBGPVPNv4Neighbors -Device $Device
-               }
-               # If the VPNv4 file is invalid or missing, fall back to the standard neighbors file
-               elseif ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
-                   Add-HostDebugText -HostObject $Device "Processing IOS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
-                   $Device=Get-BGPNeighborsStandardFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
-               }
-               else {
-                   Add-HostDebugText -HostObject $Device "No valid IOS BGP neighbor files found to process." -BackgroundColor Yellow
-               }
-           }
-        }
-        else {
-           Add-HostDebugText -HostObject $Device "No BGP neighbor file properties were populated for this host." -BackgroundColor Yellow
-        }
+        #if ($hostid.ShowIPBGPNeighbors -or $hostid.ShowIPBGPVPNv4Neighbors) {
+        #   # Check the OS type determined from 'show version'
+        #   if ($Device.version.type -eq "NXOS") {
+        #       # --- NX-OS LOGIC ---
+        #       Add-HostDebugText -HostObject $Device "Device is NX-OS. Checking NX-OS BGP file."
+        #       if ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
+        #           Add-HostDebugText -HostObject $Device "Processing NX-OS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
+        #           $Device = Get-BGPNeighborsNXOSFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
+        #       }
+        #       else {
+        #           Add-HostDebugText -HostObject $Device "NX-OS BGP file is not valid or was not found." -BackgroundColor Yellow
+        #       }
+        #   }
+        #   else {
+        #       # --- IOS/IOS-XE LOGIC ---
+        #       Add-HostDebugText -HostObject $Device "Device is IOS/XE. Checking IOS BGP files."
+        #       # Check the more specific VPNv4 neighbors file first for valid data
+        #       if ($hostid.ShowIPBGPVPNv4Neighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPVPNv4Neighbors)) {
+        #           Add-HostDebugText -HostObject $Device "Processing IOS BGP VPNv4 Neighbors: $($hostid.ShowIPBGPVPNv4Neighbors)"
+        #           $Device=Get-BGPNeighborsFromText -BGPNeighborsFile $hostid.ShowIPBGPVPNv4Neighbors -Device $Device
+        #       }
+        #       # If the VPNv4 file is invalid or missing, fall back to the standard neighbors file
+        #       elseif ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
+        #           Add-HostDebugText -HostObject $Device "Processing IOS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
+        #           $Device=Get-BGPNeighborsStandardFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
+        #       }
+        #       else {
+        #           Add-HostDebugText -HostObject $Device "No valid IOS BGP neighbor files found to process." -BackgroundColor Yellow
+        #       }
+        #   }
+        #}
+        #else {
+        #   Add-HostDebugText -HostObject $Device "No BGP neighbor file properties were populated for this host." -BackgroundColor Yellow
+        #}
         # 2. FALLBACK: If no neighbors were found, use the summary file
-        if ($device.BGPNeighbors.Count -eq 0 -and $hostid.ShowIPBGPSummary) {
-           Add-HostDebugText -HostObject $Device "No valid BGP neighbor data found. Attempting fallback to summary file." -BackgroundColor Yellow
-           if (Test-FileHasValidData -FilePath $hostid.ShowIPBGPSummary) {
-               $Device = Get-BGPNeighborsFromSummary -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
-           } else {
-               Add-HostDebugText -HostObject $Device "BGP Summary file is also invalid, skipping." -BackgroundColor Red
-           }
-        }
+        #if ($device.BGPNeighbors.Count -eq 0 -and $hostid.ShowIPBGPSummary) {
+        #   Add-HostDebugText -HostObject $Device "No valid BGP neighbor data found. Attempting fallback to summary file." -BackgroundColor Yellow
+        #   if (Test-FileHasValidData -FilePath $hostid.ShowIPBGPSummary) {
+        #       $Device = Get-BGPNeighborsFromSummary -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
+        #   } else {
+        #       Add-HostDebugText -HostObject $Device "BGP Summary file is also invalid, skipping." -BackgroundColor Red
+        #   }
+        #}
 
         if($hostid.ShowSpanningTree){
-           Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree"
+           Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree: $($hostid.ShowSpanningTree)"
            $Device=Get-ShowSpanningTreeFromText -ShowSpanningTreeFile $hostid.ShowSpanningTree -Device $Device
         }
         if($hostid.ShowIPRoute -or $hostid.ShowIPRouteVRFstar){
@@ -200,19 +200,19 @@ function Get-ShowInterfaceFromText(){
                     $Interface.shutdown = $true
                 }
                 $interface.macaddress = $int[4]
-                $Interface.Duplex = $int[10]
-                if($int[11] -eq "1000Mb/s"){
+                $Interface.Duplex = $int[11]
+                if($int[12] -eq "1000Mb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[11] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[11] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[11]
+                    $Interface.Speed = $int[12]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
@@ -235,26 +235,26 @@ function Get-ShowInterfaceFromText(){
                 $Interface.IPAddress = $int[7] -replace "\/.*",''
                 $Interface.SubnetMask = $int[7] -replace ".*\/",''
                 if($Interface.IPAddress -and $Interface.SubnetMask){
-                    $Interface.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
+                    $Interface.Cidr = (Get-IPv4Subnet -IPAddress $Interface.IPAddress -PrefixLength $Interface.SubnetMask).cidrid
                 }
-                $Interface.Duplex = $int[10]
-                if($int[11] -eq "1000Mb/s"){
+                $Interface.Duplex = $int[11]
+                if($int[12] -eq "1000Mb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[11] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[11] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[11] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[11]
+                    $Interface.Speed = $int[12]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
                 }
-                if($int[18] -like "*802.1Q*" -or $Interface.IPAddress){
+                if($int[19] -like "*802.1Q*" -or $Interface.IPAddress){
                     $Interface.RoutedVlan = $true
                 }
                 $interface.macaddress = $int[4]
@@ -292,7 +292,7 @@ function Get-ShowInterfaceFromText(){
 
 
 
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a XE-IOS or IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -319,22 +319,22 @@ function Get-ShowInterfaceFromText(){
                     $Interface.shutdown = $true
                 }
                 $interface.macaddress = $int[4]
-                $Interface.Duplex = $int[9]
-                if($int[10] -eq "1000Mb/s" -or $int[10] -eq "1000Mbps"){
+                $Interface.Duplex = $int[11]
+                if($int[12] -eq "1000Mb/s" -or $int[12] -eq "1000Mbps"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[10] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[10] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[10]
+                    $Interface.Speed = $int[12]
                 }
-                if($int[11]){
-                    $Interface.MediaType=$int[11]
+                if($int[12]){
+                    $Interface.MediaType=$int[13]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
@@ -360,27 +360,27 @@ function Get-ShowInterfaceFromText(){
                 if($Interface.IPAddress -and $Interface.SubnetMask){
                     $Interface.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
                 }
-                $Interface.Duplex = $int[9]
-                if($int[10] -eq "1000Mb/s"){
+                $Interface.Duplex = $int[11]
+                if($int[11] -eq "1000Mb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "1Gb/s"){
+                }elseif($int[12] -eq "1Gb/s"){
                     $Interface.Speed = "1000Mb/s"
-                }elseif($int[10] -eq "100Mb/s"){
+                }elseif($int[12] -eq "100Mb/s"){
                     $Interface.Speed = "100Mb/s"
-                }elseif($int[10] -eq "10Mb/s"){
+                }elseif($int[12] -eq "10Mb/s"){
                     $Interface.Speed = "10Mb/s"
-                }elseif($int[10] -eq "10Gb/s"){
+                }elseif($int[12] -eq "10Gb/s"){
                     $Interface.Speed = "10Gb/s"
                 }else{
-                    $Interface.Speed = $int[10]
+                    $Interface.Speed = $int[12]
                 }
-                if($int[11]){
-                    $Interface.MediaType=$int[11]
+                if($int[12]){
+                    $Interface.MediaType=$int[13]
                 }
                 if($int[3]){
                     $Interface.HardwareType=$int[3]
                 }
-                if($int[14] -like "*802.1Q*" -or $Interface.IPAddress){
+                if($int[19] -like "*802.1Q*" -or $Interface.IPAddress){
                     $Interface.RoutedVlan = $true
                 }
                 $interface.macaddress = $int[4]
@@ -475,7 +475,7 @@ function Get-ShowLLDPNeighborsText(){
         return $device
     }
 
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a  XE-IOS IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -552,7 +552,7 @@ function Get-ShowLLDPDetailsFromText(){
             return $device
         }
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a IOS or XR IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -606,7 +606,7 @@ function Get-ShowLLDPDetailsFromText(){
             $LLDPObject.NeighborInterfaceDescription=$LLDPNeighbor[3].trim()
             $LLDPObject.ManagementIP=$LLDPNeighbor[7].trim()
             $LLDPObject.VLAN=$LLDPNeighbor[8].trim()
-            $LLDPObject.SERIAL=$LLDPNeighbor[9].trim()
+            $LLDPObject.SERIAL=$LLDPNeighbor[10].trim()
             $LLDPObject.ParentObject=$device.hostname
             if($LLDPObject.Hostname -eq "" -or $LLDPObject.Hostname -eq "null"){
                 $LLDPObject.Hostname=$LLDPObject.ChassisID
@@ -703,22 +703,22 @@ function Get-ShowVersionFromText(){
         }
 
         $VersionObject=Create-ShowVersionObject
-        $VersionObject.OS                =  $Device.ProcessOutputObjects[0]
-        $VersionObject.ROMMON            =  $Device.ProcessOutputObjects[1]
-        $VersionObject.Hostname          =  $Device.ProcessOutputObjects[2]
-        $VersionObject.Uptime            =  $Device.ProcessOutputObjects[3]
-        $VersionObject.UptimeYear        =  $Device.ProcessOutputObjects[4]
-        $VersionObject.UptimeWeeks       =  $Device.ProcessOutputObjects[5]
-        $VersionObject.UptimeDays        =  $Device.ProcessOutputObjects[6]
-        $VersionObject.UpdateHours       =  $Device.ProcessOutputObjects[7]
-        $VersionObject.UptimeMinutes     =  $Device.ProcessOutputObjects[8]
-        $VersionObject.ReasonForRelod    =  $Device.ProcessOutputObjects[9]
-        $VersionObject.Image             =  $Device.ProcessOutputObjects[10]
-        $VersionObject.Hardware          =  $Device.ProcessOutputObjects[11] | % { $_ }
-        $VersionObject.Serial            =  $Device.ProcessOutputObjects[12] | % { $_ }
-        $VersionObject.ConfigRegister    =  $Device.ProcessOutputObjects[13]
-        $VersionObject.MacAddressArray   =  $Device.ProcessOutputObjects[14] | % { $_ }
-        $VersionObject.LastRestarted     =  $Device.ProcessOutputObjects[15]
+        $VersionObject.OS              =  $Device.ProcessOutputObjects[0]   # SOFTWARE_IMAGE
+        $VersionObject.ROMMON          =  $Device.ProcessOutputObjects[3]   # ROMMON
+        $VersionObject.Hostname        =  $Device.ProcessOutputObjects[4]   # HOSTNAME
+        $VersionObject.Uptime          =  $Device.ProcessOutputObjects[5]   # UPTIME
+        $VersionObject.UptimeYear      =  $Device.ProcessOutputObjects[6]   # UPTIME_YEARS
+        $VersionObject.UptimeWeeks     =  $Device.ProcessOutputObjects[7]   # UPTIME_WEEKS
+        $VersionObject.UptimeDays      =  $Device.ProcessOutputObjects[8]   # UPTIME_DAYS
+        $VersionObject.UpdateHours     =  $Device.ProcessOutputObjects[9]   # UPTIME_HOURS
+        $VersionObject.UptimeMinutes   =  $Device.ProcessOutputObjects[10]  # UPTIME_MINUTES
+        $VersionObject.ReasonForRelod  =  $Device.ProcessOutputObjects[11]  # RELOAD_REASON
+        $VersionObject.Image           =  $Device.ProcessOutputObjects[12]  # RUNNING_IMAGE
+        $VersionObject.Hardware        =  $Device.ProcessOutputObjects[13] | % { $_ } # HARDWARE
+        $VersionObject.Serial          =  $Device.ProcessOutputObjects[14] | % { $_ } # SERIAL
+        $VersionObject.ConfigRegister  =  $Device.ProcessOutputObjects[15]  # CONFIG_REGISTER
+        $VersionObject.MacAddressArray =  $Device.ProcessOutputObjects[16] | % { $_ } # MAC_ADDRESS
+        $VersionObject.LastRestarted   =  $Device.ProcessOutputObjects[17]  # RESTARTED
         if(($ShowVersionText | Select-String "IOS-XE").Matches.Success){
             Add-HostDebugText -HostObject $Device "Device Type:XE-IOS"
             $VersionObject.type              =  "XE-IOS"
@@ -739,13 +739,14 @@ function Get-ShowVersionFromText(){
             return $device
         }
         $VersionObject=Create-ShowVersionObject
-        $VersionObject.Uptime            =  $Device.ProcessOutputObjects[0]
-        $VersionObject.ReasonForRelod    =  $Device.ProcessOutputObjects[1]
-        $VersionObject.OS                =  $Device.ProcessOutputObjects[2]
-        $VersionObject.Image             =  $Device.ProcessOutputObjects[3]
-        $VersionObject.Hardware          =  $Device.ProcessOutputObjects[4]
-        $VersionObject.Hostname          =  $Device.ProcessOutputObjects[5]
-        $VersionObject.Serial            =  $Device.ProcessOutputObjects[6]
+        $VersionObject.Uptime          =  $Device.ProcessOutputObjects[0]   # UPTIME
+        $VersionObject.ReasonForRelod  =  $Device.ProcessOutputObjects[1]   # LAST_REBOOT_REASON
+        $VersionObject.ROMMON          =  $Device.ProcessOutputObjects[2]   # BIOS 
+        $VersionObject.OS              =  $Device.ProcessOutputObjects[3]   # OS
+        $VersionObject.Image           =  $Device.ProcessOutputObjects[4]   # BOOT_IMAGE
+        $VersionObject.Hardware        =  $Device.ProcessOutputObjects[5]   # PLATFORM
+        $VersionObject.Hostname        =  $Device.ProcessOutputObjects[6]   # HOSTNAME
+        $VersionObject.Serial          =  $Device.ProcessOutputObjects[7]   # SERIAL
         $VersionObject.type              =  "NXOS"
         $device.Version=$VersionObject
         return $device
@@ -970,7 +971,7 @@ function Get-ShowIPInterfaceBriefFromText(){
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPIntBrief -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show IP Int Brief on IOS or XE-IOS."
@@ -1027,11 +1028,11 @@ function Get-ShowInterfaceStatusFromText(){
     $ShowInterfaceStatusText = Get-Content -raw $ShowInterfaceStatusFile
     #Invalid data in file or file empty
     if(($ShowInterfaceStatusText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand)").Matches.Success){
-        Add-HostDebugText -HostObject $Device "$($ShowInterfaceStatus)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "$($ShowInterfaceStatusText)" -BackgroundColor Magenta
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty: $($ShowInterfaceStatusText)"  -BackgroundColor  red
         return $device
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowInterfaceStatus -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show Interface status IOS or XE-IOS."
@@ -1122,11 +1123,11 @@ function Get-CdpNeighborsFromText(){
     $ShowCdpNeighborText = Get-Content -raw $CdpNeighborFile
     $ArrayOfNeighborObjects=@()
     if(($ShowCdpNeighborText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
-        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "$($ShowCdpNeighborText)" -BackgroundColor Magenta
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Add-HostDebugText -HostObject $Device "This is a  NXOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
@@ -1163,7 +1164,7 @@ function Get-CdpNeighborsFromText(){
             $NeighborObject.InterfaceLocalDevice   = $neighbor[4].trim()
             $NeighborObject.Version                = $neighbor[5].trim()
             $NeighborObject.Capabilities		   = $neighbor[6].trim()
-            $NeighborObject.NativeVLAN             = $neighbor[7].trim()
+            if($neighbor[7]){$NeighborObject.NativeVLAN             = $neighbor[7].trim()}
             $NeighborObject.ParentObject           = $device.hostname
             #note that the interface has a CDP nieghbor
             $device.interfaces | where { $_.interface -eq $NeighborObject.InterfaceLocalDevice} | % { $_.HasCPDNieghbor = $true}
@@ -1199,15 +1200,15 @@ function Get-CdpNeighborsFromText(){
             }
             $NeighborObject=Create-CDPNeighborObject
             $NeighborObject.DeviceID               = $neighbor[0].trim()
-            $NeighborObject.SystemName             = $neighbor[1].trim()
-            $NeighborObject.InterfaceIPAddresses   = $neighbor[2].trim()
-            $NeighborObject.Platform               = $neighbor[3].trim()
-            $NeighborObject.InterfaceRemoteDevice  = $neighbor[4].trim()
-            $NeighborObject.InterfaceLocalDevice   = $neighbor[5].trim()
-            $NeighborObject.Version                = $neighbor[6].trim()
-            $NeighborObject.InterfaceAddress       = $neighbor[7].trim()
-            $NeighborObject.Capabilities		   = $neighbor[8].trim()
-            $NeighborObject.NativeVLAN             = $neighbor[9].trim()
+            $NeighborObject.SystemName             = $neighbor[1].trim() 
+            $NeighborObject.InterfaceIPAddresses   = $neighbor[7].trim() # Changed from index 2 to 7
+            $NeighborObject.Platform               = $neighbor[3].trim() 
+            $NeighborObject.InterfaceRemoteDevice  = $neighbor[4].trim() 
+            $NeighborObject.InterfaceLocalDevice   = $neighbor[5].trim() 
+            $NeighborObject.Version                = $neighbor[6].trim() 
+            $NeighborObject.InterfaceAddress       = $neighbor[2].trim() # This is the Mgmt Address
+            $NeighborObject.Capabilities           = $neighbor[8].trim()
+            if($neighbor[9]){$NeighborObject.NativeVLAN             = $neighbor[9].trim()}
             $NeighborObject.ParentObject           = $device.hostname
             #note that the interface has a CDP nieghbor
             $device.interfaces | where { $_.interface -eq $NeighborObject.InterfaceLocalDevice} | % { $_.HasCPDNieghbor = $true}
@@ -1360,8 +1361,10 @@ function Get-InterfacesFromText(){
         if( (-not $interfaceObject.SwitchportMode) -and $interfaceObject.SwitchportTrunkvlan){
             $interfaceObject.SwitchportMode = "Probably Trunk mode"
         }
-        if ( ($interface | Select-String "[^no]\s+shutdown").Matches.success ){
+        if ($interface -match '(?m)^\s*shutdown\s*$') {
             $interfaceObject.shutdown = $true
+        } else {
+            $interfaceObject.shutdown = $false
         }
         if($null -ne $interfaceObject.Cidr){
             $NetworkObject = Create-NetworkObject
@@ -1473,8 +1476,6 @@ function Get-ShowRunFromText(){
 
     $HostObject.vlans = $vlans
     $HostObject.interfaces = $interfaces
-    $HostObject.vrfs = $vrfs
-    $HostObject.BGPConfig = $BGP
     $ArrayOfHostNetworks | % { $_.color = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)" }
     $HostObject.ArrayOfNetworks=$ArrayOfHostNetworks
     return $HostObject
@@ -1579,17 +1580,18 @@ function Get-BGPNeighborsStandardFromText(){
     # Process each neighbor found by TextFSM
     foreach ($NeighborData in $Device.ProcessOutputObjects){
         $NeighborObject = Create-BGPNeighborObject
-        $NeighborObject.NEIGHBOR           = $NeighborData[0]
-        $NeighborObject.REMOTE_AS          = $NeighborData[1]
-        $NeighborObject.PEER_GROUP         = $NeighborData[2]
-        $NeighborObject.REMOTE_ROUTER_ID   = $NeighborData[3]
-        $NeighborObject.BGP_STATE          = $NeighborData[4]
-        $NeighborObject.LOCALHOST_IP       = $NeighborData[5]
-        $NeighborObject.LOCALHOST_PORT     = $NeighborData[6]
-        $NeighborObject.REMOTE_IP          = $NeighborData[7]
-        $NeighborObject.REMOTE_PORT        = $NeighborData[8]
-        $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[9]
-        $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[10]
+        $NeighborObject.NEIGHBOR           = $NeighborData[0] 
+        $NeighborObject.VRF                = $NeighborData[1] 
+        $NeighborObject.REMOTE_AS          = $NeighborData[2] 
+        $NeighborObject.PEER_GROUP         = $NeighborData[3] 
+        $NeighborObject.REMOTE_ROUTER_ID   = $NeighborData[4] 
+        $NeighborObject.BGP_STATE          = $NeighborData[5] 
+        $NeighborObject.LOCALHOST_IP       = $NeighborData[6] 
+        $NeighborObject.LOCALHOST_PORT     = $NeighborData[7] 
+        $NeighborObject.REMOTE_IP          = $NeighborData[8] 
+        $NeighborObject.REMOTE_PORT        = $NeighborData[9] 
+        $NeighborObject.INBOUND_ROUTEMAP   = $NeighborData[10]
+        $NeighborObject.OUTBOUND_ROUTEMAP  = $NeighborData[11]
 
         $AllBGPNeighbors += $NeighborObject
     }
@@ -1794,7 +1796,7 @@ function Get-ShowIPArpText(){
         return $device
     }
 
-    if($Device.version.type -eq "XE-IOS" -or $Device.version.type -eq "IOS"){
+    if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Start Python process with TextFSM to convert the Text to a Object
         $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPArpTemplate -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
@@ -1863,7 +1865,7 @@ function Get-ShowSpanningTreeFromText(){
     $Device.SpanningTree.SpanningTreeArray=@()
 
     if (($ShowSpanningTreeText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowSpanningTreeText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "ERROR: $($ShowSpanningTreeText)" -BackgroundColor Magenta
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor Red
         return $device
     }
@@ -1873,8 +1875,8 @@ function Get-ShowSpanningTreeFromText(){
         return $Device
     }
 
-    $ShowSpanningTreeText = $ShowSpanningTreeText -replace "(?smi)^(VLAN\d+)",'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA$1'
-    $SpanningTreeVlans = ([regex]::split($ShowSpanningTreeText,"(?smi)^AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")).trim()
+    # Split before any line beginning with "VLAN <number>"
+    $SpanningTreeVlans = [regex]::split($ShowSpanningTreeText,'(?m)(?=^VLAN\s*\d+)') |  Where-Object { $_.Trim() -ne "" }
 
     foreach ($vlan in $SpanningTreeVlans) {
         if ([string]::IsNullOrWhiteSpace($vlan)) {
@@ -1962,9 +1964,9 @@ function Get-ShowSpanningTreeFromText(){
                 }
                 foreach ($DeviceInterface in $foundInterfaces) {
                     Switch ($SpanningTreeInterface.Role) {
-                        Root { $DeviceInterface.STRootInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
-                        Desg { $DeviceInterface.STDesgnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
-                        Altn { $DeviceInterface.STALTnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        "Root" { $DeviceInterface.STRootInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        "Desg" { $DeviceInterface.STDesgnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
+                        "Altn" { $DeviceInterface.STALTnInterfaceForvlans += ,$SpanningTreevlanObject.vlanID }
                     }
                     $DeviceInterface.STState = $SpanningTreeInterface.Status
                     $DeviceInterface.STRole = $SpanningTreeInterface.Role
@@ -1973,6 +1975,7 @@ function Get-ShowSpanningTreeFromText(){
         }
         $Device.SpanningTree.SpanningTreeArray += $SpanningTreevlanObject
     }
+    
     return $Device
 }
 

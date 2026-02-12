@@ -19,7 +19,7 @@
 
 
 
-
+#$Gdirectory="C:\code\temp\LAB"; $goutputdirectory="C:\code\temp\LAB";$GPathToScript="C:\code\mtautodraw\"
 
 Param(
     [Parameter(Mandatory = $true)]
@@ -174,6 +174,8 @@ $GArrayofGatewayHosts=@() #An Array of LLDP,CDP or ARP gateway hosts we know abo
 
 $GArrayOfNetworks,$GArrayOfObjects,$GArrayOfCDPDeviceIDs,$GArrayOfLLDPDeviceIDs,$GArrayOfIPApr,$GArrayofGatewayHosts = Start-ProcessingFiles
 
+#$GArrayOfObjects.RoutingTable | ft
+
 
 # --- Global drawio Variables ---
 $global:itemCounter = 0
@@ -198,18 +200,15 @@ if($GExportData){
 
 }
 
-
-
-if($GNetworkPathAnalysis){
-# 3. Call the analysis function with the specified output path
-    Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $GOutPutDirectory -Verbose
+if($GNetworkTracePathAnalysis){
+    Invoke-NetworkPathAnalysis -DeviceData $GArrayOfObjects -ReportPath $GOutPutDirectory
 }
 
 if($GDrawMultipleDevicesDiagram){
     write-HostDebugText "Initializing Multi-Device Draw.io file..." -ForegroundColor Cyan
     Initialize-DrawioFile
-    
-    
+
+
     if($GDrawL2Overview){
         Draw-L2OverviewDiagram -ArrayOfObjects $GArrayOfObjects
     }
@@ -218,7 +217,7 @@ if($GDrawMultipleDevicesDiagram){
     }
     if($GDrawCDP){
         Draw-AllNeighborsDrawio -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs -DrawAllNeighbors $False
-    }    
+    }
     if($GDrawLayer3){
         Draw-AllLayer3Drawio -ArrayOfObjects $GArrayOfObjects -ArrayOfNetworks $GArrayOfNetworks -ArrayOfIPApr $GArrayOfIPApr -DiagramType "Normal" -NameOfPage "Layer 3 All"
     }
@@ -238,8 +237,8 @@ if($GDrawMultipleDevicesDiagram){
 }
 
 
-#Finish singles routing. 
-#Maybe add second file. Look at speed to see what needs fixing next. 
+#Finish singles routing.
+#Maybe add second file. Look at speed to see what needs fixing next.
 # Draw Single-Device Diagrams
 if($GdrawSingles){
     write-HostDebugText "Initializing Singles Draw.io file..." -ForegroundColor Cyan
@@ -247,13 +246,13 @@ if($GdrawSingles){
 
     foreach ($Device in $GArrayOfObjects){
         #if($GDrawLayer3){
-        #    Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks -DiagramType "RoutesOnly" -ArrayOfObjects $GArrayOfObjects -ArrayofGatewayHosts $GArrayofGatewayHosts 
-        #}        
+        #    Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks -DiagramType "RoutesOnly" -ArrayOfObjects $GArrayOfObjects -ArrayofGatewayHosts $GArrayofGatewayHosts
+        #}
         # Draw the Layer 3 diagram for the device if enabled
         if($GDrawLayer3){
             Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
         }
-        
+
         # ADD THIS BLOCK to draw the physical diagram for the device if enabled
         # Assumes a global variable $GDrawPhysical exists.
         if($GDrawPhysical){

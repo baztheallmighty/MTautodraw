@@ -27,7 +27,7 @@ function Process-JunosHostFiles{
         $ArrayOfObjects
     )
 
-        $Device=$null
+        $device=$null
         if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
             try{
                 $config=[xml] (Get-Content -Path $hostid.showrun -raw)
@@ -39,53 +39,53 @@ function Process-JunosHostFiles{
 
 
             # MODIFICATION: Pass the result of the check to the parsing function.
-            $Device=Get-JunosShowRunFromXML -Lconfig $config
+            $device=Get-JunosShowRunFromXML -Lconfig $config
 
-            $Device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
+            $device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
         }else{
             write-host "File doesn't exist: $($hostid.showrun)" -BackgroundColor red
             return $null
         }
-        Add-HostDebugText -HostObject $Device "Processing Junos show config"
-        if($null -eq $Device.hostname ){
+        Add-HostDebugText -HostObject $device "Processing Junos show config"
+        if($null -eq $device.hostname ){
             Write-host "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
             return $null
         }
         foreach ($ExistingDevice in $ArrayOfObjects){
-            if($ExistingDevice.hostname -eq $Device.hostname){
-                Add-HostDebugText -HostObject $Device "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
-                Add-HostDebugText -HostObject $Device "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
-                Add-HostDebugText -HostObject $Device "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
-                Add-HostDebugText -HostObject $Device "$($ArrayOfObjects|ft hostname,DeviceIdentifier| out-string)"
+            if($ExistingDevice.hostname -eq $device.hostname){
+                Add-HostDebugText -HostObject $device "Hostname already exists $($ExistingDevice.hostname) - $($device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
+                Add-HostDebugText -HostObject $device "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
+                Add-HostDebugText -HostObject $device "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
+                Add-HostDebugText -HostObject $device "$($ArrayOfObjects|ft hostname,DeviceIdentifier| out-string)"
                 if(!($SkipHostnameErrorCheck)){
-                    Add-HostDebugText -HostObject $Device 'Exiting please manually fix this error.'  -BackgroundColor red
+                    Add-HostDebugText -HostObject $device 'Exiting please manually fix this error.'  -BackgroundColor red
                     Start-CleanupAndExit
                 }
             }
         }
 
         if($hostid.ShowVersion){
-            Add-HostDebugText -HostObject $Device "Processing Junos show version: $($hostid.ShowVersion)"
-            $Device=Get-JunosShowVersionFromXML -JunosShowVersionFile $hostid.ShowVersion -Device $Device
+            Add-HostDebugText -HostObject $device "Processing Junos show version: $($hostid.ShowVersion)"
+            $device=Get-JunosShowVersionFromXML -JunosShowVersionFile $hostid.ShowVersion -Device $device
         }
         if($hostid.ShowInterfaceTerse){
-            Add-HostDebugText -HostObject $Device "Processing Junos show interface terse:$($hostid.ShowInterfaceTerse)"
-            $Device=Get-JunosShowInterfaceTerseFromXML -JunosInterfaceTerseFile $hostid.ShowInterfaceTerse -Device $Device
+            Add-HostDebugText -HostObject $device "Processing Junos show interface terse:$($hostid.ShowInterfaceTerse)"
+            $device=Get-JunosShowInterfaceTerseFromXML -JunosInterfaceTerseFile $hostid.ShowInterfaceTerse -Device $device
         }
         if($hostid.ShowLLDPNeighbors){#CDP must be processed before LLDP.
-            Add-HostDebugText -HostObject $Device "Processing show LLDP Details:$($hostid.ShowLLDPNeighbors)"
-            $Device=Get-JunosShowLLDPNeighbors -JunosShowLLDPNeighborsFile $hostid.ShowLLDPNeighbors -Device $Device
+            Add-HostDebugText -HostObject $device "Processing show LLDP Details:$($hostid.ShowLLDPNeighbors)"
+            $device=Get-JunosShowLLDPNeighbors -JunosShowLLDPNeighborsFile $hostid.ShowLLDPNeighbors -Device $device
         }
         if($hostid.ShowRouteAll){
-            Add-HostDebugText -HostObject $Device "Processing Junos show route all:$($hostid.ShowRouteAll)"
+            Add-HostDebugText -HostObject $device "Processing Junos show route all:$($hostid.ShowRouteAll)"
             $device=Get-JunosShowRouteAllFromXML -device $device -JunosShowRouteAllFile $hostid.ShowRouteAll
         }
         if($hostid.ShowSpanningTreeInterface){
-            Add-HostDebugText -HostObject $Device "Processing Junos Show Spanning Tree Interface:$($hostid.ShowSpanningTreeInterface)"
+            Add-HostDebugText -HostObject $device "Processing Junos Show Spanning Tree Interface:$($hostid.ShowSpanningTreeInterface)"
             $device=Get-JunosShowSpanningTreeInterfaceFromXML -device $device -ShowSpanningTreeInterfaceFile $hostid.ShowSpanningTreeInterface
         }
         if($hostid.JunosShowSpanningTreeBridgeFromXML){
-            Add-HostDebugText -HostObject $Device "Processing Junos Show Spanning Tree Bridge :$($hostid.JunosShowSpanningTreeBridgeFromXML)"
+            Add-HostDebugText -HostObject $device "Processing Junos Show Spanning Tree Bridge :$($hostid.JunosShowSpanningTreeBridgeFromXML)"
             $device=Get-JunosShowSpanningTreeBridgeFromXML -device $device -JunosShowSpanningTreeBridgeFile $hostid.JunosShowSpanningTreeBridgeFromXML
         }
         if ($hostid.ShowArp) {
@@ -99,7 +99,7 @@ function Process-JunosHostFiles{
         #if ($hostid.ShowVlansDetail -and (Test-Path -Path $hostid.ShowVlansDetail)) {
         #    $device = Get-JunosVlansFromDetailXML -JunosVlansFile $hostid.ShowVlansDetail -Device $device
         #}
-        $Device = Update-LocalRoutesWithInterfaces -device $Device
+        $device = Update-LocalRoutesWithInterfaces -device $device
         return $device
 }
 
@@ -492,7 +492,7 @@ function Get-JunosShowInterfaceTerseFromXML {
     [xml]$Interfaces = Get-Content -Raw $JunosInterfaceTerseFile
     
     # --- Flag for debug logging for the specific host ---
-    $enableDebug = ($device.hostname -eq 'junicore.fgao.fr')
+    #$enableDebug = ($device.hostname -eq 'xxxx')
 
     # Iterate through each physical interface in the XML data
     foreach ($physical_interface in $Interfaces.'rpc-reply'.'interface-information'.'physical-interface') {
@@ -603,14 +603,14 @@ function Get-JunosShowInterfaceTerseFromXML {
 #		[parameter(Mandatory=$true)]
 #		$VlanArray,
 #        $VlanName,
-#        $Device
+#        $device
 #    )
 #    foreach($vlan in $VlanArray){
 #        if($VlanName -eq $vlan.name){
 #            return $vlan.number
 #        }
 #    }
-#    Add-HostDebugText -HostObject $Device "Cant find vlan name in list. $($VlanName) in $($VlanArray)" -ForegroundColor red
+#    Add-HostDebugText -HostObject $device "Cant find vlan name in list. $($VlanName) in $($VlanArray)" -ForegroundColor red
 #    return $null
 #}
 
@@ -635,10 +635,10 @@ function Get-JunosArpTableFromXML {
         [parameter(Mandatory = $true)]
         $JunosArpFile,
         [parameter(Mandatory = $true)]
-        $Device
+        $device
     )
 
-    Add-HostDebugText -HostObject $Device "Processing Junos ARP table: $JunosArpFile"
+    Add-HostDebugText -HostObject $device "Processing Junos ARP table: $JunosArpFile"
 
     $AllIPArpObjects = @()
 
@@ -647,8 +647,8 @@ function Get-JunosArpTableFromXML {
         $ArpXml = [xml](Get-Content -Path $JunosArpFile -Raw)
     }
     catch {
-        Add-HostDebugText -HostObject $Device "Invalid XML file or could not read file: $JunosArpFile" -BackgroundColor Red
-        return $Device # Return the unmodified device object on error
+        Add-HostDebugText -HostObject $device "Invalid XML file or could not read file: $JunosArpFile" -BackgroundColor Red
+        return $device # Return the unmodified device object on error
     }
 
     # Iterate through each <arp-table-entry> node in the XML.
@@ -665,19 +665,19 @@ function Get-JunosArpTableFromXML {
         $IPArpObject.INTERFACE = $entry.'interface-name' -replace '\.', ''
 
         # Find the parent network CIDR by matching the ARP IP against the device's own interface subnets.
-        $IPArpObject.cidr = $Device.interfaces | Where-Object { $_.Cidr } | Where-Object {(Find-Subnet -addr1 $_.Cidr -addr2 $IPArpObject.ipaddress).condition } | Select-Object -First 1 | ForEach-Object { $_.cidr }
+        $IPArpObject.cidr = $device.interfaces | Where-Object { $_.Cidr } | Where-Object {(Find-Subnet -addr1 $_.Cidr -addr2 $IPArpObject.ipaddress).condition } | Select-Object -First 1 | ForEach-Object { $_.cidr }
 
         # Add the populated object to our collection.
         $AllIPArpObjects += $IPArpObject
     }
 
     # Assign the completed array of ARP entries to the main device object.
-    $Device.IPArpEntries = $AllIPArpObjects
+    $device.IPArpEntries = $AllIPArpObjects
 
-    Add-HostDebugText -HostObject $Device "Finished processing ARP table. Found $($AllIPArpObjects.Count) entries."
+    Add-HostDebugText -HostObject $device "Finished processing ARP table. Found $($AllIPArpObjects.Count) entries."
 
     # Return the modified device object.
-    return $Device
+    return $device
 }
 
 #
@@ -688,18 +688,18 @@ function Get-JunosMacAddressTableFromXML {
         [parameter(Mandatory = $true)]
         $JunosMacTableFile,
         [parameter(Mandatory = $true)]
-        $Device
+        $device
     )
 
-    Add-HostDebugText -HostObject $Device "Processing Junos MAC address table: $JunosMacTableFile"
+    Add-HostDebugText -HostObject $device "Processing Junos MAC address table: $JunosMacTableFile"
 
     try {
         # Read the file and cast it directly to an XML object.
         $MacXml = [xml](Get-Content -Path $JunosMacTableFile -Raw)
     }
     catch {
-        Add-HostDebugText -HostObject $Device "Invalid XML file or could not read file: $JunosMacTableFile" -BackgroundColor Red
-        return $Device # Return the unmodified device object on error
+        Add-HostDebugText -HostObject $device "Invalid XML file or could not read file: $JunosMacTableFile" -BackgroundColor Red
+        return $device # Return the unmodified device object on error
     }
 
     # Iterate through each <mac-table-entry> node in the XML.
@@ -722,19 +722,19 @@ function Get-JunosMacAddressTableFromXML {
         $MacObject.Interface  = $entry.'mac-interface' -replace '\.0$', ''
 
         # Find the corresponding interface object on the device.
-        $DeviceInterface = $Device.interfaces | Where-Object { $_.interface -eq $MacObject.Interface }
+        $deviceInterface = $device.interfaces | Where-Object { $_.interface -eq $MacObject.Interface }
 
-        if ($DeviceInterface) {
+        if ($deviceInterface) {
             # If the interface is found, add the new MAC address object to its array.
-            $DeviceInterface.MacAddressArray += $MacObject
+            $deviceInterface.MacAddressArray += $MacObject
         }
         else {
-            Add-HostDebugText -HostObject $Device "Could not find interface $($MacObject.Interface) to associate MAC address $($MacObject.MacAddress) with." -BackgroundColor Yellow
+            Add-HostDebugText -HostObject $device "Could not find interface $($MacObject.Interface) to associate MAC address $($MacObject.MacAddress) with." -BackgroundColor Yellow
         }
     }
 
-    Add-HostDebugText -HostObject $Device "Finished processing MAC address table."
-    return $Device
+    Add-HostDebugText -HostObject $device "Finished processing MAC address table."
+    return $device
 }
 
 
@@ -783,15 +783,15 @@ function Get-JunosShowRunFromXML {
         $Lconfig
     )
 
-    $Device = Create-HostObject
-    $Device.Origin = "config"
+    $device = Create-HostObject
+    $device.Origin = "config"
     $ArrayOfHostNetworks = @()
     $hostname = $Lconfig.'rpc-reply'.configuration.system.'host-name'
     if ($null -eq $hostname -or $hostname -eq "") {
         $hostname = "NoHostNameFoundCheckForConfigProblems"
-        Add-HostDebugText -HostObject $Device "No hostname found in Junos config" -BackgroundColor red
+        Add-HostDebugText -HostObject $device "No hostname found in Junos config" -BackgroundColor red
     }
-    $Device.hostname = $hostname
+    $device.hostname = $hostname
 
     $vlanPSObjects = @()
     $vlanMap = @{}
@@ -1172,17 +1172,17 @@ function Get-JunosShowRunFromXML {
         }
     }
 
-    $Device.ArrayOfIPAddresses = $ArrayOfIPAddresses
-    $Device.ArrayOfNetworks = $ArrayOfHostNetworks
-    $Device.vlans = $vlanPSObjects
-    $Device.interfaces = $interfaces
+    $device.ArrayOfIPAddresses = $ArrayOfIPAddresses
+    $device.ArrayOfNetworks = $ArrayOfHostNetworks
+    $device.vlans = $vlanPSObjects
+    $device.interfaces = $interfaces
 
     $ipReport = $interfaces | Where-Object { $_.IPAddress } | ForEach-Object {
         $prefix = if ($_.Cidr) { ($_.Cidr -split '/')[1] } else { 'N/A' }
         "$($_.Interface): $($_.IPAddress)/$prefix"
     }
-    Add-HostDebugText -HostObject $Device "Final Parsed IP Report: $($ipReport -join '; ')"
+    Add-HostDebugText -HostObject $device "Final Parsed IP Report: $($ipReport -join '; ')"
 
-    return $Device
+    return $device
 }
 

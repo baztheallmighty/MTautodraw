@@ -1,4 +1,3 @@
-
 # ===================================================================
 # ========= START: C# PERFORMANCE ACCELERATOR             =========
 # ===================================================================
@@ -56,11 +55,9 @@ namespace NetworkAnalysisTools{
                         pairObject.Members.Add(new PSNoteProperty("DeviceIdentifierA", interfaceA.DeviceIdentifier));
                         pairObject.Members.Add(new PSNoteProperty("IpA", interfaceA.IpAddress));
                         pairObject.Members.Add(new PSNoteProperty("SubnetA", interfaceA.Cidr));
-                        pairObject.Members.Add(new PSNoteProperty("IpA", interfaceA.IpAddress));
                         pairObject.Members.Add(new PSNoteProperty("DeviceB", interfaceB.Hostname));
                         pairObject.Members.Add(new PSNoteProperty("DeviceIdentifierB", interfaceB.DeviceIdentifier));
                         pairObject.Members.Add(new PSNoteProperty("SubnetB", interfaceB.Cidr));
-                        pairObject.Members.Add(new PSNoteProperty("IpB", interfaceB.IpAddress));
                         pairObject.Members.Add(new PSNoteProperty("IpB", interfaceB.IpAddress));                        
                         pairObject.Members.Add(new PSNoteProperty("Symmetry", null));
                         pairObject.Members.Add(new PSNoteProperty("PathType", "Internal"));
@@ -112,7 +109,6 @@ namespace NetworkAnalysisTools{
                         pairObject.Members.Add(new PSNoteProperty("DeviceIdentifierA", internalInt.DeviceIdentifier));
                         pairObject.Members.Add(new PSNoteProperty("IpA", internalInt.IpAddress));                        
                         pairObject.Members.Add(new PSNoteProperty("SubnetA", internalInt.Cidr));
-                        pairObject.Members.Add(new PSNoteProperty("IpA", internalInt.IpAddress));
                         pairObject.Members.Add(new PSNoteProperty("DeviceB", externalSub.EdgeHostname));
                         pairObject.Members.Add(new PSNoteProperty("DeviceIdentifierB", externalSub.EdgeDeviceIdentifier));
                         pairObject.Members.Add(new PSNoteProperty("SubnetB", externalSub.Subnet));
@@ -135,12 +131,13 @@ namespace NetworkAnalysisTools{
     public class RadixTreeNode
     {
         public Dictionary<char, RadixTreeNode> Children { get; set; }
-        public PSObject Route { get; set; }
+        // CHANGED: support multiple routes (ECMP / dual paths)
+        public List<PSObject> Routes { get; set; }
 
         public RadixTreeNode()
         {
             Children = new Dictionary<char, RadixTreeNode>();
-            Route = null;
+            Routes = null;
         }
     }
 
@@ -177,16 +174,19 @@ namespace NetworkAnalysisTools{
                 }
                 currentNode = currentNode.Children[bit];
             }
-            currentNode.Route = route;
+            // CHANGED: append route instead of overwriting
+            if (currentNode.Routes == null)
+                currentNode.Routes = new List<PSObject>();
+            currentNode.Routes.Add(route);
         }
 
-        public PSObject FindBestMatch(string destinationIp)
+        public List<PSObject> FindBestMatches(string destinationIp)
         {
             if (!TryIpToUint(destinationIp, out uint ipInt)) return null;
-            PSObject bestMatch = null;
+            List<PSObject> best = null;
             var currentNode = _root;
 
-            if (currentNode.Route != null) bestMatch = currentNode.Route;
+            if (currentNode.Routes != null) best = currentNode.Routes;
 
             for (int i = 0; i < 32; i++)
             {
@@ -194,9 +194,9 @@ namespace NetworkAnalysisTools{
                 if (!currentNode.Children.ContainsKey(bit)) break;
                 
                 currentNode = currentNode.Children[bit];
-                if (currentNode.Route != null) bestMatch = currentNode.Route;
+                if (currentNode.Routes != null) best = currentNode.Routes;
             }
-            return bestMatch;
+            return best;
         }
     }
     #endregion
@@ -298,18 +298,70 @@ namespace NetworkAnalysisTools{
                         }
                         string destIpForLookup = endIp;
 
-                        RadixTree deviceTree = routeRadixTrees.ContainsKey(currentDeviceName) ? routeRadixTrees[currentDeviceName] : null;
-                        PSObject bestRoute = deviceTree?.FindBestMatch(destIpForLookup);
+                        RadixTree deviceTree = routeRadixTrees.ContainsKey(currentDeviceName)
+                            ? routeRadixTrees[currentDeviceName] : null;
+                        List<PSObject> bestRoutes = deviceTree?.FindBestMatches(destIpForLookup);
 
-                        if (bestRoute == null) {
+                        if (bestRoutes == null || bestRoutes.Count == 0) {
                             pathStatus = "No Route";
                             terminationReason = $"No route on {currentDeviceName} for {destIpForLookup}";
                             break;
                         }
 
+                        // --- NEW: handle multiple equal-cost routes ---
+                        // Fork for alternate routes, continue inline for first
+                        if (bestRoutes.Count > 1)
+                        {
+                            // Create a new list for the path *before* this hop
+                            var pathBeforeThisHop = path.GetRange(0, path.Count - 1);
+
+                            // Fork for alternate routes, starting from the second route in the list
+                            for (int r = 1; r < bestRoutes.Count; r++)
+                            {
+                                var altRoute = bestRoutes[r];
+                                // Create a new path history for the fork
+                                var forkPathHistory = new List<Hop>(pathBeforeThisHop);
+
+                                // Create the single hop for the current device, but using the alternate route's info
+                                var forkHop = new Hop {
+                                    DeviceName = currentDeviceName,
+                                    IngressInterface = ingressInterface,
+                                    EgressInterface = altRoute.Properties["interface"]?.Value as string,
+                                    GatewayUsed = altRoute.Properties["gateway"]?.Value as string,
+                                    MatchedRoute = altRoute.Properties["Subnet"]?.Value as string
+                                };
+                                forkPathHistory.Add(forkHop);
+
+                                // Find the next device based on the alternate gateway
+                                object forkRaw = deviceLookupTable.ContainsKey(forkHop.GatewayUsed)
+                                    ? deviceLookupTable[forkHop.GatewayUsed] : null;
+                                if (forkRaw is PSObject forkPso) forkRaw = forkPso.BaseObject;
+                                var forkNextHopList = (forkRaw as System.Collections.IEnumerable)?
+                                    .Cast<object>().ToList();
+
+                                if (forkNextHopList == null || forkNextHopList.Count == 0)
+                                {
+                                    finalizedPaths.Add(CreatePathObject(forkPathHistory, finalizedPaths.Count + 1,
+                                        "Unknown Next Hop", $"No device claimed gateway {forkHop.GatewayUsed}"));
+                                }
+                                else
+                                {
+                                    var nh = forkNextHopList[0] as PSObject ?? new PSObject(forkNextHopList[0]);
+                                    // Push the clean fork to the stack to be explored later
+                                    forksToExplore.Push(new TraceState {
+                                        PathHistory = forkPathHistory,
+                                        CurrentDeviceName = nh.Properties["Hostname"]?.Value as string,
+                                        IngressInterface  = nh.Properties["Interface"]?.Value as string
+                                    });
+                                }
+                            }
+                        }
+
+                        // Continue inline with first route
+                        var bestRoute = bestRoutes[0];
                         currentHop.EgressInterface = bestRoute.Properties["interface"]?.Value as string;
-                        currentHop.GatewayUsed = bestRoute.Properties["gateway"]?.Value as string;
-                        currentHop.MatchedRoute = bestRoute.Properties["Subnet"]?.Value as string;
+                        currentHop.GatewayUsed     = bestRoute.Properties["gateway"]?.Value as string;
+                        currentHop.MatchedRoute    = bestRoute.Properties["Subnet"]?.Value as string;
 
                         // ----- External/Internal decision rules -----
                         bool isExternal   = bestRoute.Properties["IsExternal"]?.Value as bool? == true;
@@ -732,72 +784,6 @@ function Create-TransitSubnetLookup {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# --- FUNCTION 3 of 4: Format-PathForConsole (New Helper Function) ---
-function Format-PathForConsole {
-    param(
-        [Parameter(Mandatory=$true)]
-        [array]$PathArray,
-
-        [Parameter(Mandatory=$true)]
-        [string]$Title
-    )
-
-    Write-Host "`n--- $($Title) ---" -ForegroundColor Green
-    if ($null -eq $PathObject) {
-
-    if ($null -eq $PathArray -or $PathArray.Count -eq 0) {
-        Write-Host "Path has no hops."
-        return
-    }
-
-    foreach ($path in $PathArray) {
-        Write-Host "`n  Path #$($path.PathNumber) | Status: $($path.Status)" -ForegroundColor Cyan
-        $hopCounter = 0
-        foreach ($hop in $path.HopDetails) {
-            $hopCounter++
-            Write-Host "     [Hop $hopCounter] Device: $($hop.Device)" -ForegroundColor Yellow
-            Write-Host "       - Egress Interface : $($hop.Interface)"
-            Write-Host "       - Matched Subnet   : $($hop.Subnet)"
-            Write-Host "       - Next-Hop Gateway : $($hop.Gateway)"
-        }
-    }
-    }
-}
 
 
 function Test-PathSymmetry { # V2 with structured objects
@@ -1615,41 +1601,7 @@ $htmlTemplate = @'
             secondSubnetFilter.disabled = true;
         }
         // --- New Filter Logic ---
-        firstDeviceFilter.addEventListener('change', () => {
-            const firstDevice = firstDeviceFilter.value;
 
-            // Reset dependent filters to ALL subnets if no device
-            const allSubnets = [...new Set(allData.flatMap(r => [r.SubnetA, r.SubnetB]))].filter(Boolean).sort();
-            firstSubnetFilter.innerHTML = '<option value="all">All First Subnets</option>' + allSubnets.map(s => `<option value="${s}">${s}</option>`).join('');
-
-            secondDeviceFilter.innerHTML = '<option value="all">All Second Devices</option>';
-            secondSubnetFilter.innerHTML = '<option value="all">All Second Subnets</option>';
-
-            firstSubnetFilter.disabled = false; // Always stays enabled
-            secondDeviceFilter.disabled = (firstDevice === 'all' && firstSubnetFilter.value === 'all');
-            secondSubnetFilter.disabled = true;
-
-            if (firstDevice !== 'all') {
-                // Populate First Subnets with all subnets for this device
-                const subnets = [...new Set(allData
-                    .filter(r => r.DeviceA_Raw === firstDevice || r.DeviceB_Raw === firstDevice)
-                    .flatMap(r => [r.SubnetA, r.SubnetB])
-                )].filter(Boolean).sort();
-
-                subnets.forEach(s => firstSubnetFilter.innerHTML += `<option value="${s}">${s}</option>`);
-
-                // Populate Second Devices list
-                const secondDevices = [...new Set(allData
-                    .filter(r => (r.SubnetA === firstSubnetFilter.value || r.SubnetB === firstSubnetFilter.value) &&
-                                (r.DeviceA_Raw !== firstDevice && r.DeviceB_Raw !== firstDevice))
-                    .flatMap(r => [r.DeviceA_Raw, r.DeviceB_Raw])
-                )].filter(Boolean).sort();
-
-                secondDevices.forEach(d => secondDeviceFilter.innerHTML += `<option value="${d}">${d}</option>`);
-            }
-
-            applyFilters();
-        });
         
         // Reset Filters Button
         document.getElementById('resetFiltersBtn').addEventListener('click', () => {
@@ -1675,28 +1627,70 @@ $htmlTemplate = @'
             applyFilters();
         });
 
-        // Enable second subnet when second device or first subnet selected
-        firstSubnetFilter.addEventListener('change', () => {
+        function updateDependentFilters() {
             const firstDevice = firstDeviceFilter.value;
             const firstSubnet = firstSubnetFilter.value;
+            const secondDevice = secondDeviceFilter.value;
 
-            // Enable/disable Second Device based on either first picker being set
-            secondDeviceFilter.disabled = (firstDevice === 'all' && firstSubnet === 'all');
-
-            // Refresh Second Device options when First Subnet changes
-            secondDeviceFilter.innerHTML = '<option value="all">All Second Devices</option>';
+            // Determine potential pairs based on the first device/subnet selections
+            let potentialPairs = allData;
+            if (firstDevice !== 'all') {
+                potentialPairs = potentialPairs.filter(r => r.DeviceA_Raw === firstDevice || r.DeviceB_Raw === firstDevice);
+            }
             if (firstSubnet !== 'all') {
-                const candidateRows = allData.filter(r => r.SubnetA === firstSubnet || r.SubnetB === firstSubnet);
-                const secondDevices = new Set();
-                candidateRows.forEach(r => {
-                    if (r.DeviceA_Raw && (firstDevice === 'all' || r.DeviceA_Raw !== firstDevice)) secondDevices.add(r.DeviceA_Raw);
-                    if (r.DeviceB_Raw && (firstDevice === 'all' || r.DeviceB_Raw !== firstDevice)) secondDevices.add(r.DeviceB_Raw);
-                });
-                [...secondDevices].sort().forEach(d => secondDeviceFilter.innerHTML += `<option value="${d}">${d}</option>`);
+                potentialPairs = potentialPairs.filter(r => r.SubnetA === firstSubnet || r.SubnetB === firstSubnet);
             }
 
-            // Second Subnet remains disabled until a Second Device is chosen
+            // Populate Second Device dropdown
+            const secondDeviceOptions = new Set();
+            potentialPairs.forEach(r => {
+                if (firstDevice !== 'all') { // If a first device is chosen, only add the *other* device from the pair
+                    if (r.DeviceA_Raw === firstDevice && r.DeviceB_Raw !== firstDevice) secondDeviceOptions.add(r.DeviceB_Raw);
+                    if (r.DeviceB_Raw === firstDevice && r.DeviceA_Raw !== firstDevice) secondDeviceOptions.add(r.DeviceA_Raw);
+                } else { // Otherwise, add both devices from potential pairs
+                    secondDeviceOptions.add(r.DeviceA_Raw);
+                    secondDeviceOptions.add(r.DeviceB_Raw);
+                }
+            });
+            secondDeviceFilter.innerHTML = '<option value="all">All Second Devices</option>';
+            [...secondDeviceOptions].sort().forEach(d => secondDeviceFilter.innerHTML += `<option value="${d}">${d}</option>`);
+            secondDeviceFilter.value = secondDevice; // Restore previous selection if possible
+
+            // Populate Second Subnet dropdown (only if a second device is selected)
+            secondSubnetFilter.innerHTML = '<option value="all">All Second Subnets</option>';
+            if (secondDeviceFilter.value !== 'all') {
+                 const secondSubnetOptions = new Set();
+                 potentialPairs.forEach(r => {
+                    // Add the subnet that belongs to the selected second device in the context of the pair
+                    if (r.DeviceA_Raw === secondDeviceFilter.value) secondSubnetOptions.add(r.SubnetA);
+                    if (r.DeviceB_Raw === secondDeviceFilter.value) secondSubnetOptions.add(r.SubnetB);
+                 });
+                [...secondSubnetOptions].sort().forEach(s => secondSubnetFilter.innerHTML += `<option value="${s}">${s}</option>`);
+            }
+
+            // Enable/disable filters based on selections
+            secondDeviceFilter.disabled = (firstDevice === 'all' && firstSubnet === 'all');
             secondSubnetFilter.disabled = (secondDeviceFilter.value === 'all');
+        }
+
+        firstDeviceFilter.addEventListener('change', () => {
+            // When the first device changes, reset the subsequent filters and update
+            secondDeviceFilter.value = 'all';
+            secondSubnetFilter.value = 'all';
+            updateDependentFilters();
+            applyFilters();
+        });
+
+        firstSubnetFilter.addEventListener('change', () => {
+            secondDeviceFilter.value = 'all';
+            secondSubnetFilter.value = 'all';
+            updateDependentFilters();
+            applyFilters();
+        });
+
+        secondDeviceFilter.addEventListener('change', () => {
+            secondSubnetFilter.value = 'all';
+            updateDependentFilters();
             applyFilters();
         });
 
@@ -1774,7 +1768,7 @@ function Invoke-NetworkPathAnalysis {
         [array]$DeviceData,
 
         [Parameter(Mandatory = $false)]
-        [string]$ReportPath = ".\$((Get-Date).ToString('yyyyMMdd-HHmmss'))-Analysis.html",
+        [string]$ReportPath,
 
         [Parameter(Mandatory = $false)]
         [int]$MaxHops = 30,
@@ -1783,16 +1777,14 @@ function Invoke-NetworkPathAnalysis {
         [hashtable]$LoggingConfiguration = @{},
 
         [Parameter(Mandatory = $false)]
-        [array]$DebugTargets = @(),
-
-        [Parameter(Mandatory = $false)]
-        [switch]$Passthru
+        [array]$DebugTargets = @()
     )
+        write-Host "HERE3 : $($GNetworkTracePathAnalysis)"
     # 2. Construct a full, unique file path for the report
     $reportFileName = "$((Get-Date).ToString('yyyyMMdd-HHmmss'))-AnalysisTable.html"
-    $AnalysisTablePath = Join-Path -Path $GOutPutDirectory -ChildPath $reportFileName
+    $AnalysisTablePath = Join-Path -Path $ReportPath -ChildPath $reportFileName
     $reportFileName = "$((Get-Date).ToString('yyyyMMdd-HHmmss'))-AnalysisGraph.html"
-    $AnalysisGraphPath = Join-Path -Path $GOutPutDirectory -ChildPath $reportFileName    
+    $AnalysisGraphPath = Join-Path -Path $ReportPath -ChildPath $reportFileName    
 
 
     
@@ -1980,13 +1972,6 @@ function Invoke-NetworkPathAnalysis {
     $totalStopwatch.Stop()
     Write-Host "[BENCHMARK] Total execution time took $($totalStopwatch.Elapsed.TotalSeconds) seconds." -ForegroundColor Green
 
-    if ($Passthru) {
-        $result = [PSCustomObject]@{
-            ReportPath   = $ReportPath
-            AnalysisData = $allPairs
-        }
-        return $result
-    }
 }
 
 

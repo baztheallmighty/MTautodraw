@@ -88,14 +88,28 @@ $GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPVPNv4NeighborsTempl
 $GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceLogical -value "$($GPathToTextFSMTemplates)paloalto_panos_show_interface_logical.textfsm"
 $GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -value "$($GPathToTextFSMTemplates)paloalto_panos_show_interface_hardware.textfsm"
 
+# Fortinet / FortiGate Templates
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateSystemStatus -value "$($GPathToTextFSMTemplates)fortinet_get_system_status.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateSystemInterface -value "$($GPathToTextFSMTemplates)fortinet_get_system_interface.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateSystemInterfacePhysical -value "$($GPathToTextFSMTemplates)fortinet_get_system_interface_physical.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateSystemArp -value "$($GPathToTextFSMTemplates)fortinet_get_system_arp.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateLldpNeighborDetails -value "$($GPathToTextFSMTemplates)fortinet_diagnose_lldprx_port_neighbor_details_port-name.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateRoutingTable -value "$($GPathToTextFSMTemplates)fortinet_get_router_info_routing-table_all.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateBgpSummary -value "$($GPathToTextFSMTemplates)fortinet_get_router_info_bgp_summary.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateBgpNeighbors -value "$($GPathToTextFSMTemplates)fortinet_get_router_info_bgp_neighbors.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateOspfStatus -value "$($GPathToTextFSMTemplates)fortinet_get_router_info_ospf_status.textfsm"
+$GTemplate | Add-Member -type NoteProperty -Name FortiGateHaStatus -value "$($GPathToTextFSMTemplates)fortinet_get_system_ha_status.textfsm"
+
+
+
 ################################################################################
 ## --- Diagram Generation Toggles ---
 ## These boolean variables control which types of diagrams are generated.
 ################################################################################
-
+$GNetworkTracePathAnalysis = $true
 
 $GDrawL2Overview = $true
-$GNetworkPathAnalysis = $ture
+
 
 # This draws the diagrams with multiple devices per page and links them together.
 # This is the primary diagram you are probably after.

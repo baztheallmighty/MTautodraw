@@ -29,9 +29,9 @@ function Process-CheckPointHostFiles{
      # First, create the device object from the config file.
      if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
          $config = Get-Content -Path $hostid.showrun -raw
-         # The Get-CheckPointShowRunFromText function now creates and returns the initial $Device object.
-         $Device=Get-CheckPointShowRunFromText -Lconfig $config
-         $Device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
+         # The Get-CheckPointShowRunFromText function now creates and returns the initial $device object.
+         $device=Get-CheckPointShowRunFromText -Lconfig $config
+         $device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
      }else{
          # We can't create a device object to log to, so we can't use Add-HostDebugText here.
          # This will be visible in the main thread's error stream.
@@ -39,31 +39,31 @@ function Process-CheckPointHostFiles{
          return $null
      }
 
-     # Now that $Device is a valid object, we can log to it.
-     Add-HostDebugText -HostObject $Device "Processing CheckPoint Host: $($Device.hostname)"
+     # Now that $device is a valid object, we can log to it.
+     Add-HostDebugText -HostObject $device "Processing CheckPoint Host: $($device.hostname)"
 
-    if($null -eq $Device.hostname ){
+    if($null -eq $device.hostname ){
         Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
         return $null
     }
 
     if($hostid.ShowAssetAll){#
-        Add-HostDebugText -HostObject $Device  "Processing checkpoint Show Asset All:$($hostid.ShowAssetAll)"
-        $Device=Get-CheckpointShowAssetAllFromText -ShowAssetAll $hostid.ShowAssetAll -Device $Device
+        Add-HostDebugText -HostObject $device  "Processing checkpoint Show Asset All:$($hostid.ShowAssetAll)"
+        $device=Get-CheckpointShowAssetAllFromText -ShowAssetAll $hostid.ShowAssetAll -Device $device
     }
-    if($hostid.Version){#
-        Add-HostDebugText -HostObject $Device  "Processing checkpoint show version:$($hostid.ShowVersion)"
-        $Device=Get-CheckpointGaiaVersionFromText -Version $hostid.ShowVersion -Device $Device
+    if($hostid.ShowVersion){#
+        Add-HostDebugText -HostObject $device  "Processing checkpoint show version:$($hostid.ShowVersion)"
+        $device=Get-CheckpointGaiaVersionFromText -Version $hostid.ShowVersion -Device $device
     }
     if($hostid.ShowInterface){#
-        Add-HostDebugText -HostObject $Device  "Processing checkpoint show interface:$($hostid.ShowInterface)"
-        $Device=Get-CheckPointShowInterfaceFromText -CheckPointInterfaceFile $hostid.ShowInterface -Device $Device
+        Add-HostDebugText -HostObject $device  "Processing checkpoint show interface:$($hostid.ShowInterface)"
+        $device=Get-CheckPointShowInterfaceFromText -CheckPointInterfaceFile $hostid.ShowInterface -Device $device
     }
     if($hostid.ShowRouteAll){
-        Add-HostDebugText -HostObject $Device  "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
+        Add-HostDebugText -HostObject $device  "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
         $device=Get-CheckpointShowRouteFromText -device $device -ShowRouteFile $hostid.ShowRouteAll
     }
-    $Device = Update-LocalRoutesWithInterfaces -device $Device
+    $device = Update-LocalRoutesWithInterfaces -device $device
     return $device
 }
 
@@ -96,29 +96,29 @@ function Get-CheckPointShowInterfaceFromText(){
     param (
         [parameter(Mandatory=$true)]
         $CheckPointInterfaceFile,
-        $Device
+        $device
     )
     $ArrayOfHostNetworks=@()
     $interfaces = @()
     #Read the file into one big string
     $CheckPointInterfaceText = Get-Content -raw $CheckPointInterfaceFile
     if(($CheckPointInterfaceText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
-        Add-HostDebugText -HostObject $Device  "$($CheckPointInterfaceText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device  "contains invalid data or is empty"  -BackgroundColor red
+        Add-HostDebugText -HostObject $device  "$($CheckPointInterfaceText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $device  "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
 
-    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $Device
-    if($Device.ProcessOutputObjects -eq "ERROR"){
-        Add-HostDebugText -HostObject $Device  "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
+    $device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $device
+    if($device.ProcessOutputObjects -eq "ERROR"){
+        Add-HostDebugText -HostObject $device  "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
         return $device
     }
-    if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+    if($device.ProcessOutputObjects.Count -gt 0 -and $device.ProcessOutputObjects[0].GetType().Name -eq "string"){
         $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
+        $tempArray += ,$device.ProcessOutputObjects
+        $device.ProcessOutputObjects = $tempArray
     }
-    foreach ($int in $Device.ProcessOutputObjects){
+    foreach ($int in $device.ProcessOutputObjects){
         $interfaceObject = Create-InterfaceObject
         $interfaceObject.Interface=$int[0]
         if($int[4] -eq "link up"){
@@ -130,11 +130,11 @@ function Get-CheckPointShowInterfaceFromText(){
             $interfaceObject.shutdown=$true
         }
 
-        $interfaceObject.speed=$int[7]
-        $interfaceObject.Description=$int[8]
-        if($int[9]){
-            $interfaceObject.SubnetMask=($int[9] -split "/")[1]
-            $interfaceObject.IPAddress=($int[9] -split "/")[0]
+        $interfaceObject.speed=$int[8]
+        $interfaceObject.Description=$int[9]
+        if($int[10]){
+            $interfaceObject.SubnetMask=($int[10] -split "/")[1]
+            $interfaceObject.IPAddress=($int[10] -split "/")[0]
             $interfaceObject.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
             $interfaceObject.SwitchPortType="Routed"
             if($null -ne $interfaceObject.Cidr){
@@ -182,31 +182,31 @@ function Get-CheckpointShowRouteFromText(){
     param (
         [parameter(Mandatory=$true)]
         $ShowRouteFile,
-        $Device
+        $device
     )
     #Read the file into one big string
     $ShowRouteText = Get-Content -raw $ShowRouteFile
     $AllRouteObjects=@() #Array of routes(Create-RouteObject) that will be passed back to the host object.
     if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
-        Add-HostDebugText -HostObject $Device  "$($ShowRouteText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device  "contains invalid data or is empty"  -BackgroundColor red
+        Add-HostDebugText -HostObject $device  "$($ShowRouteText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $device  "contains invalid data or is empty"  -BackgroundColor red
         return $device
     }
 
-    #Add-HostDebugText -HostObject $Device  "Starting Python Processing with TextFSM"
+    #Add-HostDebugText -HostObject $device  "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
-    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
-    if($Device.ProcessOutputObjects -eq "ERROR"){
-        Add-HostDebugText -HostObject $Device  "Error with show route on Checkpoint routing." -BackgroundColor red
+    $device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $device
+    if($device.ProcessOutputObjects -eq "ERROR"){
+        Add-HostDebugText -HostObject $device  "Error with show route on Checkpoint routing." -BackgroundColor red
         return $device
     }
 
-    if($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+    if($device.ProcessOutputObjects.Count -gt 0 -and $device.ProcessOutputObjects[0].GetType().Name -eq "string"){
         $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
+        $tempArray += ,$device.ProcessOutputObjects
+        $device.ProcessOutputObjects = $tempArray
     }
-    foreach ($Route in $Device.ProcessOutputObjects){
+    foreach ($Route in $device.ProcessOutputObjects){
         $RouteObject=Create-RouteObject
         switch ($Route[0]){
             C{$RouteObject.RouteProtocol="connected"}
@@ -221,7 +221,7 @@ function Get-CheckpointShowRouteFromText(){
             }
         }
         if($null -eq $RouteObject.RouteProtocol){ #something went wrong, we have a route without a routing protocol
-            Add-HostDebugText -HostObject $Device  "Error No routing protocol:$($Route)" -BackgroundColor red
+            Add-HostDebugText -HostObject $device  "Error No routing protocol:$($Route)" -BackgroundColor red
             continue
         }
 
@@ -247,7 +247,7 @@ function Get-CheckpointShowAssetAllFromText {
         [string]$ShowVersionFile,
 
         [parameter(Mandatory=$false)]
-        $Device
+        $device
     )
 
 
@@ -308,7 +308,7 @@ function Get-CheckpointGaiaVersionFromText {
         [string]$ShowVersionFile,
 
         [parameter(Mandatory=$false)]
-        $Device
+        $device
     )
 
 

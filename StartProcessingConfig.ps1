@@ -27,8 +27,8 @@ function Create-FileHostObjects{
     )
     #Find all the show run or show config files
     $HostIDs = $files | where { $_ -like "*.show ver*" -or $_ -like "*.show version*" } | % { ($_.name -split ".show*")[0] }
-    $HostIDs += Get-ChildItem $GDirectory -File -Recurse -Include "*.show system info.txt" | ForEach-Object { ($_.Name -split ".show system info")[0] } | Select-Object -Unique
 
+    $HostIDs += Get-ChildItem $GDirectory -File -Recurse -Include "*.show system info.txt","*.get system status.txt" | ForEach-Object { ($_.Name -split ".show system info|.get system status")[0] } | Select-Object -Unique
     if($HostIDs.count -eq 0){
         write-HostDebugText "No show verion files found. Please check the name of your files. e.g HostID.show run.txt" -BackgroundColor red
         Write-host 'Exiting.' -BackgroundColor red
@@ -43,6 +43,42 @@ function Create-FileHostObjects{
                 if($file.name -like "*show run*" -or $file.name -like "*show config*" ){ #Checkpoint and cisco show run or show config.
                     $hostid.showrun=$file.fullname
                 }
+
+                #Fortigate
+                if($file.name -like "*show full-configuration*"){ # Fortigate Full Config
+                    $hostid.ShowFullConfig=$file.fullname
+                }
+                if($file.name -like "*get router info bgp summary*"){ # Fortigate BGP
+                    $hostid.ShowBgpSummary=$file.fullname
+                    break
+                }
+                if($file.name -like "*get system arp*"){ # Fortigate ARP
+                    $hostid.ShowArp=$file.fullname
+                    break
+                }
+                if($file.name -like "*get router info routing-table all*"){ # Fortigate Routing
+                    $hostid.ShowRoutingTable=$file.fullname
+                    break
+                }
+                if($file.name -like "*get system lldp neighbor details*"){ # Fortigate LLDP
+                    $hostid.LldpNeighborDetails=$file.fullname
+                    break
+                }
+                if ($file.name -like "*get system status*") { # Fortigate Version/Status
+                    $hostid.SystemStatus = $file.fullname
+                    $hostid.DeviceType = "Fortigate"
+                    break
+                }
+                if($file.name -like "*get system interface*"){ # Fortigate Interfaces
+                    $hostid.SystemInterface=$file.fullname
+                    break
+                }
+                if($file.name -like "*get router info ospf neighbor*"){ # Fortigate OSPF
+                    $hostid.ShowOspfNeighbor=$file.fullname
+                    break
+                }
+
+
 
                 if($file.name -like "*show ip bgp summary*"){
                     $hostid.ShowIPBGPSummary=$file.fullname
@@ -76,7 +112,7 @@ function Create-FileHostObjects{
                 if($file.name -like "*show interfaces terse*"){
                     $hostid.ShowInterfaceTerse=$file.fullname
                     break
-                }                
+                }
                 if($file.name -like "*show interfaces detail*"){
                     $hostid.ShowInterfaceDetail=$file.fullname
                     break
@@ -152,6 +188,9 @@ function Create-FileHostObjects{
                     }elseif(($ShowVersionText | Select-String "Junos").Matches.Success -or ($ShowVersionText | Select-String "junos").Matches.Success -or ($ShowVersionText | Select-String "JUNOS Base OS boot").Matches.Success){
                         $hostid.DeviceType="Junos"
                         break
+                    }elseif(($ShowVersionText | Select-String "Arista vEOS-lab").Matches.Success -or ($ShowVersionText | Select-String "Arista vEOS-lab").Matches.Success -or ($ShowVersionText | Select-String "JUNOS Base OS boot").Matches.Success){
+                        $hostid.DeviceType="Arista vEOS-lab"
+                        break    
                     }else{
                         write-HostDebugText "Could not find type of device or unsupported device type."
                         write-host "Exiting. You need to fix this manually by either removing theses files $($file.fullname) or fixing them so the show version file is supported by this script."  -BackgroundColor red
@@ -313,6 +352,8 @@ function Start-ProcessingFiles(){
         Import-Module "$($GPathToScript)JunosConfigProcessingFunctions.ps1" -Force
         Import-Module "$($GPathToScript)PaloAltoConfigProcessingFunctions.ps1" -Force
         Import-Module -Name "$($GPathToScript)GETIPV4Subnet\GetIPv4Subnet.psm1" -Force
+        Import-Module "$($GPathToScript)FortigateConfigProcessingFunctions.ps1" -Force
+        Import-Module "$($GPathToScript)AristaConfigProcessingFunctions.ps1" -Force
 
         function Add-HostDebugText(){
                 param (
@@ -369,6 +410,14 @@ function Start-ProcessingFiles(){
             "PaloAlto"{
                 $Device=Process-PaloAltoHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="PaloAlto" }
+            }
+            "Fortigate"{
+                $Device=Process-FortiGateHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="Fortigate" }
+            }
+            "Arista vEOS-lab"{
+                $Device=Process-AristaHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="Arista vEOS-lab" }
             }
             default{
                 # This write will appear in the console from the thread
@@ -570,7 +619,7 @@ function Start-ProcessingFiles(){
             if ($neighborDevice) {
                 # Once the device is found, search only its interfaces for a match.
                 $remoteInterfaceObject = $neighborDevice.interfaces | Where-Object { $_.interface -eq $cdpneighbor.InterfaceRemoteDevice } | Select-Object -First 1
-                
+
                 if ($remoteInterfaceObject) {
                     # Find the index of that specific object in the original array to ensure correct scope.
                     $interfaceIndex = [array]::IndexOf([array]$neighborDevice.interfaces, $remoteInterfaceObject)
