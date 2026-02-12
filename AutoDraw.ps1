@@ -19,8 +19,6 @@
 
 
 
-#$Gdirectory="C:\code\temp\LAB"; $goutputdirectory="C:\code\temp\LAB";$GPathToScript="C:\code\mtautodraw\"
-
 Param(
     [Parameter(Mandatory = $true)]
     [string] $GDirectory,
@@ -173,8 +171,6 @@ $GArrayofGatewayHosts=@() #An Array of LLDP,CDP or ARP gateway hosts we know abo
 
 
 $GArrayOfNetworks,$GArrayOfObjects,$GArrayOfCDPDeviceIDs,$GArrayOfLLDPDeviceIDs,$GArrayOfIPApr,$GArrayofGatewayHosts = Start-ProcessingFiles
-
-#$GArrayOfObjects.RoutingTable | ft
 
 
 # --- Global drawio Variables ---
