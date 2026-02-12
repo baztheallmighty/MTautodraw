@@ -150,7 +150,7 @@ $AristaCommands = @(
     "show processes top once"
 )
 ```
-### Arista
+### Aruba
 ```powershell
 
 $Commands = @(
