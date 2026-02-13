@@ -154,46 +154,54 @@ $AristaCommands = @(
 ```powershell
 
 $Commands = @(
-    # --- Aruba AOS-CX (Switching) ---
-    "show aaa authentication port-access interface all client-status",
+    "show vsx",
+    "show vsx status",
+    "show interface",
+    "show interface brief",
     "show arp all-vrfs",
+    "show lldp neighbor-info",
+    "show lldp neighbor-info detail",
+    "show ip interface brief",
+    "show ip interface",
+    "show ip route all-vrfs",
+    "show interface dom detail",
     "show bfd all-vrfs",
     "show bgp all-vrfs all summary",
-    "show bgp all all-vrfs summary",
-    "show interface",
-    "show interface dom detail",
-    "show ip route all-vrfs",
-    "show lldp neighbor-info detail",
+    "show bgp all-vrfs all",
+    "show bgp all-vrfs all neighbors",
+    "show aaa authentication port-access interface all client-status",
     "show mac-address-table",
+    "show spanning-tree",
+    "show spanning-tree root",
+    "show spanning-tree port",
+    "show spanning-tree detail",
+    "show spanning-tree mst",
+    "show spanning-tree mst detail",
+    "show spanning-tree inconsistent-ports",
     "show ntp associations",
+    "show ntp status",
     "show system",
     "show vlan",
+    "show vlan vsx-peer",
     "show vsf detail",
-
-    # --- ArubaOS (Wireless Controllers) ---
-    "show ap bss-table details",
-    "show ap database",
-    "show ap database long",
-    "show ap radio-database",
-    "show arp",
-    "show hostname",
-    "show inventory",
-    "show ipv6 interface brief",
-    "show ip interface brief",
     "show version",
-    "show vlan",
-
-    # --- Avaya ERS (Ethernet Routing Switch) ---
-    "show interface name",
-    "show logging config",
-    "show mac-address-table",
-    "show mlt",
-    "show mlt all-members",
-    "show sys-info",
-    "show vlan",
-
-    # --- Avaya VSP (Virtual Services Platform) ---
-    "show software"
+    "show hostname",
+    "show ipv6 interface brief",
+    "show ipv6 interface all-vrfs",
+    "show arp all-vrfs",
+    "show arp summary all-vrfs",
+    "show ip ospf all-vrfs",
+    "show ip ospf neighbors all-vrfs",
+    "show lacp interfaces",
+    "show lacp aggregates",
+    "show lacp configuration",
+    "show vrf",
+    "show run all",
+    "show run",
+    "show environment",
+    "show vrrp",
+    "show vrrp details",
+    "show lag"
 )
 
 
@@ -525,3 +533,4 @@ foreach ($Device in $NetworkDevices){
 * Plink has issues with paging on some devices.
 * Plink also doesn't support enable passwords or expert passwords. 
 ````
+
