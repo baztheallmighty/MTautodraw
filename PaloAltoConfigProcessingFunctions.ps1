@@ -280,7 +280,7 @@ function Get-PaloAltoRouteFromText {
             # Handle standard routes with an IP nexthop
             $RouteObject.Subnet    = $tokens[0]
             $RouteObject.gateway   = $tokens[1]
-            $RouteObject.DISTANCE  = [int]$tokens[2]
+            $RouteObject.DISTANCE  = $tokens[2]
             $startIndexForFlags = 3 # Flags start at the 4th token
         }
         

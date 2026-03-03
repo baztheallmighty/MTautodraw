@@ -1,0 +1,12 @@
+Value PORT (\S+)
+Value NATIVE_VLAN (\S+)
+Value MODE (\S+)
+Value TYPE (\S+)
+Value ENABLED (yes|no)
+Value STATUS (\w+)
+Value REASON (.*?)
+Value SPEED (\d+|--)
+Value DESCRIPTION (\S.*)
+
+Start
+  ^${PORT}\s+${NATIVE_VLAN}\s+${MODE}\s+${TYPE}\s+${ENABLED}\s+${STATUS}\s+${REASON}\s+${SPEED}\s+${DESCRIPTION}\s*$$ -> Record

@@ -183,6 +183,17 @@ function Create-FileObject() {
         ShowVlansDetail                  = $null
         ShowAssetAll                     = $null
         ShowInterfaceTerse               = $null # Used for Junos 'show interfaces terse'
+        ShowIPBGPNeighbors               = $null
+        # --- Fortigate Specific ---
+        ShowFullConfig                    = $null
+        SystemStatus                      = $null
+        SystemInterface                   = $null
+        LldpNeighborDetails               = $null
+        ShowRoutingTable                  = $null
+        ShowBgpSummary                    = $null
+        ShowOspfNeighbor                  = $null
+        ShowSpanningTreeDetails           = $null #aruba
+        ShowInterfaceBrief                = $null #aruba
     }
 }
 
@@ -261,6 +272,22 @@ function Create-InterfaceObject() {
         PhysicalDrawioId       = $null #The unique ID for the physical interface shape in the draw.io diagram.
         LogicalDrawioId        = $null #The unique ID for the logical interface shape in the draw.io diagram.
         DrawOnRoutesOnlyDiagram = $false
+# --- FortiGate Specific Properties ---
+        VDOM                        = $null # Virtual Domain the interface belongs to (e.g., "root")
+        Mode                        = $null # IP assignment mode (static, dhcp, pppoe)
+        AllowAccess                 = $null # Management access allowed (ping, https, ssh, fgfm, etc.)
+        Role                        = $null # Interface role (lan, wan, dmz, undefined)
+        Alias                       = $null # Short alias/name for the interface (distinct from Description)
+        FortiLink                   = $null # Is FortiLink enabled (for managing FortiSwitches)
+        SecurityMode                = $null # Security mode (captive-portal, 802.1x, none)
+        DeviceIdentification        = $null # Is device detection enabled
+        LLDPTransmission            = $null # LLDP Transmission setting (vdom, disable, etc.)
+        LLDPReception               = $null # LLDP Reception setting (vdom, disable, etc.)
+        SNMPIndex                   = $null # SNMP Index ID
+        EstimatedUpstreamBandwidth  = $null # Upstream bandwidth setting
+        EstimatedDownstreamBandwidth= $null # Downstream bandwidth setting
+        MonitorBandwidth            = $null # Is bandwidth monitoring enabled
+        MTUOverride                 = $null # Is MTU override enabled        
     }
 }
 

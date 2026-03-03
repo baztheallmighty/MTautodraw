@@ -1,0 +1,12 @@
+Value Filldown VRF (\S+)
+Value Required PREFIX (\S+)
+Value NEXTHOP (\S+)
+Value INTERFACE (\S+)
+Value VRF_EGRESS (\S+)
+Value ORIGIN_TYPE (\S+)
+Value DISTANCE_METRIC (\[\S+\])
+Value AGE (\S+)
+
+Start
+  ^VRF:\s+${VRF}
+  ^${PREFIX}\s+${NEXTHOP}\s+${INTERFACE}\s+${VRF_EGRESS}\s+${ORIGIN_TYPE}\s+${DISTANCE_METRIC}\s+${AGE} -> Record

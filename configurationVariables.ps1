@@ -33,61 +33,19 @@ $GPathToPythonTextFSMScript="$($GPathToScript)TextFSM.py"
 #See https://pyneng.readthedocs.io/en/latest/book/21_textfsm/textfsm_examples.html for more details.
 #Templates come from here: https://github.com/networktocode/ntc-templates
 #Base path to Templates
-$GPathToTextFSMTemplates="$($GPathToScript)Templates\"
+# Base path to Templates
+$GPathToTextFSMTemplates = "$($GPathToScript)Templates\"
 
-#The Template Objects for use with TextFSM. This object holds the full path to each .textfsm file.
-$GTemplate = New-Object -TypeName PSObject
-$GTemplate | Add-Member -type NoteProperty -Name NexusSHOWIPROUTETemplate          -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_route.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSSHOWIPROUTETemplate              -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_route.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowMacAddressTableTemplate      -value "$($GPathToTextFSMTemplates)cisco_ios_show_mac-address-table.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowMacAddressTableTemplate    -value "$($GPathToTextFSMTemplates)cisco_nxos_show_mac_address-table.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowLLDPNeighborsDetailsTemplate   -value "$($GPathToTextFSMTemplates)cisco_ios_show_lldp_neighbors_detail.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowLLDPNeighborsDetailsTemplate -value "$($GPathToTextFSMTemplates)cisco_nxos_show_lldp_neighbors_detail.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name XEIOSShowLLDPNeighborsDetailsTemplate -value "$($GPathToTextFSMTemplates)cisco_ios_show_lldp_neighbors.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowVersionTemplate              -value "$($GPathToTextFSMTemplates)cisco_ios_show_version.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowVersionTemplate            -value "$($GPathToTextFSMTemplates)cisco_nxos_show_version.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPArpTemplate                -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_arp.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowIPArpTemplate              -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_arp.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name XEIOSShowMacAddressTableTemplate      -value "$($GPathToTextFSMTemplates)cisco_xeios_show_mac-address-table.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPNeighbors             -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_neighbors.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPSummary                 -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_summary.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPeigrpNeighbors             -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_eigrp_neighbors.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPeigrpTopology              -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_eigrp_topology.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPospfInterfaceBrief         -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_ospf_interface_brief.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPospfNeighbor               -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_ospf_neighbor.textfsm"
-#$GTemplate | Add-Member -type NoteProperty -Name NexusShowIPBGP -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_bgp.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowIPBGPneighbors -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_bgp_neighbors.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowIPospfneighbor -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_ospf_neighbor.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPIntBrief -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_interface_brief.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowIPIntBrief -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_interface_brief.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowCDPNeighborsDetailsTemplate    -value "$($GPathToTextFSMTemplates)cisco_ios_show_cdp_neighbors_detail.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowCDPNeighborsDetailsTemplate  -value "$($GPathToTextFSMTemplates)cisco_nxos_show_cdp_neighbors_detail.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowInterfaceTemplate  -value "$($GPathToTextFSMTemplates)cisco_ios_show_interfaces.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowInterfaceTemplate  -value "$($GPathToTextFSMTemplates)cisco_nxos_show_interface.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowInterfaceStatus  -value "$($GPathToTextFSMTemplates)cisco_nxos_show_interface_status.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowInterfaceStatus    -value "$($GPathToTextFSMTemplates)cisco_ios_show_interfaces_status.textfsm"
+# New: auto-load all TextFSM templates into a hashtable keyed by BaseName (filename without .textfsm)
+# Example key: "cisco_ios_show_ip_route" -> "C:\code\mtautodraw\Templates\cisco_ios_show_ip_route.textfsm"
+$GTextFSMTemplates = @{}
 
-#CheckPoint Templates
-$GTemplate | Add-Member -type NoteProperty -Name CheckPointShowInterfaceTemplate -value "$($GPathToTextFSMTemplates)checkpoint_gaia_show_interfaces_all.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name CheckPointShowRouteTemplate   -value "$($GPathToTextFSMTemplates)checkpoint_gaia_show_route.textfsm"
+Get-ChildItem -Path $GPathToTextFSMTemplates -Filter '*.textfsm' -File | ForEach-Object {
+    $GTextFSMTemplates[$_.BaseName] = $_.FullName
+}
 
-#Cisco ASA Templates
-$GTemplate | Add-Member -type NoteProperty -Name CiscoASAShowInterfaceTemplate -value "$($GPathToTextFSMTemplates)cisco_asa_show_interface.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name CiscoASAShowRouteTemplate     -value "$($GPathToTextFSMTemplates)cisco_asa_show_route.textfsm"
-
-
-#$GTemplate | Add-Member -type NoteProperty -Name XRShowLLDPNeighborsDetailsTemplate       -value "$($GPathToTextFSMTemplates)cisco_xr_show_lldp_neighbors.textfsm"
-
-$GTemplate | Add-Member -type NoteProperty -Name ASAShowBGPSummaryTemplate -value "$($GPathToTextFSMTemplates)cisco_asa_show_bgp_summary.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPSummaryTemplate -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_summary.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPNeighborsTemplate -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_neighbors.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPNeighborsAdvertisedTemplate -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_neighbors_advertised-routes.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowIPBGPSummaryTemplate -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_bgp_summary.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name NexusShowIPBGPNeighborsTemplate -value "$($GPathToTextFSMTemplates)cisco_nxos_show_ip_bgp_neighbors.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name IOSShowIPBGPVPNv4NeighborsTemplate -value "$($GPathToTextFSMTemplates)cisco_ios_show_ip_bgp_vpnv4_all_neighbors.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceLogical -value "$($GPathToTextFSMTemplates)paloalto_panos_show_interface_logical.textfsm"
-$GTemplate | Add-Member -type NoteProperty -Name PaloAltoShowInterfaceHardware -value "$($GPathToTextFSMTemplates)paloalto_panos_show_interface_hardware.textfsm"
-
+# Optional: sanity check
+# $GTextFSMTemplates.Keys | Sort-Object | Out-Host
 ################################################################################
 ## --- Diagram Generation Toggles ---
 ## These boolean variables control which types of diagrams are generated.

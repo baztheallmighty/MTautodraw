@@ -79,6 +79,7 @@ Start
   ^\s*Aggregation-key
   ^\s*Aggregate\s+mode
   ^\s*Persona
+  ^\s*VRF\s+name
   ^\s*rate-limit\s+broadcast
   ^\s*L3\s+Counters
   ^\s*MDI mode

@@ -27,8 +27,8 @@ function Create-FileHostObjects{
     )
     #Find all the show run or show config files
     $HostIDs = $files | where { $_ -like "*.show ver*" -or $_ -like "*.show version*" } | % { ($_.name -split ".show*")[0] }
-    $HostIDs += Get-ChildItem $GDirectory -File -Recurse -Include "*.show system info.txt" | ForEach-Object { ($_.Name -split ".show system info")[0] } | Select-Object -Unique
 
+    $HostIDs += Get-ChildItem $GDirectory -File -Recurse -Include "*.show system info.txt","*.get system status.txt" | ForEach-Object { ($_.Name -split ".show system info|.get system status")[0] } | Select-Object -Unique
     if($HostIDs.count -eq 0){
         write-HostDebugText "No show verion files found. Please check the name of your files. e.g HostID.show run.txt" -BackgroundColor red
         Write-host 'Exiting.' -BackgroundColor red
@@ -43,6 +43,44 @@ function Create-FileHostObjects{
                 if($file.name -like "*show run*" -or $file.name -like "*show config*" ){ #Checkpoint and cisco show run or show config.
                     $hostid.showrun=$file.fullname
                 }
+
+                #Fortigate
+                # Sets device type also because fortigate doesn't use show version. 
+                if ($file.name -like "*get system status*") { # Fortigate Version/Status
+                    $hostid.SystemStatus = $file.fullname
+                    $hostid.DeviceType = "Fortigate"
+                    break
+                }                
+                if($file.name -like "*show full-configuration*"){ # Fortigate Full Config
+                    $hostid.ShowFullConfig=$file.fullname
+                }
+                if($file.name -like "*get router info bgp summary*"){ # Fortigate BGP
+                    $hostid.ShowBgpSummary=$file.fullname
+                    break
+                }
+                if($file.name -like "*get system arp*"){ # Fortigate ARP
+                    $hostid.ShowArp=$file.fullname
+                    break
+                }
+                if($file.name -like "*get router info routing-table all*"){ # Fortigate Routing
+                    $hostid.ShowRoutingTable=$file.fullname
+                    break
+                }
+                if($file.name -like "*get system lldp neighbor details*"){ # Fortigate LLDP
+                    $hostid.LldpNeighborDetails=$file.fullname
+                    break
+                }
+
+                if($file.name -like "*get system interface*"){ # Fortigate Interfaces
+                    $hostid.SystemInterface=$file.fullname
+                    break
+                }
+                if($file.name -like "*get router info ospf neighbor*"){ # Fortigate OSPF
+                    $hostid.ShowOspfNeighbor=$file.fullname
+                    break
+                }
+
+
 
                 if($file.name -like "*show ip bgp summary*"){
                     $hostid.ShowIPBGPSummary=$file.fullname
@@ -69,6 +107,10 @@ function Create-FileHostObjects{
                     $hostid.ShowIPInterfaceBrief=$file.fullname
                     break
                 }
+                if($file.name -like "*show interface brief*"){
+                    $hostid.ShowInterfaceBrief=$file.fullname
+                    break
+                }                
                 if($file.name -like "*show interface status*"){
                     $hostid.ShowInterfaceStatus=$file.fullname
                     break
@@ -76,7 +118,7 @@ function Create-FileHostObjects{
                 if($file.name -like "*show interfaces terse*"){
                     $hostid.ShowInterfaceTerse=$file.fullname
                     break
-                }                
+                }
                 if($file.name -like "*show interfaces detail*"){
                     $hostid.ShowInterfaceDetail=$file.fullname
                     break
@@ -101,6 +143,10 @@ function Create-FileHostObjects{
                     $hostid.JunosShowSpanningTreeBridgeFromXML=$file.fullname
                     break
                 }
+                if($file.name -like "*show spanning-tree detail*"){
+                    $hostid.ShowSpanningTreeDetails=$file.fullname
+                    break
+                }                
                 if($file.name -like "*show spanning-tree*"){
                     $hostid.ShowSpanningTree=$file.fullname
                     break
@@ -130,15 +176,16 @@ function Create-FileHostObjects{
                     $hostid.ShowLLDPNeighborsDetails=$file.fullname
                     break
                 }
-                if($file.name -like "*show lldp neighbors*"){
+                if($file.name -like "*show lldp neighbor*"){
                     $hostid.ShowLLDPNeighbors=$file.fullname
                     break
                 }
 
+
+                #Finds the device type based on the contents of the show version file. 
+                #Fortigate uses another file type. See above. 
                 if($file.name -like "*show version*"){
                     $ShowVersionText=get-content $file.fullname -raw
-
-
                     $hostid.ShowVersion=$file.fullname
                     if(($ShowVersionText | Select-String "Check Point Gaia").Matches.Success){
                         $hostid.DeviceType="CheckPoint"
@@ -152,6 +199,12 @@ function Create-FileHostObjects{
                     }elseif(($ShowVersionText | Select-String "Junos").Matches.Success -or ($ShowVersionText | Select-String "junos").Matches.Success -or ($ShowVersionText | Select-String "JUNOS Base OS boot").Matches.Success){
                         $hostid.DeviceType="Junos"
                         break
+                    }elseif(($ShowVersionText | Select-String "Arista vEOS-lab").Matches.Success ){
+                        $hostid.DeviceType="Arista vEOS-lab"
+                        break    
+                    }elseif(($ShowVersionText | Select-String "ArubaOS-CX").Matches.Success ){
+                        $hostid.DeviceType="ArubaOS-CX"
+                        break    
                     }else{
                         write-HostDebugText "Could not find type of device or unsupported device type."
                         write-host "Exiting. You need to fix this manually by either removing theses files $($file.fullname) or fixing them so the show version file is supported by this script."  -BackgroundColor red
@@ -185,7 +238,10 @@ function Create-FileHostObjects{
                     $hostid.ShowAssetAll=$file.fullname
                     break
                 }
-
+                if($file.name -like "*show hostname*"){ # Fortigate OSPF
+                    $hostid.ShowOspfNeighbor=$file.fullname
+                    break
+                }
                 #if($file.name -like "*show interface*"){ #Checkpoint and cisco show interfaces
                 #    $hostid.ShowInterface=$file.fullname
                 #    break
@@ -307,12 +363,9 @@ function Start-ProcessingFiles(){
         # DO NOT import configurationVariables.ps1 here; its values are already captured above.
         Import-Module "$($GPathToScript)ObjectFunctions.ps1" -Force
         Import-Module "$($GPathToScript)HelperFunctions.ps1" -Force
-        Import-Module "$($GPathToScript)CiscoConfigProcessingFunctions.ps1" -Force
-        Import-Module "$($GPathToScript)CheckPointConfigProcessingFunctions.ps1" -Force
-        Import-Module "$($GPathToScript)CiscoASAConfigProcessingFunctions.ps1" -Force
-        Import-Module "$($GPathToScript)JunosConfigProcessingFunctions.ps1" -Force
-        Import-Module "$($GPathToScript)PaloAltoConfigProcessingFunctions.ps1" -Force
-        Import-Module -Name "$($GPathToScript)GETIPV4Subnet\GetIPv4Subnet.psm1" -Force
+        Import-Module "$($GPathToScript)GETIPV4Subnet\GetIPv4Subnet.psm1" -Force
+        
+         
 
         function Add-HostDebugText(){
                 param (
@@ -351,24 +404,44 @@ function Start-ProcessingFiles(){
         # We will perform the duplicate check *after* all jobs are complete.
         switch($hostid.DeviceType){
             "Cisco"{
+                Import-Module "$($GPathToScript)CiscoConfigProcessingFunctions.ps1" -Force
                 $Device=Process-CiscoHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="Cisco" }
             }
             "CiscoASA"{
+                Import-Module "$($GPathToScript)CiscoASAConfigProcessingFunctions.ps1" -Force
                 $Device=Process-CiscoASAHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="CiscoASA" }
             }
             "CheckPoint"{
+                Import-Module "$($GPathToScript)CheckPointConfigProcessingFunctions.ps1" -Force
                 $Device=Process-CheckPointHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="CheckPoint" }
             }
             "Junos"{
+                Import-Module "$($GPathToScript)JunosConfigProcessingFunctions.ps1" -Force
                 $Device=Process-JunosHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="Junos" }
             }
             "PaloAlto"{
+                Import-Module "$($GPathToScript)PaloAltoConfigProcessingFunctions.ps1" -Force
                 $Device=Process-PaloAltoHostFiles -hostid $hostid -ArrayOfObjects $null
                 if ($Device) { $Device.DeviceType="PaloAlto" }
+            }
+            "Fortigate"{
+                Import-Module "$($GPathToScript)FortigateConfigProcessingFunctions.ps1" -Force
+                $Device=Process-FortiGateHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="Fortigate" }
+            }
+            "Arista vEOS-lab"{
+                Import-Module "$($GPathToScript)AristaConfigProcessingFunctions.ps1" -Force
+                $Device=Process-AristaHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="Arista vEOS-lab" }
+            }
+            "ArubaOS-CX"{
+                Import-Module "$($GPathToScript)ArubaConfigProcessingFunctions.ps1" -Force
+                $Device=Process-ArubaHostFiles -hostid $hostid -ArrayOfObjects $null
+                if ($Device) { $Device.DeviceType="ArubaOS-CX" }
             }
             default{
                 # This write will appear in the console from the thread
@@ -570,7 +643,7 @@ function Start-ProcessingFiles(){
             if ($neighborDevice) {
                 # Once the device is found, search only its interfaces for a match.
                 $remoteInterfaceObject = $neighborDevice.interfaces | Where-Object { $_.interface -eq $cdpneighbor.InterfaceRemoteDevice } | Select-Object -First 1
-                
+
                 if ($remoteInterfaceObject) {
                     # Find the index of that specific object in the original array to ensure correct scope.
                     $interfaceIndex = [array]::IndexOf([array]$neighborDevice.interfaces, $remoteInterfaceObject)

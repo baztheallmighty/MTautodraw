@@ -141,7 +141,7 @@ function Get-AristaHostname {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_hostname.textfsm" -ShowFile $ShowHostnameFile -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosHostname -ShowFile $ShowHostnameFile -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with show hostname on Arista."
         return $Device
@@ -168,7 +168,7 @@ function Get-AristaShowVersionFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_version.textfsm" -ShowFile $ShowVersionFile -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosVersion -ShowFile $ShowVersionFile -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with show version on Arista."
         return $Device
@@ -189,7 +189,8 @@ function Get-AristaShowVersionFromText {
         if (-not ($ShowReloadCauseText | Select-String "(Line has invalid autocommand|Invalid input detected at)").Matches.Success) {
             
             # Use a *temporary* variable for the TextFSM output, so we don't overwrite the 'show version' output
-            $TempDevice = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_reload_cause.textfsm" -ShowFile $ShowReloadCauseFile -HostObject $Device
+            $TempDevice = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosReloadCause -ShowFile $ShowReloadCauseFile -HostObject $Device
+
             
             if ($TempDevice.ProcessOutputObjects -ne "ERROR") {
                 $VersionObject.ReasonForRelod = $TempDevice.ProcessOutputObjects[0] # RELOAD_CAUSE
@@ -224,7 +225,8 @@ function Get-AristaShowLLDPNeighborsDetailsFromText {
     # Arista's 'show lldp neighbors detail' template is reliable and includes the local interface.
     # We will prioritize it.
     
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_lldp_neighbors_detail.textfsm" -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosLldpNeighborsDetail -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
+
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with show lldp neighbors details on Arista."
         return $Device
@@ -299,7 +301,8 @@ function Get-AristaShowInterfaceFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_interfaces.textfsm" -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosInterfaces -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
+
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with show interfaces on Arista."
         return $Device
@@ -415,7 +418,8 @@ function Get-AristaShowIPInterfaceBriefFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_interface_brief.textfsm" -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosIpInterfaceBrief -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
+
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with Show IP Int Brief on Arista."
         return $Device
@@ -473,7 +477,7 @@ function Get-AristaShowInterfaceStatusFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_interfaces_status.textfsm" -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosInterfacesStatus -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with Show Interface status Arista."
         return $Device
@@ -541,7 +545,7 @@ function Get-AristaShowIPBGPSummaryFromText {
 
     $AllBGPNeighbors = @()
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_bgp_summary.textfsm" -ShowFile $BGPSummaryFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosIpBgpSummary -ShowFile $BGPSummaryFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error processing Arista BGP summary file: $($BGPSummaryFile)" -BackgroundColor Red
         return $device
@@ -620,7 +624,7 @@ function Get-AristaShowIPRouteFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_route.textfsm" -ShowFile $FileToProcess -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosIpRoute -ShowFile $FileToProcess -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with show ip route on Arista." -BackgroundColor red
         return $Device
@@ -706,7 +710,7 @@ function Get-AristaShowIPArpFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_arp.textfsm" -ShowFile $ShowIPArpFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosIpArp -ShowFile $ShowIPArpFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with show ip arp on Arista."
         return $Device
@@ -778,7 +782,7 @@ function Get-AristaShowMacAddressTableFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_mac_address-table.textfsm" -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.AristaEosMacAddressTable -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error with show mac address-table on Arista processing."
         return $Device

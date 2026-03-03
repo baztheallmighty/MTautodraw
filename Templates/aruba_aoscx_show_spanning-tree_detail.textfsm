@@ -1,0 +1,50 @@
+# ArubaOS-CX - show spanning-tree detail (MSTP/MST instance summary + port table)
+Value Filldown PROTOCOL (\S+)
+Value Filldown INSTANCE (MST\d+)
+Value Filldown ROOT_PRIORITY (\d+)
+Value Filldown ROOT_MAC ([0-9A-Fa-f:]{17})
+Value Filldown ROOT_HELLO (\d+)
+Value Filldown ROOT_SELF (This bridge is the root)
+Value Filldown BRIDGE_PRIORITY (\d+)
+Value Filldown BRIDGE_MAC ([0-9A-Fa-f:]{17})
+Value Filldown BRIDGE_HELLO (\d+)
+Value Required PORT (\S+)
+Value ROLE (\S+)
+Value STATE (\S+)
+Value COST (\d+)
+Value PRIORITY (\d+)
+Value TYPE (.+?)
+Value BPDU_TX (\d+)
+Value BPDU_RX (\d+)
+Value TCN_TX (\d+)
+Value TCN_RX (\d+)
+
+Start
+  ^Spanning\s+tree\s+status\s+:\s+\S+\s+Protocol:\s+${PROTOCOL}\s*$$ -> Start
+  ^${INSTANCE}\s*$$ -> Instance
+
+Instance
+  ^\s*Root\s+ID\s+Priority\s*:\s*${ROOT_PRIORITY}\s*$$ -> RootBlock
+  ^\s*Bridge\s+ID\s+Priority\s*:\s*${BRIDGE_PRIORITY}\s*$$ -> BridgeBlock
+  ^Port\s+Role\s+State\s+Cost\s+Priority\s+Type\s+BPDU-Tx\s+BPDU-Rx\s+TCN-Tx\s+TCN-Rx\s*$$
+  ^-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s*$$ -> Ports
+  ^MST\d+\s*$$ -> Start
+
+RootBlock
+  ^\s*MAC-Address:\s*${ROOT_MAC}\s*$$ -> RootBlock
+  ^\s*${ROOT_SELF}\s*$$ -> RootBlock
+  ^\s*Hello\s+time\(in\s+seconds\):\s*${ROOT_HELLO}\s+Max\s+Age\(in\s+seconds\):\s*\d+\s*$$ -> Instance
+  ^\s*Bridge\s+ID\s+Priority\s*:\s*${BRIDGE_PRIORITY}\s*$$ -> BridgeBlock
+
+BridgeBlock
+  ^\s*MAC-Address:\s*${BRIDGE_MAC}\s*$$ -> BridgeBlock
+  ^\s*Hello\s+time\(in\s+seconds\):\s*${BRIDGE_HELLO}\s+Max\s+Age\(in\s+seconds\):\s*\d+\s*$$ -> Instance
+  ^Port\s+Role\s+State\s+Cost\s+Priority\s+Type\s+BPDU-Tx\s+BPDU-Rx\s+TCN-Tx\s+TCN-Rx\s*$$
+  ^-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s+-+\s*$$ -> Ports
+
+Ports
+  ^${PORT}\s+${ROLE}\s+${STATE}\s+${COST}\s+${PRIORITY}\s+${TYPE}\s+${BPDU_TX}\s+${BPDU_RX}\s+${TCN_TX}\s+${TCN_RX}\s*$$ -> Record
+  ^Topology\s+change\s+flag\s*:.*$$ -> Instance
+  ^Port\s+\S+\s+id\s+\d+.*$$ -> Instance
+  ^MST\d+\s*$$ -> Start
+  ^\s*$$ -> Instance

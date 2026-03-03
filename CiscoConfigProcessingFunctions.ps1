@@ -91,52 +91,52 @@ function Process-CiscoHostFiles{
         }
 
         # Check if ANY BGP neighbor file property has been populated for this host
-        if ($hostid.ShowIPBGPNeighbors -or $hostid.ShowIPBGPVPNv4Neighbors) {
-           # Check the OS type determined from 'show version'
-           if ($Device.version.type -eq "NXOS") {
-               # --- NX-OS LOGIC ---
-               Add-HostDebugText -HostObject $Device "Device is NX-OS. Checking NX-OS BGP file."
-               if ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
-                   Add-HostDebugText -HostObject $Device "Processing NX-OS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
-                   $Device = Get-BGPNeighborsNXOSFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
-               }
-               else {
-                   Add-HostDebugText -HostObject $Device "NX-OS BGP file is not valid or was not found." -BackgroundColor Yellow
-               }
-           }
-           else {
-               # --- IOS/IOS-XE LOGIC ---
-               Add-HostDebugText -HostObject $Device "Device is IOS/XE. Checking IOS BGP files."
-               # Check the more specific VPNv4 neighbors file first for valid data
-               if ($hostid.ShowIPBGPVPNv4Neighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPVPNv4Neighbors)) {
-                   Add-HostDebugText -HostObject $Device "Processing IOS BGP VPNv4 Neighbors: $($hostid.ShowIPBGPVPNv4Neighbors)"
-                   $Device=Get-BGPNeighborsFromText -BGPNeighborsFile $hostid.ShowIPBGPVPNv4Neighbors -Device $Device
-               }
-               # If the VPNv4 file is invalid or missing, fall back to the standard neighbors file
-               elseif ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
-                   Add-HostDebugText -HostObject $Device "Processing IOS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
-                   $Device=Get-BGPNeighborsStandardFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
-               }
-               else {
-                   Add-HostDebugText -HostObject $Device "No valid IOS BGP neighbor files found to process." -BackgroundColor Yellow
-               }
-           }
-        }
-        else {
-           Add-HostDebugText -HostObject $Device "No BGP neighbor file properties were populated for this host." -BackgroundColor Yellow
-        }
+        #if ($hostid.ShowIPBGPNeighbors -or $hostid.ShowIPBGPVPNv4Neighbors) {
+        #   # Check the OS type determined from 'show version'
+        #   if ($Device.version.type -eq "NXOS") {
+        #       # --- NX-OS LOGIC ---
+        #       Add-HostDebugText -HostObject $Device "Device is NX-OS. Checking NX-OS BGP file."
+        #       if ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
+        #           Add-HostDebugText -HostObject $Device "Processing NX-OS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
+        #           $Device = Get-BGPNeighborsNXOSFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
+        #       }
+        #       else {
+        #           Add-HostDebugText -HostObject $Device "NX-OS BGP file is not valid or was not found." -BackgroundColor Yellow
+        #       }
+        #   }
+        #   else {
+        #       # --- IOS/IOS-XE LOGIC ---
+        #       Add-HostDebugText -HostObject $Device "Device is IOS/XE. Checking IOS BGP files."
+        #       # Check the more specific VPNv4 neighbors file first for valid data
+        #       if ($hostid.ShowIPBGPVPNv4Neighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPVPNv4Neighbors)) {
+        #           Add-HostDebugText -HostObject $Device "Processing IOS BGP VPNv4 Neighbors: $($hostid.ShowIPBGPVPNv4Neighbors)"
+        #           $Device=Get-BGPNeighborsFromText -BGPNeighborsFile $hostid.ShowIPBGPVPNv4Neighbors -Device $Device
+        #       }
+        #       # If the VPNv4 file is invalid or missing, fall back to the standard neighbors file
+        #       elseif ($hostid.ShowIPBGPNeighbors -and (Test-FileHasValidData -FilePath $hostid.ShowIPBGPNeighbors)) {
+        #           Add-HostDebugText -HostObject $Device "Processing IOS BGP Neighbors: $($hostid.ShowIPBGPNeighbors)"
+        #           $Device=Get-BGPNeighborsStandardFromText -BGPNeighborsFile $hostid.ShowIPBGPNeighbors -Device $Device
+        #       }
+        #       else {
+        #           Add-HostDebugText -HostObject $Device "No valid IOS BGP neighbor files found to process." -BackgroundColor Yellow
+        #       }
+        #   }
+        #}
+        #else {
+        #   Add-HostDebugText -HostObject $Device "No BGP neighbor file properties were populated for this host." -BackgroundColor Yellow
+        #}
         # 2. FALLBACK: If no neighbors were found, use the summary file
-        if ($device.BGPNeighbors.Count -eq 0 -and $hostid.ShowIPBGPSummary) {
-           Add-HostDebugText -HostObject $Device "No valid BGP neighbor data found. Attempting fallback to summary file." -BackgroundColor Yellow
-           if (Test-FileHasValidData -FilePath $hostid.ShowIPBGPSummary) {
-               $Device = Get-BGPNeighborsFromSummary -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
-           } else {
-               Add-HostDebugText -HostObject $Device "BGP Summary file is also invalid, skipping." -BackgroundColor Red
-           }
-        }
+        #if ($device.BGPNeighbors.Count -eq 0 -and $hostid.ShowIPBGPSummary) {
+        #   Add-HostDebugText -HostObject $Device "No valid BGP neighbor data found. Attempting fallback to summary file." -BackgroundColor Yellow
+        #   if (Test-FileHasValidData -FilePath $hostid.ShowIPBGPSummary) {
+        #       $Device = Get-BGPNeighborsFromSummary -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
+        #   } else {
+        #       Add-HostDebugText -HostObject $Device "BGP Summary file is also invalid, skipping." -BackgroundColor Red
+        #   }
+        #}
 
         if($hostid.ShowSpanningTree){
-           Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree"
+           Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree: $($hostid.ShowSpanningTree)"
            $Device=Get-ShowSpanningTreeFromText -ShowSpanningTreeFile $hostid.ShowSpanningTree -Device $Device
         }
         if($hostid.ShowIPRoute -or $hostid.ShowIPRouteVRFstar){
@@ -703,22 +703,22 @@ function Get-ShowVersionFromText(){
         }
 
         $VersionObject=Create-ShowVersionObject
-        $VersionObject.OS                =  $Device.ProcessOutputObjects[0]
-        $VersionObject.ROMMON            =  $Device.ProcessOutputObjects[1]
-        $VersionObject.Hostname          =  $Device.ProcessOutputObjects[2]
-        $VersionObject.Uptime            =  $Device.ProcessOutputObjects[3]
-        $VersionObject.UptimeYear        =  $Device.ProcessOutputObjects[4]
-        $VersionObject.UptimeWeeks       =  $Device.ProcessOutputObjects[5]
-        $VersionObject.UptimeDays        =  $Device.ProcessOutputObjects[6]
-        $VersionObject.UpdateHours       =  $Device.ProcessOutputObjects[7]
-        $VersionObject.UptimeMinutes     =  $Device.ProcessOutputObjects[8]
-        $VersionObject.ReasonForRelod    =  $Device.ProcessOutputObjects[9]
-        $VersionObject.Image             =  $Device.ProcessOutputObjects[10]
-        $VersionObject.Hardware          =  $Device.ProcessOutputObjects[11] | % { $_ }
-        $VersionObject.Serial            =  $Device.ProcessOutputObjects[12] | % { $_ }
-        $VersionObject.ConfigRegister    =  $Device.ProcessOutputObjects[13]
-        $VersionObject.MacAddressArray   =  $Device.ProcessOutputObjects[14] | % { $_ }
-        $VersionObject.LastRestarted     =  $Device.ProcessOutputObjects[15]
+        $VersionObject.OS              =  $Device.ProcessOutputObjects[0]   # SOFTWARE_IMAGE
+        $VersionObject.ROMMON          =  $Device.ProcessOutputObjects[3]   # ROMMON
+        $VersionObject.Hostname        =  $Device.ProcessOutputObjects[4]   # HOSTNAME
+        $VersionObject.Uptime          =  $Device.ProcessOutputObjects[5]   # UPTIME
+        $VersionObject.UptimeYear      =  $Device.ProcessOutputObjects[6]   # UPTIME_YEARS
+        $VersionObject.UptimeWeeks     =  $Device.ProcessOutputObjects[7]   # UPTIME_WEEKS
+        $VersionObject.UptimeDays      =  $Device.ProcessOutputObjects[8]   # UPTIME_DAYS
+        $VersionObject.UpdateHours     =  $Device.ProcessOutputObjects[9]   # UPTIME_HOURS
+        $VersionObject.UptimeMinutes   =  $Device.ProcessOutputObjects[10]  # UPTIME_MINUTES
+        $VersionObject.ReasonForRelod  =  $Device.ProcessOutputObjects[11]  # RELOAD_REASON
+        $VersionObject.Image           =  $Device.ProcessOutputObjects[12]  # RUNNING_IMAGE
+        $VersionObject.Hardware        =  $Device.ProcessOutputObjects[13] | % { $_ } # HARDWARE
+        $VersionObject.Serial          =  $Device.ProcessOutputObjects[14] | % { $_ } # SERIAL
+        $VersionObject.ConfigRegister  =  $Device.ProcessOutputObjects[15]  # CONFIG_REGISTER
+        $VersionObject.MacAddressArray =  $Device.ProcessOutputObjects[16] | % { $_ } # MAC_ADDRESS
+        $VersionObject.LastRestarted   =  $Device.ProcessOutputObjects[17]  # RESTARTED
         if(($ShowVersionText | Select-String "IOS-XE").Matches.Success){
             Add-HostDebugText -HostObject $Device "Device Type:XE-IOS"
             $VersionObject.type              =  "XE-IOS"
@@ -739,13 +739,14 @@ function Get-ShowVersionFromText(){
             return $device
         }
         $VersionObject=Create-ShowVersionObject
-        $VersionObject.Uptime            =  $Device.ProcessOutputObjects[0]
-        $VersionObject.ReasonForRelod    =  $Device.ProcessOutputObjects[1]
-        $VersionObject.OS                =  $Device.ProcessOutputObjects[2]
-        $VersionObject.Image             =  $Device.ProcessOutputObjects[3]
-        $VersionObject.Hardware          =  $Device.ProcessOutputObjects[4]
-        $VersionObject.Hostname          =  $Device.ProcessOutputObjects[5]
-        $VersionObject.Serial            =  $Device.ProcessOutputObjects[6]
+        $VersionObject.Uptime          =  $Device.ProcessOutputObjects[0]   # UPTIME
+        $VersionObject.ReasonForRelod  =  $Device.ProcessOutputObjects[1]   # LAST_REBOOT_REASON
+        $VersionObject.ROMMON          =  $Device.ProcessOutputObjects[2]   # BIOS 
+        $VersionObject.OS              =  $Device.ProcessOutputObjects[3]   # OS
+        $VersionObject.Image           =  $Device.ProcessOutputObjects[4]   # BOOT_IMAGE
+        $VersionObject.Hardware        =  $Device.ProcessOutputObjects[5]   # PLATFORM
+        $VersionObject.Hostname        =  $Device.ProcessOutputObjects[6]   # HOSTNAME
+        $VersionObject.Serial          =  $Device.ProcessOutputObjects[7]   # SERIAL
         $VersionObject.type              =  "NXOS"
         $device.Version=$VersionObject
         return $device
@@ -1864,7 +1865,7 @@ function Get-ShowSpanningTreeFromText(){
     $Device.SpanningTree.SpanningTreeArray=@()
 
     if (($ShowSpanningTreeText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowSpanningTreeText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "ERROR: $($ShowSpanningTreeText)" -BackgroundColor Magenta
         Add-HostDebugText -HostObject $Device "contains invalid data or is empty"  -BackgroundColor Red
         return $device
     }
@@ -1875,8 +1876,7 @@ function Get-ShowSpanningTreeFromText(){
     }
 
     # Split before any line beginning with "VLAN <number>"
-    $SpanningTreeVlans = [regex]::split($ShowSpanningTreeText,'(?=^VLAN\s*\d+)') |
-        Where-Object { $_.Trim() -ne "" }
+    $SpanningTreeVlans = [regex]::split($ShowSpanningTreeText,'(?m)(?=^VLAN\s*\d+)') |  Where-Object { $_.Trim() -ne "" }
 
     foreach ($vlan in $SpanningTreeVlans) {
         if ([string]::IsNullOrWhiteSpace($vlan)) {
@@ -1975,6 +1975,7 @@ function Get-ShowSpanningTreeFromText(){
         }
         $Device.SpanningTree.SpanningTreeArray += $SpanningTreevlanObject
     }
+    
     return $Device
 }
 

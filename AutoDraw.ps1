@@ -19,7 +19,7 @@
 
 
 
-
+#$Gdirectory="C:\code\temp\LAB\"; $goutputdirectory="C:\code\temp\LAB\";$GPathToScript="C:\code\mtautodraw\"
 
 Param(
     [Parameter(Mandatory = $true)]
@@ -86,15 +86,10 @@ $global:GLapTime=$global:GLastExecutionTime.ElapsedMilliseconds
 $GLibrariesToLoad=@(
     "ObjectFunctions.ps1",
     "DrawFunctions_drawio.ps1",
-    "CiscoConfigProcessingFunctions.ps1",
     "DrawLogic_drawio.ps1",
     "HelperFunctions.ps1",
     "configurationVariables.ps1",
-    "CheckPointConfigProcessingFunctions.ps1",
-    "CiscoASAConfigProcessingFunctions.ps1",
     "StartProcessingConfig.ps1",
-    "JunosConfigProcessingFunctions.ps1",
-    "PaloAltoConfigProcessingFunctions.ps1",
     "Network Path Analysis.ps1"
 )
 
@@ -175,6 +170,8 @@ $GArrayofGatewayHosts=@() #An Array of LLDP,CDP or ARP gateway hosts we know abo
 $GArrayOfNetworks,$GArrayOfObjects,$GArrayOfCDPDeviceIDs,$GArrayOfLLDPDeviceIDs,$GArrayOfIPApr,$GArrayofGatewayHosts = Start-ProcessingFiles
 
 
+
+
 # --- Global drawio Variables ---
 $global:itemCounter = 0
 $global:drawioXml = ""
@@ -205,8 +202,8 @@ if($GNetworkTracePathAnalysis){
 if($GDrawMultipleDevicesDiagram){
     write-HostDebugText "Initializing Multi-Device Draw.io file..." -ForegroundColor Cyan
     Initialize-DrawioFile
-    
-    
+
+
     if($GDrawL2Overview){
         Draw-L2OverviewDiagram -ArrayOfObjects $GArrayOfObjects
     }
@@ -215,7 +212,7 @@ if($GDrawMultipleDevicesDiagram){
     }
     if($GDrawCDP){
         Draw-AllNeighborsDrawio -ArrayOfObjects $GArrayOfObjects -ArrayOfCDPDeviceIDs $GArrayOfCDPDeviceIDs -ArrayOfLLDPDeviceIDs $GArrayOfLLDPDeviceIDs -DrawAllNeighbors $False
-    }    
+    }
     if($GDrawLayer3){
         Draw-AllLayer3Drawio -ArrayOfObjects $GArrayOfObjects -ArrayOfNetworks $GArrayOfNetworks -ArrayOfIPApr $GArrayOfIPApr -DiagramType "Normal" -NameOfPage "Layer 3 All"
     }
@@ -235,8 +232,8 @@ if($GDrawMultipleDevicesDiagram){
 }
 
 
-#Finish singles routing. 
-#Maybe add second file. Look at speed to see what needs fixing next. 
+#Finish singles routing.
+#Maybe add second file. Look at speed to see what needs fixing next.
 # Draw Single-Device Diagrams
 if($GdrawSingles){
     write-HostDebugText "Initializing Singles Draw.io file..." -ForegroundColor Cyan
@@ -244,13 +241,13 @@ if($GdrawSingles){
 
     foreach ($Device in $GArrayOfObjects){
         #if($GDrawLayer3){
-        #    Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks -DiagramType "RoutesOnly" -ArrayOfObjects $GArrayOfObjects -ArrayofGatewayHosts $GArrayofGatewayHosts 
-        #}        
+        #    Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks -DiagramType "RoutesOnly" -ArrayOfObjects $GArrayOfObjects -ArrayofGatewayHosts $GArrayofGatewayHosts
+        #}
         # Draw the Layer 3 diagram for the device if enabled
         if($GDrawLayer3){
             Draw-SinglesLayer3Drawio -Device $Device -ArrayOfNetworks $GArrayOfNetworks
         }
-        
+
         # ADD THIS BLOCK to draw the physical diagram for the device if enabled
         # Assumes a global variable $GDrawPhysical exists.
         if($GDrawPhysical){

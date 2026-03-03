@@ -1,0 +1,30 @@
+Value Required LOCAL_INTERFACE (\S+)
+Value CHASSIS_ID (\S+)
+Value NEIGHBOR_PORT_ID (\S+)
+Value NEIGHBOR_INTERFACE (.+?)
+Value TTL (\d+)
+Value NEIGHBOR_NAME (\S*)
+
+Start
+  ^LOCAL-PORT\s+CHASSIS-ID -> LLDP
+
+LLDP
+  # Ignore table separator
+  ^-+
+  
+  # Catch the perfectly formatted, unwrapped single line
+  ^${LOCAL_INTERFACE}\s+${CHASSIS_ID}\s+${NEIGHBOR_PORT_ID}\s+${NEIGHBOR_INTERFACE}\s+${TTL}(?:\s+${NEIGHBOR_NAME})?\s*$$ -> Record
+  
+  # Catch Line 1 fragments (Buffer the variables, DO NOT Record yet)
+  ^${LOCAL_INTERFACE}\s+${CHASSIS_ID}\s+${NEIGHBOR_PORT_ID}\s*$$
+  ^${LOCAL_INTERFACE}\s+${CHASSIS_ID}\s*$$
+  ^${LOCAL_INTERFACE}\s*$$
+  
+  # Catch Line 2 wrap-arounds (Fill the rest of the buffer, THEN Record)
+  ^\s+${CHASSIS_ID}\s+${NEIGHBOR_PORT_ID}\s+${NEIGHBOR_INTERFACE}\s+${TTL}(?:\s+${NEIGHBOR_NAME})?\s*$$ -> Record
+  ^\s+${NEIGHBOR_PORT_ID}\s+${NEIGHBOR_INTERFACE}\s+${TTL}(?:\s+${NEIGHBOR_NAME})?\s*$$ -> Record
+  ^\s+${NEIGHBOR_INTERFACE}\s+${TTL}(?:\s+${NEIGHBOR_NAME})?\s*$$ -> Record
+  
+  # Ignore blank lines and summary footers
+  ^\s*$$
+  ^Total Neighbor.*$$

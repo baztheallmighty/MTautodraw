@@ -179,7 +179,6 @@ function Remove-DevicePrompt {
 
     return $Clean
 }
-
 function Execute-PythonTextFSM() {
     param (
         $TextFSTETemplate,
@@ -189,6 +188,36 @@ function Execute-PythonTextFSM() {
     )
 
     $HostObject.ProcessOutputObjects = @()
+
+    # --- VALIDATION SECTION (NEW) ---
+
+    if (-not $TextFSTETemplate -or -not (Test-Path $TextFSTETemplate)) {
+        Add-HostDebugText -HostObject $HostObject "Execute-PythonTextFSM: TEMPLATE FILE NOT FOUND : '$TextFSTETemplate'" -BackgroundColor Red
+        $HostObject.ProcessOutputObjects = "ERROR"
+        return $HostObject
+    }
+
+    if (-not $ShowFile -or -not (Test-Path $ShowFile)) {
+        Add-HostDebugText -HostObject $HostObject "Execute-PythonTextFSM: SHOW FILE NOT FOUND : '$ShowFile'" -BackgroundColor Red
+        $HostObject.ProcessOutputObjects = "ERROR"
+        return $HostObject
+    }
+
+    if (-not $GPathToPythonExe -or -not (Test-Path $GPathToPythonExe)) {
+        Add-HostDebugText -HostObject $HostObject "Execute-PythonTextFSM: PYTHON EXE NOT FOUND : '$GPathToPythonExe'" -BackgroundColor Red
+        $HostObject.ProcessOutputObjects = "ERROR"
+        return $HostObject
+    }
+
+    if (-not $GPathToPythonTextFSMScript -or -not (Test-Path $GPathToPythonTextFSMScript)) {
+        Add-HostDebugText -HostObject $HostObject "Execute-PythonTextFSM: TEXTFSM SCRIPT NOT FOUND : '$GPathToPythonTextFSMScript'" -BackgroundColor Red
+        $HostObject.ProcessOutputObjects = "ERROR"
+        return $HostObject
+    }
+
+    Add-HostDebugText -HostObject $HostObject "Execute-PythonTextFSM: Running template='$TextFSTETemplate' showFile='$ShowFile'"
+
+    # --- END VALIDATION SECTION ---
 
     # Python doesn't like UTF-8, UTF16 or UTF16LE. Convert it to ASCII file.
     if ((Get-Encoding $ShowFile).encoding.EncodingName -ne "US-ASCII") {
@@ -210,6 +239,7 @@ function Execute-PythonTextFSM() {
     if ($ErrorDetected) {
 
         Add-HostDebugText -HostObject $HostObject "Primary TextFSM run failed. Attempting cleanup and retry."
+        Add-HostDebugText -HostObject $HostObject "Primary error output : $ProcessOutput" -BackgroundColor Yellow
 
         # Create a temporary cleaned file
         $TempCleanedFile = [System.IO.Path]::GetTempFileName()
@@ -234,7 +264,7 @@ function Execute-PythonTextFSM() {
         )
 
         if ($RetryError) {
-            Add-HostDebugText -HostObject $HostObject "Retry also failed: $RetryOutput"
+            Add-HostDebugText -HostObject $HostObject "Retry also failed : $RetryOutput" -BackgroundColor Red
             $HostObject.ProcessOutputObjects = "ERROR"
             return $HostObject
         }
@@ -419,4 +449,115 @@ function Test-FileHasValidData {
 
     # If all checks pass, the file is considered valid
     return $true
+}
+
+
+
+
+<#
+.SYNOPSIS
+Safely extracts a capture group value from a string using a regular expression.
+
+.DESCRIPTION
+Get-RegexGroupValue performs a regex match against an input string and returns 
+the value of a specified capture group.
+
+Unlike many common Select-String chaining patterns such as:
+
+    (($text | Select-String -Pattern 'regex').Matches.Groups[1].Value).Trim()
+
+This function prevents terminating errors when:
+- The pattern does not match
+- The Matches collection is empty
+- The requested capture group does not exist
+- The captured value is null or empty
+
+PowerShell will throw:
+    "You cannot call a method on a null-valued expression"
+or
+    "Cannot index into a null array"
+if those edge cases are not guarded.
+
+This helper eliminates that risk.
+
+If no match is found, the function returns $null.
+This mirrors the effective behavior of Select-String when no match is found.
+
+.PARAMETER InputString
+The string to search.
+
+.PARAMETER Pattern
+The regex pattern to apply.
+
+.PARAMETER GroupIndex
+The numeric capture group index to return.
+Defaults to 1.
+
+.PARAMETER Trim
+If specified, trims whitespace from the returned value.
+
+.OUTPUTS
+System.String or $null
+
+.EXAMPLE
+$hostname = Get-RegexGroupValue `
+    -InputString $config `
+    -Pattern '(?m)^\s*hostname\s+(.+?)\s*$' `
+    -GroupIndex 1 `
+    -Trim
+
+Returns the hostname if present, otherwise $null.
+
+.EXAMPLE
+$bgpAs = Get-RegexGroupValue `
+    -InputString $config `
+    -Pattern '(?m)^\s*router\s+bgp\s+(\d+)\s*$'
+
+Returns the BGP ASN or $null if not configured.
+
+.NOTES
+This function is intentionally defensive.
+
+It should be used anywhere a regex extraction is optional.
+It prevents null indexing and method invocation failures in
+parallel execution environments.
+#>
+function Get-RegexGroupValue {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$InputText,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern,
+
+        [int]$GroupIndex = 1,
+
+        [switch]$Trim
+    )
+
+    # Perform regex match using .NET engine
+    $match = [regex]::Match($InputText, $Pattern)
+
+    # If no match, return $null (safe behavior)
+    if (-not $match.Success) {
+        return $null
+    }
+
+    # Ensure requested group exists
+    if ($GroupIndex -ge $match.Groups.Count) {
+        return $null
+    }
+
+    $value = $match.Groups[$GroupIndex].Value
+
+    # If value is null or empty, return $null
+    if ([string]::IsNullOrEmpty($value)) {
+        return $null
+    }
+
+    if ($Trim) {
+        return $value.Trim()
+    }
+
+    return $value
 }
