@@ -108,7 +108,7 @@ function Get-CheckPointShowInterfaceFromText(){
         return $device
     }
 
-    $device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $device
+    $device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['checkpoint_gaia_show_interfaces_all'] -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $device
     if($device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $device  "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
         return $device
@@ -195,7 +195,7 @@ function Get-CheckpointShowRouteFromText(){
 
     #Add-HostDebugText -HostObject $device  "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
-    $device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $device
+    $device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['checkpoint_gaia_show_route'] -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $device
     if($device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $device  "Error with show route on Checkpoint routing." -BackgroundColor red
         return $device

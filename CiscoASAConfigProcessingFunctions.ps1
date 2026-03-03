@@ -118,7 +118,7 @@ function Get-CiscoASAShowInterfaceFromText(){
         return $device
     }
 
-    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowInterfaceTemplate -ShowFile $CiscoASAInterfaceFile -ReturnArray $true -HostObject $Device
+    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_asa_show_interface'] -ShowFile $CiscoASAInterfaceFile -ReturnArray $true -HostObject $Device
     if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device "Error with Show Interface on Cisco ASA file:$($CiscoASAInterfaceFile)"
         return $device
@@ -200,7 +200,7 @@ function Get-CiscoASAShowRouteFromText(){
 
     #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
-    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CiscoASAShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
+    $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_asa_show_route'] -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $Device
     if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device "Error with show route on Cisco ASA routing." -BackgroundColor red
         return $device

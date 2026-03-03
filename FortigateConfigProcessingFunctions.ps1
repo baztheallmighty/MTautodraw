@@ -300,7 +300,7 @@ function Get-FortiGateSystemInterfaceFromText {
     Add-HostDebugText -HostObject $Device "DEBUG: SystemInterfaceText length: $($SystemInterfaceText.Length)"
 
     $Device = Execute-PythonTextFSM `
-        -TextFSTETemplate $GTemplate.FortiGateSystemInterface `
+        -TextFSTETemplate $GTextFSMTemplates['fortinet_get_system_interface'] `
         -ShowFile $SystemInterfaceFile `
         -ReturnArray $true `
         -HostObject $Device
@@ -372,7 +372,7 @@ function Get-FortiGateSystemInterfaceFromText {
 #    }
 #
 #    # Start Python process with TextFSM to convert the Text to an Object
-#    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.FortiGateSystemInterface -ShowFile $SystemInterfaceFile -ReturnArray $true -HostObject $Device
+#    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['fortinet_get_system_interface'] -ShowFile $SystemInterfaceFile -ReturnArray $true -HostObject $Device
 #
 #    if ($Device.ProcessOutputObjects -eq "ERROR") {
 #        Add-HostDebugText -HostObject $Device "Error with show system interface TextFSM processing." -BackgroundColor red
@@ -773,7 +773,7 @@ function Get-FortiGateRouteFromText {
     }
 
     # 2. Execute TextFSM
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.FortiGateRoutingTable -ShowFile $ShowRoutingTableFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['fortinet_get_router_info_routing-table_all'] -ShowFile $ShowRoutingTableFile -ReturnArray $true -HostObject $Device
 
     if ($Device.ProcessOutputObjects -eq "ERROR" -or $null -eq $Device.ProcessOutputObjects) {
         Add-HostDebugText -HostObject $Device "TextFSM returned ERROR or NULL for routing table." -BackgroundColor Red
@@ -881,7 +881,7 @@ function Get-FortiGateVersionFromText {
     
     # TextFSM: System Status
     if (-not [string]::IsNullOrEmpty($SystemStatusFile) -and (Test-Path $SystemStatusFile)) {
-        $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.FortiGateSystemStatus -ShowFile $SystemStatusFile -HostObject $Device
+        $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['fortinet_get_system_status'] -ShowFile $SystemStatusFile -HostObject $Device
         
         if ($Device.ProcessOutputObjects -ne "ERROR" -and $Device.ProcessOutputObjects.Count -gt 0) {
             if ($Device.ProcessOutputObjects[0] -is [string]) { $RawData = $Device.ProcessOutputObjects } else { $RawData = $Device.ProcessOutputObjects[0] }
@@ -902,7 +902,7 @@ function Get-FortiGateVersionFromText {
     if (-not [string]::IsNullOrEmpty($HaStatusFile) -and (Test-Path $HaStatusFile)) {
         $TempDevice = [PSCustomObject]@{ ProcessOutputObjects = @() }
         $TempHostObj = Create-HostObject
-        $TempDevice = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.FortiGateHaStatus -ShowFile $HaStatusFile -HostObject $TempHostObj
+        $TempDevice = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['fortinet_get_system_ha_status'] -ShowFile $HaStatusFile -HostObject $TempHostObj
 
         if ($TempDevice.ProcessOutputObjects -ne "ERROR" -and $TempDevice.ProcessOutputObjects.Count -gt 0) {
             if ($TempDevice.ProcessOutputObjects[0] -is [string]) { $HAData = $TempDevice.ProcessOutputObjects } else { $HAData = $TempDevice.ProcessOutputObjects[0] }
@@ -959,7 +959,7 @@ function Get-FortiGateArpFromText {
 
     # 2. Execute TextFSM
     # Template Columns: [0]IP_ADDRESS [1]AGE [2]MAC_ADDRESS [3]INTERFACE
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.FortiGateSystemArp -ShowFile $ShowArpFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['fortinet_get_system_arp'] -ShowFile $ShowArpFile -ReturnArray $true -HostObject $Device
 
     if ($Device.ProcessOutputObjects -eq "ERROR" -or $null -eq $Device.ProcessOutputObjects) {
         Add-HostDebugText -HostObject $Device "TextFSM returned ERROR or NULL for ARP table." -BackgroundColor Red

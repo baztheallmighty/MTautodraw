@@ -269,7 +269,7 @@ function Get-ArubaShowLLDPNeighborsFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxLldpNeighbor -ShowFile $ShowLLDPNeighborsFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_lldp_neighbors'] -ShowFile $ShowLLDPNeighborsFile -ReturnArray $true -HostObject $Device
 
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error running TextFSM for Aruba AOS-CX show lldp neighbors."
@@ -367,7 +367,7 @@ function Get-ArubaShowLLDPNeighborsDetailsFromText {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxLldpNeighborDetails -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_lldp_neighbors-info_detail'] -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
 
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error running TextFSM for Aruba AOS-CX show lldp neighbors details."
@@ -709,7 +709,7 @@ function Get-ArubaShowInterfacesFromTextfsm {
         return $Device
     }
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxInterface -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_interface'] -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfacesFromTextfsm: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
         return $Device
@@ -1083,7 +1083,7 @@ function Get-ArubaShowIPRouteallvrfsFromText {
     }
 
     Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Executing TextFSM template ArubaAoscxIpRoute"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxIpRoute -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_ip_route'] -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
         return $Device
@@ -1227,7 +1227,7 @@ function Get-ArubaShowIPRouteFromText {
     }
 
     Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : Executing TextFSM template ArubaAoscxIpRoute"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxIpRoute -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_ip_route'] -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : ERROR from Execute-PythonTextFSM" -BackgroundColor Red
         return $Device
@@ -1344,7 +1344,7 @@ function Get-ArubaShowSpanningTreeDetailsFromText {
     }
 
     Add-HostDebugText -HostObject $Device "Get-ArubaShowSpanningTreeDetailsFromText : Executing TextFSM template ArubaAoscxSpanningTreeDetail"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxSpanningTreeDetail -ShowFile $ShowSpanningTreeDetailsFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_spanning-tree_detail'] -ShowFile $ShowSpanningTreeDetailsFile -ReturnArray $true -HostObject $Device
 
     if ($Device.ProcessOutputObjects -eq "ERROR" -or -not $Device.ProcessOutputObjects) {
         Add-HostDebugText -HostObject $Device "Get-ArubaShowSpanningTreeDetailsFromText : ERROR from Execute-PythonTextFSM" -BackgroundColor Red
@@ -1493,7 +1493,7 @@ function Get-ArubaShowInterfaceBriefFromTextfsm {
     }
 
     Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: Executing TextFSM template ArubaAoscxShowIPInterfaceBrief"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxShowIPInterfaceBrief -ShowFile $ShowInterfaceBriefFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_ip_interface_brief'] -ShowFile $ShowInterfaceBriefFile -ReturnArray $true -HostObject $Device
 
     if ($Device.ProcessOutputObjects -eq "ERROR" -or -not $Device.ProcessOutputObjects) {
         Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
@@ -1675,7 +1675,7 @@ function Get-ArubaShowMacAddressTableFromText {
     }
 
     Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: Executing TextFSM template ArubaAoscxShowMacAddressTable"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxShowMacAddressTable -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_mac-address-table'] -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
         return $Device

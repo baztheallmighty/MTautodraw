@@ -117,7 +117,7 @@ function Get-PaloAltoShowInterfaceAllFromText {
     [array]$AllInterfaces=@()
     # --- Step 1: Process HARDWARE interface details first to create base objects ---
     Add-HostDebugText -HostObject $Device "  -> Processing hardware interfaces..."
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.PaloAltoShowInterfaceHardware -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['paloalto_panos_show_interface_hardware'] -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error processing hardware interfaces from '$($ShowInterfaceFile)'." -BackgroundColor Red
         return $Device # Return the device as-is on failure
@@ -151,7 +151,7 @@ function Get-PaloAltoShowInterfaceAllFromText {
     
     # --- Step 2: Process LOGICAL interface details and merge them with existing objects ---
     Add-HostDebugText -HostObject $Device "  -> Processing and merging logical interfaces..."
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.PaloAltoShowInterfaceLogical -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['paloalto_panos_show_interface_logical'] -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error processing logical interfaces from '$($ShowInterfaceFile)'." -BackgroundColor Red
         return $Device # Return the device with any hardware data that was processed

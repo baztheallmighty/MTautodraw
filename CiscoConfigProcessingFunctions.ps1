@@ -178,7 +178,7 @@ function Get-ShowInterfaceFromText(){
     }
     if($Device.version.type -eq "NXOS"){
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowInterfaceTemplate -ShowFile $ShowInterfaceFile   -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_interface'] -ShowFile $ShowInterfaceFile   -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
             return $device
@@ -296,7 +296,7 @@ function Get-ShowInterfaceFromText(){
         #Add-HostDebugText -HostObject $Device "This is a XE-IOS or IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowInterfaceTemplate -ShowFile $ShowInterfaceFile   -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_interfaces'] -ShowFile $ShowInterfaceFile   -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
             return $device
@@ -479,7 +479,7 @@ function Get-ShowLLDPNeighborsText(){
         #Add-HostDebugText -HostObject $Device "This is a  XE-IOS IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.XEIOSShowLLDPNeighborsDetailsTemplate -ShowFile $ShowLLDPFile  -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_lldp_neighbors'] -ShowFile $ShowLLDPFile  -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show lldp neighbors on IOS.$($Device.ProcessOutputObjects)"
             return $device
@@ -556,7 +556,7 @@ function Get-ShowLLDPDetailsFromText(){
         #Add-HostDebugText -HostObject $Device "This is a IOS or XR IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowLLDPNeighborsDetailsTemplate -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_lldp_neighbors_detail'] -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show ip route on Nexus routing."
             return $device
@@ -628,7 +628,7 @@ function Get-ShowLLDPDetailsFromText(){
         (get-content -raw $ShowLLDPDetailsFile) -replace "Vlan ID: not advertised","Vlan ID: 0" | set-content $ShowLLDPDetailsFile
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowLLDPNeighborsDetailsTemplate -ShowFile $ShowLLDPDetailsFile  -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_lldp_neighbors_detail'] -ShowFile $ShowLLDPDetailsFile  -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show ip route on Nexus routing."
             return $device
@@ -696,7 +696,7 @@ function Get-ShowVersionFromText(){
         #Add-HostDebugText -HostObject $Device "This is a IOS or XR IOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowVersionTemplate -ShowFile $ShowVersionFile -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_version'] -ShowFile $ShowVersionFile -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show version on IOS."
             return $device
@@ -733,7 +733,7 @@ function Get-ShowVersionFromText(){
         #Add-HostDebugText -HostObject $Device "This is a NXOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowVersionTemplate -ShowFile $ShowVersionFile -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_version'] -ShowFile $ShowVersionFile -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show version on NXOS."
             return $device
@@ -786,7 +786,7 @@ function Get-ShowMacAddressTableFromText(){
         return $device
     }
     if($TypeOfDevice -eq "IOS"){
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowMacAddressTableTemplate -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_mac-address-table'] -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show mac address-table on IOS processing."
             return $device
@@ -840,7 +840,7 @@ function Get-ShowMacAddressTableFromText(){
             $DeviceInterface.MacAddressArray+=,$MacAddressobject
         }
     }elseif($TypeOfDevice -eq "Nexus"){
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowMacAddressTableTemplate -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_mac_address-table'] -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show mac address-table on IOS processing."
             return $device
@@ -897,7 +897,7 @@ function Get-ShowMacAddressTableFromText(){
             $DeviceInterface.MacAddressArray+=,$MacAddressobject
         }
     }elseif($TypeOfDevice -eq "IOSX"){
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.XEIOSShowMacAddressTableTemplate -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_xeios_show_mac-address-table'] -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show mac address-table on IOS processing."
             return $device
@@ -972,7 +972,7 @@ function Get-ShowIPInterfaceBriefFromText(){
         return $device
     }
     if ($Device.version.type -in @("IOS","XE-IOS")) {
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPIntBrief -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_ip_interface_brief'] -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show IP Int Brief on IOS or XE-IOS."
             return $device
@@ -994,7 +994,7 @@ function Get-ShowIPInterfaceBriefFromText(){
         }
         return $device
     }elseif ($Device.version.type -eq "NXOS"){
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPIntBrief -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_ip_interface_brief'] -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show IP Int Brief on NXOS."
             return $device
@@ -1033,7 +1033,7 @@ function Get-ShowInterfaceStatusFromText(){
         return $device
     }
     if ($Device.version.type -in @("IOS","XE-IOS")) {
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowInterfaceStatus -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_interfaces_status'] -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show Interface status IOS or XE-IOS."
             return $device
@@ -1071,7 +1071,7 @@ function Get-ShowInterfaceStatusFromText(){
         #TYPE     $int[6]
         #FC_MODE  $int[7]
     }elseif ($Device.version.type -eq "NXOS"){
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowInterfaceStatus -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_interface_status'] -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with Show Interface status NXOS."
             return $device
@@ -1132,7 +1132,7 @@ function Get-CdpNeighborsFromText(){
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
 
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowCDPNeighborsDetailsTemplate -ShowFile $CdpNeighborFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_cdp_neighbors_detail'] -ShowFile $CdpNeighborFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show cdp neighbors details on IOS or XE-IOS."
             return $device
@@ -1175,7 +1175,7 @@ function Get-CdpNeighborsFromText(){
         #Add-HostDebugText -HostObject $Device "This is a  NXOS device"
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowCDPNeighborsDetailsTemplate -ShowFile $CdpNeighborFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_cdp_neighbors_detail'] -ShowFile $CdpNeighborFile -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show cdp neighbors details on NXOS."
             return $device
@@ -1501,7 +1501,7 @@ function Get-BGPNeighborsFromText(){
     $AllBGPNeighbors = @() # Array to hold all neighbor objects
 
 
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPBGPVPNv4NeighborsTemplate -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_ip_bgp_vpnv4_all_neighbors'] -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
 
     if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device "Error processing BGP VPNv4 neighbors file: $($BGPNeighborsFile)" -BackgroundColor Red
@@ -1563,7 +1563,7 @@ function Get-BGPNeighborsStandardFromText(){
     $AllBGPNeighbors = $Device.BGPNeighbors
 
     # Use the standard IOS BGP Neighbors template
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPBGPNeighborsTemplate -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_ip_bgp_neighbors'] -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
 
     if($Device.ProcessOutputObjects -eq "ERROR"){
         Add-HostDebugText -HostObject $Device "Error processing standard BGP neighbors file: $($BGPNeighborsFile)" -BackgroundColor Red
@@ -1621,7 +1621,7 @@ function Get-BGPNeighborsNXOSFromText {
     $AllBGPNeighbors = $Device.BGPNeighbors
 
     # Use the NX-OS BGP Neighbors template
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPBGPNeighborsTemplate -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
+    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_ip_bgp_neighbors'] -ShowFile $BGPNeighborsFile -ReturnArray $true -HostObject $Device
 
     if ($Device.ProcessOutputObjects -eq "ERROR") {
         Add-HostDebugText -HostObject $Device "Error processing NX-OS BGP neighbors file: $($BGPNeighborsFile)" -BackgroundColor Red
@@ -1679,9 +1679,9 @@ function Get-BGPNeighborsFromSummary {
 
     # Determine which TextFSM template to use based on OS type
     if ($Device.version.type -eq "NXOS") {
-        $TemplateToUse = $GTemplate.NexusShowIPBGPSummaryTemplate
+        $TemplateToUse = $GTextFSMTemplates['cisco_nxos_show_ip_bgp_summary']
     } else {
-        $TemplateToUse = $GTemplate.IOSShowIPBGPSummaryTemplate
+        $TemplateToUse = $GTextFSMTemplates['cisco_ios_show_ip_bgp_summary']
     }
 
     $Device = Execute-PythonTextFSM -TextFSTETemplate $TemplateToUse -ShowFile $BGPSummaryFile -ReturnArray $true -HostObject $Device
@@ -1746,7 +1746,7 @@ function Get-ShowIPArpText(){
     }
     if($Device.version.type -eq "NXOS"){
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusShowIPArpTemplate -ShowFile $ShowIPArpFile  -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_ip_arp'] -ShowFile $ShowIPArpFile  -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on NXOS."
             return $device
@@ -1798,7 +1798,7 @@ function Get-ShowIPArpText(){
 
     if ($Device.version.type -in @("IOS","XE-IOS")) {
         #Start Python process with TextFSM to convert the Text to a Object
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSShowIPArpTemplate -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_ip_arp'] -ShowFile $ShowIPArpFile   -ReturnArray $true -HostObject $Device
         if($Device.ProcessOutputObjects -eq "ERROR"){
             Add-HostDebugText -HostObject $Device "Error with show ip arp on IOS."
             return $device
@@ -2034,10 +2034,10 @@ function Get-ShowIPRouteFromText(){
         #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
         #Start Python process with TextFSM to convert the Text to a Object
         if($UseShowIPRouteVRFstarFile){
-            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile  -ReturnArray $true -HostObject $Device
+            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_ip_route'] -ShowFile $ShowIPRouteVRFstarFile  -ReturnArray $true -HostObject $Device
        }else{
 
-            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.NexusSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile  -ReturnArray $true -HostObject $Device
+            $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_nxos_show_ip_route'] -ShowFile $ShowIPRouteFile  -ReturnArray $true -HostObject $Device
         }
         if($Device.ProcessOutputObjects -eq "ERROR"){
             if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
@@ -2132,9 +2132,9 @@ function Get-ShowIPRouteFromText(){
     #Add-HostDebugText -HostObject $Device "Starting Python Processing with TextFSM"
     #Start Python process with TextFSM to convert the Text to a Object
     if($UseShowIPRouteVRFstarFile){
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteVRFstarFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_ip_route'] -ShowFile $ShowIPRouteVRFstarFile -ReturnArray $true -HostObject $Device
     }else{
-        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.IOSSHOWIPROUTETemplate -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
+        $Device=Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['cisco_ios_show_ip_route'] -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
     }
     if($Device.ProcessOutputObjects -eq "ERROR"){
         if(($ShowRouteText | Select-String "Default gateway is \d+.\d+.\d+.\d+").Matches.Success){
