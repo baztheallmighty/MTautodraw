@@ -1,715 +1,840 @@
-# MTAutoDraw-Standard: v1
-# This file contains all of the functions that process Arista EOS config.
-#
-# Follows PARSER_STANDARD.md v1; the orchestrator is at the foot of the file, after the readers.
+# This file contains all of the functions that process Arista config.
 
-# --- Platform helpers -----------------------------------------------------------------------------
-
-# Normalizes an Arista interface name (expanding short forms and fixing 'Port-Channel' casing) and resolves it to the matching interface object on $Device.
-function Resolve-AristaInterface {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [Parameter(Mandatory = $true)][string]$Name,
-        [switch]$NoCreate
+# This function calls all the other functions to process all of the files for an Arista device.
+# Input: Hostid object.
+# Output: $device object.
+function Process-AristaHostFiles {
+    param (
+        [parameter(Mandatory = $true)]
+        $hostid,
+        $ArrayOfObjects
     )
-
-    $normalized = (Replace-InterfaceShortName -String $Name) -replace '(?i)^Port-Channel', 'Port-channel'
-    return (Resolve-MTAutoDrawInterface -Device $Device -Name $normalized -NoCreate:$NoCreate)
-}
-
-# Looks up the vendor for a Cisco-dotted MAC by its OUI. Returns 'UNKNOWN Vendor' on a miss.
-function Get-AristaMacVendor {
-    [CmdletBinding()]
-    param([AllowNull()][AllowEmptyString()][string]$MacAddress)
-
-    $hex = [string]$MacAddress -replace '[^0-9A-Fa-f]', ''
-    if ($hex.Length -ne 12) { return 'UNKNOWN Vendor' }
-    $colonForm = (0..5 | ForEach-Object { $hex.Substring($_ * 2, 2) }) -join ':'
-    foreach ($length in 8, 5) {
-        if ($GMacAddressToVendorMapping[$colonForm.Substring(0, $length)]) { return $GMacAddressToVendorMapping[$colonForm.Substring(0, $length)] }
-    }
-    return 'UNKNOWN Vendor'
-}
-
-# Picks which of the three routing captures to parse: an all-VRF table if one was collected and is
-# usable, then the literal-star alias, then the plain table. Only one of them is ever parsed, because
-# each is a complete table and parsing two would double every route.
-function Select-AristaRouteCapture {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [Parameter(Mandatory = $true)]$HostID
-    )
-
-    foreach ($slot in 'ShowIPRouteVRFAll', 'ShowIPRouteVRFstar', 'ShowIPRoute') {
-        if (Test-MTAutoDrawCaptureReadable -Device $Device -Path $HostID.$slot -Capture $slot) { return $HostID.$slot }
-    }
-    return $null
-}
-
-# --- Capture readers ------------------------------------------------------------------------------
-# Each one: GUARD, EXTRACT, MAP, MERGE. Each takes -Device and -Path, returns nothing, and is safe to
-# call with a $null path - so the orchestrator needs no per-slot if-wrappers.
-
-# Reads the running configuration for the device hostname. EOS interface configuration is not read
-# here: 'show interfaces' carries strictly more, and is the capture this platform always collects.
-function Update-AristaRunningConfig {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRun')) { return }
-
-    # --- EXTRACT / MAP / MERGE ---
-    if ((Get-MTAutoDrawCaptureText -Path $Path) -match '(?im)^hostname\s+(\S+)') { $Device.hostname = $Matches[1].Trim() }
-}
-
-# 'show hostname' is the fallback identity capture for collectors that do not take a running config.
-function Update-AristaHostname {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if ($Device.hostname) { return }   # the running config already answered
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowHostname')) { return }
-
-    # --- EXTRACT / MAP / MERGE ---
-    $row = @(Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_hostname' -Path $Path) | Select-Object -First 1
-    if ($row -and $row.HOSTNAME) { $Device.hostname = $row.HOSTNAME }
-}
-
-# Parses an Arista EOS 'show version' (via TextFSM) into the device's version object.
-function Update-AristaVersion {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowVersion')) { return }
-
-    # --- EXTRACT ---
-    $row = @(Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_version' -Path $Path) | Select-Object -First 1
-    if (-not $row) { return }
-
-    # --- MAP + MERGE ---
-    $version = Create-ShowVersionObject
-    $version.Type = 'Arista-EOS'
-    $version.OS = $row.IMAGE
-    $version.Image = $row.IMAGE
-    $version.Uptime = $row.UPTIME
-    $version.Hardware = @($row.MODEL)
-    $version.Serial = @($row.SERIAL_NUMBER)
-    $version.MacAddressArray = @($row.SYS_MAC)
-    $Device.Version = $version
-    $Device.Platform = $row.MODEL
-}
-
-# 'show reload cause' is a separate capture from 'show version', but the only field taken from it
-# belongs on the version object, so it merges into whatever Update-AristaVersion already built.
-function Update-AristaReloadCause {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowReloadCause')) { return }
-
-    # --- EXTRACT / MAP / MERGE ---
-    $row = @(Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_reload_cause' -Path $Path) | Select-Object -First 1
-    if (-not $row) { return }
-    if (-not $Device.Version) { $Device.Version = Create-ShowVersionObject }
-    $Device.Version.ReasonForRelod = $row.RELOAD_CAUSE
-}
-
-# Parses an Arista EOS 'show vlan' capture (via TextFSM) into the device's VLAN objects (number, name, interfaces), de-duplicated by number. Returns early if the capture is unreadable or has no rows.
-function Update-AristaVlans {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowVlan')) { return }
-
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_vlan' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    $byNumber = @{}
-    foreach ($existing in @($Device.vlans | Where-Object { $_ -and $null -ne $_.number })) {
-        $byNumber[[string]$existing.number] = $existing
-    }
-    foreach ($row in @($rows)) {
-        $number = ([string]$row.VLAN_ID).Trim()
-        if ($number -notmatch '^\d+$') { continue }
-        if (-not $byNumber.ContainsKey($number)) {
-            $vlan = Create-VlanObject
-            $vlan.number = [int]$number
-            $byNumber[$number] = $vlan
-        }
-        if (-not [string]::IsNullOrWhiteSpace([string]$row.VLAN_NAME)) {
-            $byNumber[$number].name = ([string]$row.VLAN_NAME).Trim()
-        }
-    }
-    $Device.vlans = @($byNumber.Values | Sort-Object { [int]$_.number })
-}
-
-# Parses an Arista 'show interfaces trunk' capture, splitting the summary (Port/Mode/Status/Native vlan) and allowed-VLAN sections, and attaches trunking properties to each interface. Returns early if unreadable.
-function Update-AristaInterfaceTrunks {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterfaceTrunk')) { return }
-
-    # --- EXTRACT + MAP + MERGE ---
-    $section = ''
-    foreach ($line in (Get-MTAutoDrawCaptureText -Path $Path -AsLines)) {
-        if ($line -match '^\s*Port\s+Mode\s+Status\s+Native vlan\s*$') { $section = 'Summary'; continue }
-        if ($line -match '^\s*Port\s+Vlans allowed\s*$') { $section = 'Allowed'; continue }
-        if ($line -match '^\s*Port\s+Vlans allowed and active\b') { $section = 'Ignore'; continue }
-        if ($line -match '^\s*Port\s+Vlans in spanning tree forwarding state\b') { $section = 'Ignore'; continue }
-        if ([string]::IsNullOrWhiteSpace($line) -or $line -match '^\s*-+') { continue }
-
-        if ($section -eq 'Summary' -and
-            $line -match '^\s*(?<port>\S+)\s+(?<mode>\S+)\s+(?<status>\S+)\s+(?<native>\S+)\s*$') {
-            $interface = Resolve-AristaInterface -Device $Device -Name $Matches['port']
-            $interface.SwitchportMode = $Matches['mode'].ToLowerInvariant()
-            if ($Matches['native'] -notin @('-', 'none')) { $interface.NativeVlan = $Matches['native'] }
-            $interface.SwitchPortType = 'Switched'
-            continue
-        }
-
-        if ($section -eq 'Allowed' -and $line -match '^\s*(?<port>\S+)\s+(?<vlans>.+?)\s*$') {
-            $interface = Resolve-AristaInterface -Device $Device -Name $Matches['port']
-            $interface.SwitchportTrunkVlan = $Matches['vlans'].Trim()
-            $interface.SwitchportMode = 'trunk'
-            $interface.SwitchPortType = 'Switched'
-        }
-    }
-}
-
-# Parses an Arista 'show spanning-tree' capture into the device's spanning-tree object, splitting per-MST-instance blocks (root, priority, per-VLAN state). Returns early if no instances are found.
-function Update-AristaSpanningTree {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowSpanningTree')) { return }
-
-    # --- EXTRACT ---
-    $text = Get-MTAutoDrawCaptureText -Path $Path
-    $blocks = [regex]::Matches($text, '(?ms)^(?<instance>MST\d+)\s*\r?\n(?<body>.*?)(?=^MST\d+\s*\r?$|\z)')
-    if ($blocks.Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    $spanningTree = Create-SpanningTreeObject
-    foreach ($block in $blocks) {
-        $instanceName = $block.Groups['instance'].Value.Trim()
-        $body = $block.Groups['body'].Value
-        $rootSection = [regex]::Match($body, '(?ms)^\s*Root ID\s+(?<text>.*?)(?=^\s*Bridge ID\s+)')
-        $bridgeSection = [regex]::Match($body, '(?ms)^\s*Bridge ID\s+(?<text>.*?)(?=^Interface\s+Role|\z)')
-        if (-not $rootSection.Success -or -not $bridgeSection.Success) { continue }
-
-        $rootText = $rootSection.Groups['text'].Value
-        $bridgeText = $bridgeSection.Groups['text'].Value
-        $instance = Create-SpanningTreeVlan
-        $instance.VlanID = $instanceName
-
-        if ($body -match '(?im)^\s*Spanning tree enabled protocol\s+(?<value>\S+)') {
-            $instance.protocol = $Matches['value'].Trim().ToLowerInvariant()
-            if (-not $spanningTree.SpanningTreeMode) { $spanningTree.SpanningTreeMode = $instance.protocol }
-        }
-        if ($rootText -match '(?im)Priority\s+(?<value>\d+)') { $instance.RootIDPriority = $Matches['value'] }
-        if ($rootText -match '(?im)^\s*Address\s+(?<value>\S+)') {
-            $instance.Address = ConvertTo-NormalizedMacAddress $Matches['value']
-        }
-        if ($rootText -match '(?im)^\s*Cost\s+(?<value>.+?)\s*$') { $instance.RootBridgeCost = $Matches['value'].Trim() }
-        if ($rootText -match '(?im)^\s*Port\s+(?:\d+\s+)?(?:\((?<paren>[^)]+)\)|(?<plain>\S+))') {
-            $rootPort = if ($Matches['paren']) { $Matches['paren'] } else { $Matches['plain'] }
-            $instance.RootBridgePort = (Replace-InterfaceShortName -String $rootPort) -replace '(?i)^Port-Channel', 'Port-channel'
-            $instance.port = $instance.RootBridgePort
-        }
-        if ($rootText -match '(?im)^\s*Hello Time\s+(?<value>[\d.]+)') { $instance.RootBridgeHelloTime = $Matches['value'] }
-
-        if ($bridgeText -match '(?im)Priority\s+(?<value>\d+)') { $instance.BridgeIDPriority = $Matches['value'] }
-        if ($bridgeText -match '(?im)^\s*Address\s+(?<value>\S+)') {
-            $instance.BridgeIDPriorityaddress = ConvertTo-NormalizedMacAddress $Matches['value']
-        }
-        if ($bridgeText -match '(?im)^\s*Hello Time\s+(?<value>[\d.]+)') { $instance.BridgeIDPriorityHelloTime = $Matches['value'] }
-
-        $instance.RootBridge = ($rootText -match '(?im)^\s*This bridge is the root\s*$') -or
-            ($instance.Address -and $instance.Address -eq $instance.BridgeIDPriorityaddress)
-        if ($instance.RootBridge) {
-            $instance.RootBridgePort = $null
-            $instance.port = $null
-            if ($spanningTree.RootBridgeForVlans -notcontains $instanceName) {
-                $spanningTree.RootBridgeForVlans += ,$instanceName
+    
+    $Device = $null
+    # First, create the device object from the show run config file.
+    # NOTE: This assumes a 'Get-AristaShowRunFromText' function exists, similar to the Cisco example.
+    # Since no 'show run' template was provided, this part is based on the Cisco pattern.
+    if ($hostid.showrun -and (Test-Path -Path $hostid.showrun)) {
+        $config = Get-Content -Path $hostid.showrun -raw
+        # $Device = Get-AristaShowRunFromText -Lconfig $config # Assumes this function exists
+        
+        # --- FALLBACK IF Get-AristaShowRunFromText is not available ---
+        # As a fallback, we must create a basic $Device object to proceed.
+        # We'll try to get the hostname from 'show hostname' as a starting point.
+        if ($null -eq $Device) {
+            if ($hostid.ShowHostname -and (Test-Path -Path $hostid.ShowHostname)) {
+                Add-HostDebugText -HostObject $Device "No 'show run' parser. Attempting to create Device object from 'show hostname'."
+                $Device = Create-HostObject
+                # This function is defined below
+                $Device = Get-AristaHostname -ShowHostnameFile $hostid.ShowHostname -Device $Device 
+            } else {
+                 Write-host "File doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun) AND no fallback 'show hostname' found."
+                 return $null
             }
         }
+        # --- END FALLBACK ---
 
-        $tableStart = $body.IndexOf('Interface')
-        if ($tableStart -ge 0) {
-            foreach ($line in ($body.Substring($tableStart) -split '\r?\n')) {
-                if ($line -notmatch '^\s*(?<name>\S+)\s+(?<role>root|designated|alternate|backup|master|disabled)\s+(?<state>\S+)\s+(?<cost>\S+)\s+(?<prio>\S+)\s*(?<type>.*)$') { continue }
-
-                $role = switch ($Matches['role'].ToLowerInvariant()) {
-                    'root'       { 'Root' }
-                    'designated' { 'Desg' }
-                    'alternate'  { 'Altn' }
-                    'backup'     { 'Back' }
-                    'master'     { 'Mast' }
-                    default      { 'Disabled' }
-                }
-                $state = switch ($Matches['state'].ToLowerInvariant()) {
-                    'forwarding' { 'FWD' }
-                    'learning'   { 'LRN' }
-                    'blocking'   { 'BLK' }
-                    'discarding' { 'DISC' }
-                    default      { $Matches['state'] }
-                }
-                $interfaceName = Replace-InterfaceShortName -String $Matches['name']
-                $stInterface = Create-SpanningTreeInterface
-                $stInterface.Interface = $interfaceName
-                $stInterface.Role = $role
-                $stInterface.Status = $state
-                $stInterface.Cost = $Matches['cost']
-                $stInterface.PrioNbr = $Matches['prio']
-                $stInterface.Type = $Matches['type'].Trim()
-                $instance.SpanningTreeInterfaces += ,$stInterface
-
-                $deviceInterface = Resolve-AristaInterface -Device $Device -Name $interfaceName
-                $deviceInterface.STRole = $role
-                $deviceInterface.STState = $state
-                switch ($role) {
-                    'Root' { if ($deviceInterface.STRootInterfaceForVlans -notcontains $instanceName) { $deviceInterface.STRootInterfaceForVlans += ,$instanceName } }
-                    'Desg' { if ($deviceInterface.STDesgnInterfaceForVlans -notcontains $instanceName) { $deviceInterface.STDesgnInterfaceForVlans += ,$instanceName } }
-                    'Altn' { if ($deviceInterface.STALTnInterfaceForVlans -notcontains $instanceName) { $deviceInterface.STALTnInterfaceForVlans += ,$instanceName } }
-                }
-            }
-        }
-
-        $spanningTree.SpanningTreeArray += ,$instance
+        $Device.DeviceIdentifier = ($hostid.showrun -replace "\.show run.*", '' -replace "^.*\\", '' -replace "\.show configuration.*", '')
+    }
+    else {
+        Write-host "Show run file doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun)"
+        return $null
     }
 
-    if (@($spanningTree.SpanningTreeArray).Count -gt 0) { $Device.SpanningTree = $spanningTree }
-}
+    if ($null -eq $Device -or [string]::IsNullOrEmpty($Device.hostname) -or $Device.hostname -like "*NoHostNameFound*") {
+        Write-host "Can't find hostname in file, skipping host: $($hostid.showrun)" -BackgroundColor red
+        return $null
+    }
 
-# The 'show lldp neighbors' summary table. Only used when the detail capture produced nothing: it
-# carries no chassis ID, management address or system description.
-function Update-AristaLldpNeighbors {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
+    # Now that $Device is a valid object, we can begin logging.
+    Add-HostDebugText -HostObject $Device "Processing Arista Host: $($Device.hostname)"
 
-    # --- GUARD ---
-    if (@($Device.LLDPNeighbors).Count -gt 0) { return }
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowLLDPNeighbors')) { return }
-
-    # --- EXTRACT / MAP / MERGE ---
-    $Device.LLDPNeighbors = @(foreach ($line in (Get-MTAutoDrawCaptureText -Path $Path -AsLines)) {
-        if ($line -notmatch '^\s*(?<local>\S+)\s+(?<neighbor>\S+)\s+(?<remote>\S+)\s+\d+\s*$') { continue }
-        $neighbor = Create-LLDPNeighborObject
-        $neighbor.InterfaceLocalDevice = Replace-InterfaceShortName $Matches['local']
-        $neighbor.InterfaceRemoteDevice = Replace-InterfaceShortName $Matches['remote']
-        $neighbor.Hostname = $Matches['neighbor']
-        $neighbor.ParentObject = $Device.hostname
-        $neighbor
-    })
-}
-
-# 'show lldp neighbors detail' is the preferred neighbour capture: it is the only one carrying the
-# chassis ID, management address and system description the topology matcher uses.
-function Update-AristaLldpNeighborDetails {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowLLDPNeighborsDetails')) { return }
-
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_lldp_neighbors_detail' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    $neighbors = @(foreach ($row in $rows) {
-        if ($GSkipCDPLLDPPhones -and (([string]$row.NEIGHBOR_DESCRIPTION -like '*Phone*') -or ([string]$row.NEIGHBOR_DESCRIPTION -like '*Endpoint*'))) { continue }
-
-        $neighbor = Create-LLDPNeighborObject
-        $neighbor.Hostname = ([string]$row.NEIGHBOR_NAME).Trim()
-        $neighbor.ChassisID = ([string]$row.CHASSIS_ID).Trim()
-        $neighbor.ManagementIP = ([string]$row.MGMT_ADDRESS).Trim()
-        $neighbor.SystemDescription = ([string]$row.NEIGHBOR_DESCRIPTION).Trim()
-        $neighbor.InterfaceRemoteDevice = (Replace-InterfaceShortName -String $row.NEIGHBOR_INTERFACE)
-        $neighbor.PortID = ([string]$row.NEIGHBOR_INTERFACE).Trim()   # the raw port ID, for matching
-        $neighbor.InterfaceLocalDevice = (Replace-InterfaceShortName -String $row.LOCAL_INTERFACE)
-        $neighbor.ParentObject = $Device.hostname
-        if ([string]::IsNullOrEmpty($neighbor.Hostname)) { $neighbor.Hostname = $neighbor.ChassisID }
-
-        $interface = Resolve-AristaInterface -Device $Device -Name $neighbor.InterfaceLocalDevice -NoCreate
-        if ($interface) {
-            $interface.HasLLDPNeighbor = $true
-            if ($interface.HasCPDNieghbor) { $neighbor.HasCDPNeighborEntry = $true }
-        }
-        $neighbor
-    })
-    # Sorted by port number so the diagram lists neighbours in physical order rather than capture order.
-    $Device.LLDPNeighbors = $neighbors | Sort-Object -Property @{ Expression = { [int]($_.InterfaceLocalDevice -replace '[a-zA-Z-]+', '' -replace '/', '') } }
-}
-
-# Parses 'show interfaces' (via TextFSM) into the device's interfaces. This is the richest interface
-# capture EOS offers, so it runs before the brief and status readers, which only fill its gaps.
-function Update-AristaInterfaces {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterface')) { return }
-
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_interfaces' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    foreach ($row in $rows) {
-        $interface = Resolve-AristaInterface -Device $Device -Name $row.INTERFACE
-        $interface.IntStatus = $row.LINK_STATUS -replace 'administratively ', '' -replace '\s*\(.*', ''
-        $interface.INTProtocolStatus = $row.PROTOCOL_STATUS -replace '\s*\(.*', '' -replace ',.*', ''
-        $interface.shutdown = ($interface.IntStatus -eq 'down' -or $interface.INTProtocolStatus -eq 'down')
-        $interface.HardwareType = $row.HARDWARE_TYPE
-        $interface.macaddress = $row.MAC_ADDRESS
-        $interface.Speed = $row.BANDWIDTH -replace 'bit/s', 'b/s'
-        if ([string]::IsNullOrEmpty($interface.Description)) { $interface.Description = $row.DESCRIPTION }
-
-        if ([string]::IsNullOrEmpty($interface.IPAddress) -and -not [string]::IsNullOrEmpty($row.IP_ADDRESS)) {
-            $address = Get-NormalizedIPv4Cidr -IPAddress ([string]$row.IP_ADDRESS)
-            if ($address) {
-                $interface.IPAddress = $address.IPAddress
-                $interface.SubnetMask = $address.PrefixLength
-                $interface.Cidr = $address.Cidr
+    # Hostname collision check (copied from Cisco example)
+    foreach ($ExistingDevice in $ArrayOfObjects) {
+        if ($ExistingDevice.hostname -eq $Device.hostname) {
+            Add-HostDebugText -HostObject $Device "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
+            Add-HostDebugText -HostObject $Device "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
+            Add-HostDebugText -HostObject $Device "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
+            Add-HostDebugText -HostObject $Device "$($ArrayOfObjects|ft hostname,DeviceIdentifier| out-string)"
+            if (!($SkipHostnameErrorCheck)) {
+                Add-HostDebugText -HostObject $Device 'Exiting please manually fix this error.' -BackgroundColor red
+                Start-CleanupAndExit
             }
         }
     }
-}
 
-# 'show ip interface brief' is the fallback interface capture, used only when 'show interfaces' was
-# not collected - it carries no MAC, no hardware type and no subnet mask.
-function Update-AristaInterfaceBrief {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (@($Device.interfaces).Count -gt 0) { return }
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowIPInterfaceBrief')) { return }
-
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_ip_interface_brief' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    foreach ($row in $rows) {
-        $interface = Resolve-AristaInterface -Device $Device -Name $row.INTERFACE
-        $interface.IntStatus = $row.STATUS
-        $interface.INTProtocolStatus = $row.PROTOCOL
-        $interface.shutdown = $row.STATUS -ne 'up'
-
-        $address = Get-NormalizedIPv4Cidr -IPAddress ([string]$row.IP_ADDRESS)
-        if (-not $address) { continue }
-        $interface.IPAddress = $address.IPAddress
-        $interface.SubnetMask = $address.PrefixLength
-        $interface.Cidr = $address.Cidr
-        $interface.SwitchPortType = 'Routed'
-        $routedVlan = if ($interface.Interface -match '^Vlan(\d+)$') { $Matches[1] } else { $null }
-        $null = Add-MTAutoDrawNetwork -Device $Device -Cidr $address.Cidr -RoutedVlan $routedVlan -IPAddress $address.IPAddress
+    if ($hostid.ShowVersion) {
+        Add-HostDebugText -HostObject $Device "Processing show version: $($hostid.ShowVersion)"
+        # Pass ShowReloadCauseFile if it exists
+        $Device = Get-AristaShowVersionFromText -ShowVersionFile $hostid.ShowVersion -Device $Device -ShowReloadCauseFile $hostid.ShowReloadCause
     }
+    
+    # Arista devices typically don't run CDP, so we'll skip the CDP check.
+    
+    if ($hostid.ShowLLDPNeighborsDetails) {
+        Add-HostDebugText -HostObject $Device "Processing show LLDP Details:$($hostid.ShowLLDPNeighborsDetails)"
+        $Device = Get-AristaShowLLDPNeighborsDetailsFromText -ShowLLDPDetailsFile $hostid.ShowLLDPNeighborsDetails -Device $Device -ShowLLDPFile $hostid.ShowLLDPNeighbors
+    }
+
+    if ($hostid.ShowInterface) {
+        Add-HostDebugText -HostObject $Device "Processing Show Interface :$($hostid.ShowInterface)"
+        $Device = Get-AristaShowInterfaceFromText -ShowInterfaceFile $hostid.ShowInterface -Device $Device
+    }
+    elseif ($hostid.ShowIPInterfaceBrief) {
+        Add-HostDebugText -HostObject $Device "Processing Show ip Interface Brief:$($hostid.ShowIPInterfaceBrief)"
+        $Device = Get-AristaShowIPInterfaceBriefFromText -ShowIPInterfaceBrief $hostid.ShowIPInterfaceBrief -Device $Device
+    }
+    else {
+        #Do nothing
+    }
+
+    if ($hostid.ShowInterfaceStatus) {
+        # This is useful for populating media type, duplex, speed, etc.
+        Add-HostDebugText -HostObject $Device "Processing Show Interface status:$($hostid.ShowInterfaceStatus)"
+        $Device = Get-AristaShowInterfaceStatusFromText -ShowInterfaceStatusFile $hostid.ShowInterfaceStatus -Device $Device
+    }
+
+    if ($hostid.ShowIPBGPSummary) {
+        Add-HostDebugText -HostObject $Device "Processing BGP Summary: $($hostid.ShowIPBGPSummary)"
+        $Device = Get-AristaShowIPBGPSummaryFromText -BGPSummaryFile $hostid.ShowIPBGPSummary -Device $Device
+    }
+    
+    # No Spanning Tree template was provided that maps to the desired object.
+
+    if ($hostid.ShowIPRoute -or $hostid.ShowIPRouteVRFstar) {
+        Add-HostDebugText -HostObject $Device "Processing Show ip route:$($hostid.ShowIPRoute)"
+        # Pass both files; the function will decide which to use.
+        $Device = Get-AristaShowIPRouteFromText -ShowIPRouteFile $hostid.ShowIPRoute -ShowIPRouteVRFstar $hostid.ShowIPRouteVRFstar -Device $Device
+    }
+
+    if ($hostid.ShowIPArp) {
+        if ($GDrawAprEntries) {
+            Add-HostDebugText -HostObject $Device "Processing Show ip Arp:$($hostid.ShowIPArp)"
+            $Device = Get-AristaShowIPArpFromText -ShowIPArpFile $hostid.ShowIPArp -Device $Device
+        }
+    }
+
+    if ($hostid.ShowMacAddressTable -and $GDrawPortsWithMacs -ne 0) {
+        if ($GDrawCDP) { # Using GDrawCDP as a proxy for "draw L2 links"
+            Add-HostDebugText -HostObject $Device "Processing Show Mac Address Table:$($hostid.ShowMacAddressTable)"
+            $Device = Get-AristaShowMacAddressTableFromText -ShowMacAddressTable $hostid.ShowMacAddressTable -Device $Device
+        }
+    }
+    
+    $Device = Update-LocalRoutesWithInterfaces -device $Device
+    return $Device
 }
 
-# 'show interfaces status' fills in the media, duplex, speed and access VLAN the richer captures omit.
-function Update-AristaInterfaceStatus {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
+# This is a helper function to create the $Device object if 'show run' isn't used.
+function Get-AristaHostname {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowHostnameFile,
+        [parameter(Mandatory = $true)]
+        $Device
     )
+    
+    $ShowHostnameText = Get-Content -raw $ShowHostnameFile
+    if (($ShowHostnameText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowHostnameText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
 
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterfaceStatus')) { return }
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_hostname.textfsm" -ShowFile $ShowHostnameFile -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with show hostname on Arista."
+        return $Device
+    }
 
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_interfaces_status' -Path $Path
-    if (@($rows).Count -eq 0) { return }
+    $Device.hostname = $Device.ProcessOutputObjects[0]
+    return $Device
+}
 
-    # --- MAP + MERGE ---
-    foreach ($row in $rows) {
-        $existing = Resolve-AristaInterface -Device $Device -Name $row.PORT -NoCreate
-        if ($existing) {
-            if ([string]::IsNullOrEmpty($existing.Description))          { $existing.Description = $row.NAME }
-            if ([string]::IsNullOrEmpty($existing.IntStatus))            { $existing.IntStatus = $row.STATUS }
-            if ([string]::IsNullOrEmpty($existing.SwitchportAccessVlan) -and $row.VLAN_ID -notin @('trunk','routed')) { $existing.SwitchportAccessVlan = $row.VLAN_ID }
-            if ([string]::IsNullOrEmpty($existing.Duplex))               { $existing.Duplex = $row.DUPLEX }
-            if ([string]::IsNullOrEmpty($existing.Speed))                { $existing.Speed = $row.SPEED }
-            if ([string]::IsNullOrEmpty($existing.MediaType))            { $existing.MediaType = $row.TYPE }
-            continue
+#Process the show version file
+function Get-AristaShowVersionFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowVersionFile,
+        [parameter(Mandatory = $true)]
+        $Device,
+        $ShowReloadCauseFile # Optional
+    )
+    
+    $ShowVersionText = Get-Content -raw $ShowVersionFile
+    if (($ShowVersionText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowVersionText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
+
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_version.textfsm" -ShowFile $ShowVersionFile -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with show version on Arista."
+        return $Device
+    }
+
+    $VersionObject = Create-ShowVersionObject
+    $VersionObject.OS = $Device.ProcessOutputObjects[5] # IMAGE
+    $VersionObject.Uptime = $Device.ProcessOutputObjects[7] # UPTIME
+    $VersionObject.Image = $Device.ProcessOutputObjects[5] # IMAGE
+    $VersionObject.Hardware = @($Device.ProcessOutputObjects[0]) # MODEL
+    $VersionObject.Serial = @($Device.ProcessOutputObjects[2]) # SERIAL_NUMBER
+    $VersionObject.MacAddressArray = @($Device.ProcessOutputObjects[3]) # SYS_MAC
+    $VersionObject.Type = "Arista-EOS"
+
+    # If a reload cause file is provided, process it
+    if ($ShowReloadCauseFile -and (Test-Path -Path $ShowReloadCauseFile)) {
+        $ShowReloadCauseText = Get-Content -raw $ShowReloadCauseFile
+        if (-not ($ShowReloadCauseText | Select-String "(Line has invalid autocommand|Invalid input detected at)").Matches.Success) {
+            
+            # Use a *temporary* variable for the TextFSM output, so we don't overwrite the 'show version' output
+            $TempDevice = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_reload_cause.textfsm" -ShowFile $ShowReloadCauseFile -HostObject $Device
+            
+            if ($TempDevice.ProcessOutputObjects -ne "ERROR") {
+                $VersionObject.ReasonForRelod = $TempDevice.ProcessOutputObjects[0] # RELOAD_CAUSE
+            } else {
+                Add-HostDebugText -HostObject $Device "Error processing reload cause file." -BackgroundColor Yellow
+            }
+        }
+    }
+
+    $Device.Version = $VersionObject
+    return $Device
+}
+
+#Process the Show LLDP Details file
+function Get-AristaShowLLDPNeighborsDetailsFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowLLDPDetailsFile,
+        [parameter(Mandatory = $true)]
+        $Device,
+        $ShowLLDPFile #Optional fix for missing lldp neighbors
+    )
+    
+    $ShowLLDPDetailText = Get-Content -raw $ShowLLDPDetailsFile
+    $AllLLDPDetailsObjects = @() 
+    if (($ShowLLDPDetailText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowLLDPDetailText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
+
+    # Arista's 'show lldp neighbors detail' template is reliable and includes the local interface.
+    # We will prioritize it.
+    
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_lldp_neighbors_detail.textfsm" -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with show lldp neighbors details on Arista."
+        return $Device
+    }
+    
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    foreach ($LLDPNeighbor in $Device.ProcessOutputObjects) {
+        # $LLDPNeighbor[0] = NEIGHBOR_NAME
+        # $LLDPNeighbor[1] = CHASSIS_ID
+        # $LLDPNeighbor[2] = MGMT_ADDRESS
+        # $LLDPNeighbor[3] = NEIGHBOR_DESCRIPTION
+        # $LLDPNeighbor[4] = NEIGHBOR_INTERFACE
+        # $LLDPNeighbor[5] = LOCAL_INTERFACE
+        # $LLDPNeighbor[6] = NEIGHBOR_COUNT
+        # $LLDPNeighbor[7] = AGE
+        
+        # Skip phones if configured
+        if ($GSkipCDPLLDPPhones) {
+            if (($LLDPNeighbor[3] -like "*Phone*") -or ($LLDPNeighbor[3] -like "*Endpoint*")) {
+                continue
+            }
         }
 
-        $interface = Resolve-AristaInterface -Device $Device -Name $row.PORT
-        $interface.Description = $row.NAME
-        $interface.IntStatus = $row.STATUS
-        $interface.shutdown = $row.STATUS -notin @('connected','up')
-        if ($row.VLAN_ID -notin @('trunk','routed')) { $interface.SwitchportAccessVlan = $row.VLAN_ID }
-        elseif ($row.VLAN_ID -eq 'trunk')            { $interface.SwitchportMode = 'trunk' }
-        else                                         { $interface.SwitchPortType = 'Routed' }
-        $interface.Duplex = $row.DUPLEX
-        $interface.Speed = $row.SPEED
-        $interface.MediaType = $row.TYPE
-    }
-}
+        $LLDPObject = Create-LLDPNeighborObject
+        $LLDPObject.Hostname = $LLDPNeighbor[0].trim()
+        $LLDPObject.ChassisID = $LLDPNeighbor[1].trim()
+        $LLDPObject.ManagementIP = $LLDPNeighbor[2].trim()
+        $LLDPObject.SystemDescription = $LLDPNeighbor[3].trim()
+        $LLDPObject.InterfaceRemoteDevice = (Replace-InterfaceShortName -string $LLDPNeighbor[4])
+        $LLDPObject.PortID = $LLDPNeighbor[4].trim() # Use the raw port ID for matching
+        $LLDPObject.InterfaceLocalDevice = (Replace-InterfaceShortName -string $LLDPNeighbor[5])
+        $LLDPObject.ParentObject = $Device.hostname
 
-# Parses 'show ip bgp summary' into the device's BGP neighbour objects.
-function Update-AristaBgpSummary {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
+        if ([string]::IsNullOrEmpty($LLDPObject.Hostname)) {
+            $LLDPObject.Hostname = $LLDPObject.ChassisID
+        }
 
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowIPBGPSummary')) { return }
-    # A switch with BGP configured but not running answers with this rather than an error.
-    if ((Get-MTAutoDrawCaptureText -Path $Path) -match 'BGP not active') {
-        Write-MTAutoDrawDiagnostic -Device $Device -Message 'BGP is not active on this device; no neighbours to parse.'
-        return
+        # Find the local interface on the $Device object and update it
+        $TempInterface = $device.interfaces | where { $_.interface -eq $LLDPObject.InterfaceLocalDevice }
+        if ($TempInterface) {
+            $TempInterface.HasLLDPNeighbor = $true
+            # Check if it also has a CDP neighbor (unlikely on Arista, but good practice)
+            if ($TempInterface.HasCPDNieghbor) { 
+                $LLDPObject.HasCDPNeighborEntry = $true
+            }
+        }
+
+        $AllLLDPDetailsObjects += $LLDPObject
     }
 
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_ip_bgp_summary' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    $Device.BGPNeighbors = @(foreach ($row in $rows) {
-        $neighbor = Create-BGPNeighborObject
-        $neighbor.LOCAL_AS = $row.LOCAL_AS
-        $neighbor.VRF = $row.VRF
-        $neighbor.DESCRIPTION = $row.DESCRIPTION
-        $neighbor.NEIGHBOR = $row.BGP_NEIGH
-        $neighbor.REMOTE_AS = $row.NEIGH_AS
-        $neighbor.BGP_STATE = $row.STATE
-        $neighbor
-    })
-    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message " -> Populated $(@($Device.BGPNeighbors).Count) BGP neighbors from summary file."
+    $device.LLDPNeighbors = $AllLLDPDetailsObjects | sort -property @{Expression = {[int]($_.InterfaceLocalDevice -replace '[a-zA-Z-]+', '' -replace "/", '')}}
+    return $Device
 }
 
-# Parses 'show ip route' into the device's routing table. The capture is chosen by
-# Select-AristaRouteCapture, which prefers an all-VRF table over the single-VRF one.
-function Update-AristaRoutes {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
+#Process the show interfaces file.
+function Get-AristaShowInterfaceFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowInterfaceFile,
+        $Device
+    )
+    
+    $ShowInterfaceText = Get-Content -raw $ShowInterfaceFile
+    if (($ShowInterfaceText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowInterfaceText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
+
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_interfaces.textfsm" -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with show interfaces on Arista."
+        return $Device
+    }
+
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+    
+    $UpdateOnly = $false # Flag to track if we are only updating existing interfaces
+    if ($Device.interfaces.Count -gt 0) {
+        $UpdateOnly = $true
+    }
+    
+    $AllInterfaces = @() # Used if we are creating interfaces from scratch
+
+    foreach ($int in $Device.ProcessOutputObjects) {
+        # $int[0] = INTERFACE
+        # $int[1] = LINK_STATUS
+        # $int[2] = PROTOCOL_STATUS
+        # $int[3] = HARDWARE_TYPE
+        # $int[4] = MAC_ADDRESS
+        # $int[5] = BIA
+        # $int[6] = DESCRIPTION
+        # $int[7] = IP_ADDRESS (e.g., 10.1.1.1/24)
+        # $int[8] = MTU
+        # $int[9] = BANDWIDTH (e.g., 10 Gbit/s)
+        
+        $InterfaceName = (Replace-InterfaceShortName -string $int[0])
+        $Interface = $Device.interfaces | where { $_.interface -eq $InterfaceName }
+
+        if ($Interface) { #We already have the interface from show run. Just update some variables.
+            $UpdateOnly = $true # Confirm we are in update mode
+            
+            $Interface.IntStatus = $int[1] -replace "administratively ", '' -replace "\s*\(.*", ''
+            $Interface.INTProtocolStatus = $int[2] -replace "\s*\(.*", '' -replace ",.*", ''
+            $Interface.HardwareType = $int[3]
+            $interface.macaddress = $int[4]
+            
+            # Only update description if it's not already set (show run is preferred)
+            if ([string]::IsNullOrEmpty($Interface.Description)) {
+                $Interface.Description = $int[6]
+            }
+
+            # Only update IP if not already set (show run is preferred)
+            if ([string]::IsNullOrEmpty($Interface.IPAddress) -and -not [string]::IsNullOrEmpty($int[7])) {
+                $IPFields = $int[7].Split('/')
+                $Interface.IPAddress = $IPFields[0]
+                $Interface.SubnetMask = $IPFields[1]
+                if ($Interface.IPAddress -and $Interface.SubnetMask) {
+                    $Interface.Cidr = (Get-IPv4Subnet -IPAddress $Interface.IPAddress -PrefixLength $Interface.SubnetMask).cidrid
+                }
+            }
+            
+            $Interface.Speed = $int[9] -replace "bit/s", "b/s" # Standardize format
+        }
+        else {
+            # If we are in 'UpdateOnly' mode, it means we found an interface
+            # in 'show interface' that wasn't in 'show run'. Log it.
+            if ($UpdateOnly) {
+                Add-HostDebugText -HostObject $Device "Found interface '$($InterfaceName)' in 'show interfaces' but not in 'show run'. Skipping." -BackgroundColor Yellow
+                continue
+            }
+            
+            # We are creating interfaces from scratch (no 'show run' data)
+            $Interface = Create-InterfaceObject
+            $Interface.Interface = $InterfaceName
+            $Interface.IntStatus = $int[1] -replace "administratively ", '' -replace "\s*\(.*", ''
+            $Interface.INTProtocolStatus = $int[2] -replace "\s*\(.*", '' -replace ",.*", ''
+            
+            if ($Interface.IntStatus -eq "down" -or $Interface.INTProtocolStatus -eq "down") {
+                $Interface.shutdown = $true
+            }
+
+            $Interface.HardwareType = $int[3]
+            $interface.macaddress = $int[4]
+            $Interface.Description = $int[6]
+
+            if (-not [string]::IsNullOrEmpty($int[7])) {
+                $IPFields = $int[7].Split('/')
+                $Interface.IPAddress = $IPFields[0]
+                $Interface.SubnetMask = $IPFields[1]
+                if ($Interface.IPAddress -and $Interface.SubnetMask) {
+                    $Interface.Cidr = (Get-IPv4Subnet -IPAddress $Interface.IPAddress -PrefixLength $Interface.SubnetMask).cidrid
+                }
+            }
+            $Interface.Speed = $int[9] -replace "bit/s", "b/s" # Standardize format
+            $AllInterfaces += $Interface
+        }
+    }
+
+    if (-not $UpdateOnly) {
+        $device.interfaces = $AllInterfaces
+    }
+    
+    return $device
+}
+
+#Process the show ip interface brief file
+function Get-AristaShowIPInterfaceBriefFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowIPInterfaceBriefFile,
+        $Device
+    )
+    
+    $ShowIPInterfaceBriefText = Get-Content -raw $ShowIPInterfaceBriefFile
+    if (($ShowIPInterfaceBriefText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowIPInterfaceBriefText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
+
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_interface_brief.textfsm" -ShowFile $ShowIPInterfaceBriefFile -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with Show IP Int Brief on Arista."
+        return $Device
+    }
+
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    foreach ($int in $Device.ProcessOutputObjects) {
+        # $int[0] = INTERFACE
+        # $int[1] = IP_ADDRESS
+        # $int[2] = STATUS
+        # $int[3] = PROTOCOL
+        # $int[4] = MTU
+        
+        $InterfaceName = (Replace-InterfaceShortName -string $int[0])
+        $Interface = $Device.interfaces | where { $_.interface -eq $InterfaceName } | select -first 1
+
+        if ($Interface) {
+            # Only update if 'show interface' (more detailed) hasn't already
+            if ([string]::IsNullOrEmpty($Interface.IntStatus)) {
+                $Interface.IntStatus = $int[2]
+            }
+            if ([string]::IsNullOrEmpty($Interface.INTProtocolStatus)) {
+                $Interface.INTProtocolStatus = $int[3]
+            }
+            # Only update IP if not already set (show run is preferred)
+            if ([string]::IsNullOrEmpty($Interface.IPAddress) -and $int[1] -ne "unassigned") {
+                 $Interface.IPAddress = $int[1]
+                 # Note: This template doesn't provide a subnet mask.
+            }
+        }
+        else {
+            Add-HostDebugText -HostObject $Device "$($int) not found in list of interfaces $($InterfaceName). Replace-InterfaceShortName is probably the cause."
+        }
+    }
+    return $Device
+}
+
+#Process 'show interface status'
+function Get-AristaShowInterfaceStatusFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowInterfaceStatusFile,
+        $Device
+    )
+    
+    $ShowInterfaceStatusText = Get-Content -raw $ShowInterfaceStatusFile
+    if (($ShowInterfaceStatusText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowInterfaceStatusText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
+
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_interfaces_status.textfsm" -ShowFile $ShowInterfaceStatusFile -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with Show Interface status Arista."
+        return $Device
+    }
+
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    foreach ($int in $Device.ProcessOutputObjects) {
+        # $int[0] = PORT
+        # $int[1] = NAME (Description)
+        # $int[2] = STATUS
+        # $int[3] = VLAN_ID
+        # $int[4] = DUPLEX
+        # $int[5] = SPEED
+        # $int[6] = TYPE (Media Type)
+        
+        $InterfaceName = (Replace-InterfaceShortName -string $int[0])
+        $Interface = $Device.interfaces | where { $_.interface -eq $InterfaceName } | select -first 1
+
+        if ($Interface) {
+            if ([string]::IsNullOrEmpty($Interface.Description)) {
+                 $Interface.Description = $int[1]
+            }
+            if ([string]::IsNullOrEmpty($Interface.IntStatus)) {
+                $Interface.IntStatus = $int[2]
+            }
+            if ([string]::IsNullOrEmpty($Interface.SwitchportAccessVlan) -and $int[3] -ne "trunk" -and $int[3] -ne "routed") {
+                $Interface.SwitchportAccessVlan = $int[3]
+            }
+            if ([string]::IsNullOrEmpty($Interface.Duplex)) {
+                 $Interface.Duplex = $int[4]
+            }
+             if ([string]::IsNullOrEmpty($Interface.Speed)) {
+                 $Interface.Speed = $int[5]
+            }
+             if ([string]::IsNullOrEmpty($Interface.MediaType)) {
+                 $Interface.MediaType = $int[6]
+            }
+        }
+        else {
+            Add-HostDebugText -HostObject $Device "$($int) not found in list of interfaces $($InterfaceName). Replace-InterfaceShortName is probably the cause."
+        }
+    }
+    return $Device
+}
+
+#Process the 'show ip bgp summary' file to populate BGP neighbors
+function Get-AristaShowIPBGPSummaryFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $BGPSummaryFile,
+        $Device
     )
 
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowIPRoute')) { return }
+    $BGPSummaryText = Get-Content -raw $BGPSummaryFile
+    if (($BGPSummaryText | Select-String "(BGP not active|Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($BGPSummaryText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "BGP Summary file contains invalid data or is empty." -BackgroundColor red
+        return $Device
+    }
 
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_ip_route' -Path $Path
-    if (@($rows).Count -eq 0) { return }
+    $AllBGPNeighbors = @()
 
-    # Egress-interface lookup for routes whose next hop is on a connected subnet. The last answer is
-    # cached because a routing table is overwhelmingly consecutive runs of the same next hop, which
-    # is also why the rows are sorted by next hop first.
-    $activeInterfaces = @($Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne 'down' })
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_bgp_summary.textfsm" -ShowFile $BGPSummaryFile -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error processing Arista BGP summary file: $($BGPSummaryFile)" -BackgroundColor Red
+        return $device
+    }
+
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+
+    foreach ($SummaryData in $Device.ProcessOutputObjects) {
+        # $SummaryData[0] = ROUTER_ID
+        # $SummaryData[1] = LOCAL_AS
+        # $SummaryData[2] = VRF
+        # $SummaryData[3] = DESCRIPTION
+        # $SummaryData[4] = BGP_NEIGH
+        # $SummaryData[5] = NEIGH_AS
+        # $SummaryData[6] = MSG_RCVD
+        # $SummaryData[7] = MSG_SENT
+        # $SummaryData[8] = IN_QUEUE
+        # $SummaryData[9] = OUT_QUEUE
+        # $SummaryData[10] = UP_DOWN
+        # $SummaryData[11] = STATE
+        # $SummaryData[12] = STATE_PFXRCD
+        # $SummaryData[13] = STATE_PFXACC
+        
+        $NeighborObject = Create-BGPNeighborObject
+        $NeighborObject.LOCAL_AS = $SummaryData[1]
+        $NeighborObject.VRF = $SummaryData[2]
+        $NeighborObject.DESCRIPTION = $SummaryData[3]
+        $NeighborObject.NEIGHBOR = $SummaryData[4]
+        $NeighborObject.REMOTE_AS = $SummaryData[5]
+        $NeighborObject.BGP_STATE = $SummaryData[11]
+
+        $AllBGPNeighbors += $NeighborObject
+    }
+
+    $device.BGPNeighbors = $AllBGPNeighbors
+    Add-HostDebugText -HostObject $Device " -> Populated $($AllBGPNeighbors.Count) BGP neighbors from summary file."
+    return $device
+}
+
+#Process the show ip route file
+function Get-AristaShowIPRouteFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowIPRouteFile,
+        $ShowIPRouteVRFstar, # Arista uses 'show ip route vrf all' or just 'show ip route'
+        $Device
+    )
+
+    $AllRouteObjects = @()
+    $FileToProcess = $null
+    
+    # Prioritize the 'vrf all' file if it exists and is valid
+    if ($ShowIPRouteVRFstar -and (Test-Path $ShowIPRouteVRFstar)) {
+        $ShowRouteText = Get-Content -raw $ShowIPRouteVRFstar
+        if (-not ($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at)").Matches.Success) {
+            $FileToProcess = $ShowIPRouteVRFstar
+            Add-HostDebugText -HostObject $Device "Using 'show ip route vrf all' file."
+        }
+    }
+
+    # Fall back to the standard 'show ip route' file
+    if ($null -eq $FileToProcess -and $ShowIPRouteFile -and (Test-Path $ShowIPRouteFile)) {
+         $ShowRouteText = Get-Content -raw $ShowIPRouteFile
+         if (-not ($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at)").Matches.Success) {
+            $FileToProcess = $ShowIPRouteFile
+            Add-HostDebugText -HostObject $Device "Using standard 'show ip route' file."
+        }
+    }
+    
+    if ($null -eq $FileToProcess) {
+        Add-HostDebugText -HostObject $Device "No valid 'show ip route' file found." -BackgroundColor red
+        return $Device
+    }
+
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_route.textfsm" -ShowFile $FileToProcess -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with show ip route on Arista." -BackgroundColor red
+        return $Device
+    }
+    
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+    
+    # OPTIMIZATION: Cache active interfaces
+    $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
     $lastGateway = $null
     $lastInterface = $null
 
-    # --- MAP + MERGE ---
-    $Device.RoutingTable = @(foreach ($row in ($rows | Sort-Object { $_.NEXT_HOP })) {
-        $route = Create-RouteObject
-        $route.VRF = $row.VRF
-        $route.RouteProtocol = $row.PROTOCOL
-        $route.Subnet = "$($row.NETWORK)/$($row.PREFIX_LENGTH)"
-        $route.DISTANCE = $row.DISTANCE
-        $route.METRIC = $row.METRIC
-        # NEXT_HOP and INTERFACE are List values; a route with equal-cost paths carries several.
-        $route.gateway = [string](@($row.NEXT_HOP) | Select-Object -First 1)
-        $route.Interface = [string](@($row.INTERFACE) | Select-Object -First 1)
-        if ($route.gateway -eq 'connected') { $route.gateway = $null }
-        $route.defaultgateway = $route.Subnet -eq '0.0.0.0/0'
+    $AllRouteObjects = foreach ($Route in ($Device.ProcessOutputObjects | Sort-Object { $_[7] })) {
+        # $Route[0] = VRF
+        # $Route[1] = PROTOCOL
+        # $Route[2] = NETWORK
+        # $Route[3] = PREFIX_LENGTH
+        # $Route[4] = DISTANCE
+        # $Route[5] = METRIC
+        # $Route[6] = DIRECT
+        # $Route[7] = NEXT_HOP (List)
+        # $Route[8] = INTERFACE (List)
+        
+        $RouteObject = Create-RouteObject
+        $RouteObject.VRF = $Route[0]
+        $RouteObject.RouteProtocol = $Route[1]
+        $RouteObject.Subnet = "$($Route[2])/$($Route[3])"
+        $RouteObject.DISTANCE = $Route[4]
+        $RouteObject.METRIC = $Route[5]
+        $RouteObject.gateway = $Route[7]  # This is a List, but we'll take the first one
+        $RouteObject.Interface = $Route[8] # This is a List, but we'll take the first one
 
-        if ($route.gateway -and $route.gateway -ne 'Null0' -and $route.RouteProtocol -notin 'local', 'connected', 'direct') {
-            if ($route.gateway -eq $lastGateway) {
-                $route.Interface = $lastInterface
+        # Handle default gateway
+        if ($RouteObject.Subnet -eq "0.0.0.0/0") {
+            $RouteObject.defaultgateway = $true
+        }
+
+        # Find the outbound interface for non-connected routes
+        if ($RouteObject.gateway -and ($RouteObject.gateway -ne "Null0") -and ($RouteObject.RouteProtocol -ne "local") -and ($RouteObject.RouteProtocol -ne "connected") -and ($RouteObject.RouteProtocol -ne "direct")) {
+            if ($RouteObject.gateway -eq $lastGateway) {
+                $RouteObject.Interface = $lastInterface
             }
             else {
                 $found = $false
-                foreach ($interface in $activeInterfaces) {
-                    if ((Find-Subnet -addr1 $interface.cidr -addr2 $route.gateway).condition) {
-                        $route.Interface = $interface.Interface
-                        $lastGateway = $route.gateway
-                        $lastInterface = $interface.Interface
+                foreach ($Interface in $ActiveInterfaces) {
+                    if ((Find-Subnet -addr1 $Interface.cidr -addr2 $RouteObject.gateway).condition) {
+                        $RouteObject.Interface = $Interface.Interface
+                        $lastGateway = $RouteObject.gateway
+                        $lastInterface = $Interface.Interface
                         $found = $true
                         break
                     }
                 }
                 if (-not $found) {
-                    Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "No matching interface found for gateway $($route.gateway)"
+                    Add-HostDebugText -HostObject $Device "No matching interface found for gateway $($RouteObject.gateway)" -BackgroundColor Yellow
                 }
             }
         }
-        $route
-    })
-    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "$(@($Device.RoutingTable).Count) routes found"
+        $RouteObject # Output to the collection
+    }
+    
+    Add-HostDebugText -HostObject $Device "$($AllRouteObjects.count) routes found"
+    $device.RoutingTable = $AllRouteObjects
+    return $Device
 }
 
-# Parses 'show ip arp' into the device's ARP entries, associating each with the most specific
-# connected subnet it falls inside.
-function Update-AristaArp {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
+#Process the show ip arp file
+function Get-AristaShowIPArpFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowIPArpFile,
+        $Device
     )
+    
+    $ShowIPArpText = Get-Content -raw $ShowIPArpFile
+    if (($ShowIPArpText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
 
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowIPArp')) { return }
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_ip_arp.textfsm" -ShowFile $ShowIPArpFile -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with show ip arp on Arista."
+        return $Device
+    }
 
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_ip_arp' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
+    
+    # --- OPTIMIZATION START ---
     $subnetLookup = @{}
-    foreach ($interface in @($Device.interfaces | Where-Object { $_.Cidr })) { $subnetLookup[$interface.Cidr] = $true }
+    $device.interfaces | Where-Object { $_.Cidr } | ForEach-Object { $subnetLookup[$_.Cidr] = $true }
+    # --- OPTIMIZATION END ---
 
-    # --- MAP + MERGE ---
-    $Device.IPArpEntries = @(foreach ($row in $rows) {
-        $arp = Create-ShowIPArpObject
-        $arp.ipaddress = ([string]$row.IP_ADDRESS).Trim()
-        $arp.AGE = ([string]$row.AGE).Trim()
-        $arp.MAC = ([string]$row.MAC_ADDRESS).Trim()
-        $arp.INTERFACE = ([string]$row.INTERFACE).Trim()
-        $arp.VendorCompanyName = Get-AristaMacVendor -MacAddress $arp.MAC
-
-        # Longest prefix first, so a /30 wins over the /24 containing it.
-        for ($prefix = 32; $prefix -ge 1; $prefix--) {
-            $candidate = Get-NormalizedIPv4Cidr -IPAddress $arp.ipaddress -PrefixLength ([string]$prefix)
-            if ($candidate -and $subnetLookup.ContainsKey($candidate.Cidr)) { $arp.cidr = $candidate.Cidr; break }
+    $device.IPArpEntries = foreach ($IPArpEntry in $Device.ProcessOutputObjects) {
+        # $IPArpEntry[0] = IP_ADDRESS
+        # $IPArpEntry[1] = AGE
+        # $IPArpEntry[2] = MAC_ADDRESS
+        # $IPArpEntry[3] = INTERFACE
+        # $IPArpEntry[4] = VRF
+        
+        $IPArpObject = Create-ShowIPArpObject
+        $IPArpObject.ipaddress = $IPArpEntry[0].trim()
+        $IPArpObject.AGE = $IPArpEntry[1].trim()
+        $IPArpObject.MAC = $IPArpEntry[2].trim()
+        $IPArpObject.INTERFACE = $IPArpEntry[3].trim()
+        
+        # Get Vendor from MAC
+        $MacInOtherFormat = ($IPArpObject.MAC -replace '\.', '').insert(2, ":").insert(5, ":").insert(8, ":").insert(11, ":").insert(14, ":")
+        if ($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 8)]) {
+            $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 8)]
         }
-        $arp
-    })
+        elseif ($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 5)]) {
+            $IPArpObject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 5)]
+        }
+        else {
+            $IPArpObject.VendorCompanyName = "UNKNOWN Vendor"
+        }
+        
+        # --- OPTIMIZATION START ---
+        for ($prefix = 32; $prefix -ge 1; $prefix--) {
+            $candidateCidr = (Get-IPv4Subnet -IPAddress $IPArpObject.ipaddress -PrefixLength $prefix).CIDRId
+            if ($subnetLookup.ContainsKey($candidateCidr)) {
+                $IPArpObject.cidr = $candidateCidr
+                break 
+            }
+        }
+        # --- OPTIMIZATION END ---
+
+        $IPArpObject # Output the object
+    }
+    return $Device
 }
 
-# Parses 'show mac address-table' into the per-interface MAC lists the layer 2 pages draw from.
-function Update-AristaMacAddressTable {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
+#Process the show mac address-table file
+function Get-AristaShowMacAddressTableFromText {
+    param (
+        [parameter(Mandatory = $true)]
+        $ShowMacAddressTable,
+        $Device
     )
+    
+    $ShowMacAddressTableText = Get-Content -raw $ShowMacAddressTable
+    if (($ShowMacAddressTableText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success) {
+        Add-HostDebugText -HostObject $Device "$($ShowMacAddressTableText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor red
+        return $Device
+    }
 
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowMacAddressTable')) { return }
+    $Device = Execute-PythonTextFSM -TextFSTETemplate "arista_eos_show_mac_address-table.textfsm" -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
+    if ($Device.ProcessOutputObjects -eq "ERROR") {
+        Add-HostDebugText -HostObject $Device "Error with show mac address-table on Arista processing."
+        return $Device
+    }
 
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'arista_eos_show_mac_address-table' -Path $Path
-    if (@($rows).Count -eq 0) { return }
+    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
+        $tempArray = @()
+        $tempArray += , $Device.ProcessOutputObjects
+        $Device.ProcessOutputObjects = $tempArray
+    }
 
-    # --- MAP + MERGE ---
-    foreach ($row in $rows) {
-        # DESTINATION_PORT is a List: one MAC can be learned on several ports.
-        foreach ($port in @($row.DESTINATION_PORT)) {
-            if (-not $port -or $port -in @('CPU', 'Router', 'Switch')) { continue }
-
-            $macEntry = Create-MacAddressObject
-            $macEntry.Interface = (Replace-InterfaceShortName -String $port)
-            if (-not (Check-InterfaceType -string $macEntry.Interface)) { continue }
-
-            $macEntry.MacAddress = ([string]$row.MAC_ADDRESS).Trim()
-            $macEntry.type = ([string]$row.TYPE).Trim()
-            $macEntry.vlan = ([string]$row.VLAN_ID).Trim()
-            $macEntry.VendorCompanyName = Get-AristaMacVendor -MacAddress $macEntry.MacAddress
-
-            $interface = Resolve-AristaInterface -Device $Device -Name $macEntry.Interface -NoCreate
-            if (-not $interface) {
-                Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "We could not find the interface $($macEntry.Interface) on the switch. Replace-InterfaceShortName might be the problem."
+    foreach ($Mac in $Device.ProcessOutputObjects) {
+        # $Mac[0] = MAC_ADDRESS
+        # $Mac[1] = TYPE
+        # $Mac[2] = VLAN_ID
+        # $Mac[3] = DESTINATION_PORT (List)
+        # $Mac[4] = MOVES
+        # $Mac[5] = LAST_MOVE
+        
+        # Process each port in the DESTINATION_PORT list
+        foreach ($Port in $Mac[3]) {
+            if ($Port -eq $null -or $Port -eq "" -or $Port -eq "CPU" -or $Port -eq "Router" -or $Port -eq "Switch") {
                 continue
             }
-            $interface.MacAddressArray += ,$macEntry
+
+            $MacAddressobject = Create-MacAddressObject
+            $MacAddressobject.Interface = (Replace-InterfaceShortName -string $Port)
+
+            if (!(Check-InterfaceType -string $MacAddressobject.Interface)) {
+                continue #Skip if we don't have a valid interface.
+            }
+
+            $MacAddressobject.MacAddress = ($Mac[0]).trim()
+            $MacAddressobject.type = ($Mac[1]).trim()
+            $MacAddressobject.vlan = ($Mac[2]).trim()
+            
+            # Get Vendor
+            $MacInOtherFormat = ($Mac[0] -replace '\.', '').insert(2, ":").insert(5, ":").insert(8, ":").insert(11, ":").insert(14, ":")
+            if ($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 8)]) {
+                $MacAddressobject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 8)]
+            }
+            elseif ($GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 5)]) {
+                $MacAddressobject.VendorCompanyName = $GMacAddressToVendorMapping[$MacInOtherFormat.Substring(0, 5)]
+            }
+            else {
+                $MacAddressobject.VendorCompanyName = "UNKNOWN Vendor"
+            }
+            
+            # Find the interface on the device and add this MAC
+            $DeviceInterface = $device.interfaces | where { $_.interface -eq $MacAddressobject.Interface }
+            if ($null -eq $DeviceInterface) {
+                Add-HostDebugText -HostObject $Device "We could not find the interface $($MacAddressobject.Interface) on the switch. Replace-InterfaceShortName might be the problem." -BackgroundColor red
+                continue
+            }
+            $DeviceInterface.MacAddressArray += , $MacAddressobject
         }
     }
-}
-
-# --- Orchestrator ---------------------------------------------------------------------------------
-
-function Process-AristaHostFiles {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$HostID,
-        $ArrayOfObjects   # Kept for dispatcher signature compatibility; duplicate detection is sequential.
-    )
-
-    # 1. IDENTITY - the running config first, then 'show hostname'.
-    $device = New-MTAutoDrawDevice -Platform 'AristaEOS' -HostID $HostID
-    Update-AristaRunningConfig -Device $device -Path $HostID.ShowRun
-    Update-AristaHostname      -Device $device -Path $HostID.ShowHostname
-    if (-not $device.hostname) {
-        # Some collectors omit both running-config and show hostname. The capture identifier is
-        # accurate and stable, so retain the device under that identifier instead of dropping it.
-        $device.hostname = $HostID.HOSTID
-        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $device -Message "Arista hostname capture is unavailable; using capture identifier '$($HostID.HOSTID)'."
-    }
-    Write-MTAutoDrawLog -Level Info -Phase Parse -Device $device -Message "Processing Arista Host: $($device.hostname)"
-
-    # 2. CAPTURES - one line per slot, in dependency order. The neighbour captures run before the
-    # interface ones, as they always have: the detail reader only annotates interfaces that already
-    # exist, and on EOS none do at that point. Trunk, spanning-tree, route and ARP data then merge
-    # onto the interfaces the three interface readers created. Arista devices do not run CDP, so
-    # there is no CDP reader.
-    Update-AristaVersion             -Device $device -Path $HostID.ShowVersion
-    Update-AristaReloadCause         -Device $device -Path $HostID.ShowReloadCause
-    Update-AristaLldpNeighborDetails -Device $device -Path $HostID.ShowLLDPNeighborsDetails
-    Update-AristaLldpNeighbors       -Device $device -Path $HostID.ShowLLDPNeighbors
-    Update-AristaInterfaces          -Device $device -Path $HostID.ShowInterface
-    Update-AristaInterfaceBrief      -Device $device -Path $HostID.ShowIPInterfaceBrief
-    Update-AristaInterfaceStatus     -Device $device -Path $HostID.ShowInterfaceStatus
-    Update-AristaVlans               -Device $device -Path $HostID.ShowVlan
-    Update-AristaInterfaceTrunks     -Device $device -Path $HostID.ShowInterfaceTrunk
-    Update-AristaSpanningTree        -Device $device -Path $HostID.ShowSpanningTree
-    Update-AristaBgpSummary          -Device $device -Path $HostID.ShowIPBGPSummary
-    Update-AristaRoutes              -Device $device -Path (Select-AristaRouteCapture -Device $device -HostID $HostID)
-    if ($GDrawAprEntries) { Update-AristaArp -Device $device -Path $HostID.ShowIPArp }
-    # GDrawCDP is the "draw layer 2 links" toggle on this platform, which is what the MAC table feeds.
-    if ($GDrawPortsWithMacs -ne 0 -and $GDrawCDP) { Update-AristaMacAddressTable -Device $device -Path $HostID.ShowMacAddressTable }
-
-    # 3. RECONCILE
-    return (Complete-MTAutoDrawDevice -Device $device)
+    return $Device
 }

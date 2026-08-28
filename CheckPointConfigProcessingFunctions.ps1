@@ -1,4 +1,3 @@
-# MTAutoDraw-Standard: v1
 #MTAudotDraw
 #Copyright (C) 2022  Myles Treadwell
 #
@@ -15,209 +14,334 @@
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Check Point Gaia capture processing. Follows PARSER_STANDARD.md v1; read
-# CiscoIOSXRConfigProcessingFunctions.ps1 alongside it for the reference implementation.
+#This file contains all of the functions that process CheckPoint config.
 
-# --- Platform helpers -----------------------------------------------------------------------------
 
-# Gaia reports two things about the box in two different captures, so both readers merge into one
-# version object rather than each replacing it. Whichever runs first creates it.
-function Get-CheckPointVersionObject {
-    [CmdletBinding()]
-    param([Parameter(Mandatory = $true)]$Device)
-
-    if (-not $Device.Version) { $Device.Version = Create-ShowVersionObject }
-    return $Device.Version
-}
-
-# Interface MACs are held in Cisco dotted-quad form because that is what the Check Point cluster-IP
-# pass in StartProcessingConfig.ps1 compares against. Deliberately not ConvertTo-NormalizedMacAddress.
-function ConvertTo-CheckPointMacAddress {
-    [CmdletBinding()]
-    param([AllowNull()][string]$MacAddress)
-
-    $hex = [string]$MacAddress -replace '[.:\-\s]', ''
-    if ($hex -notmatch '^[0-9A-Fa-f]{12}$') { return $null }
-    return $hex.Insert(4, '.').Insert(9, '.')
-}
-
-# --- Capture readers ------------------------------------------------------------------------------
-# Each one: GUARD, EXTRACT, MAP, MERGE. Each takes -Device and -Path, returns nothing, and is safe to
-# call with a $null path - so the orchestrator needs no per-slot if-wrappers.
-
-# Reads the Gaia running configuration for the device identity. Nothing else in the config is parsed
-# yet; the interface and route captures carry richer data than 'set interface' lines do.
-function Update-CheckPointRunningConfig {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
+#This functions calls all the other functions to process all of the files for a CheckPoint devices.
+#Input: Hostid object.
+#Output: $device object.
+function Process-CheckPointHostFiles{
+        param (
+		[parameter(Mandatory=$true)]
+		$hostid,
+        $ArrayOfObjects
     )
+     # First, create the device object from the config file.
+     if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
+         $config = Get-Content -Path $hostid.showrun -raw
+         # The Get-CheckPointShowRunFromText function now creates and returns the initial $device object.
+         $device=Get-CheckPointShowRunFromText -Lconfig $config
+         $device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
+     }else{
+         # We can't create a device object to log to, so we can't use Add-HostDebugText here.
+         # This will be visible in the main thread's error stream.
+         Write-host "File doesn't exist for hostid '$($hostid.HOSTID)': $($hostid.showrun)"
+         return $null
+     }
 
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRun')) { return }
+     # Now that $device is a valid object, we can log to it.
+     Add-HostDebugText -HostObject $device "Processing CheckPoint Host: $($device.hostname)"
 
-    # --- EXTRACT / MAP / MERGE ---
-    $config = Get-MTAutoDrawCaptureText -Path $Path
-    if ($config -match '(?im)^\s*set hostname\s+(?<hostname>\S+)') {
-        $Device.hostname = $Matches['hostname'].Trim()
-        return
-    }
-
-    # A readable config with no hostname is still a device: the capture group exists, so something
-    # answered. It is flagged rather than dropped so the diagram shows the collection problem.
-    Write-MTAutoDrawDiagnostic -Device $Device -Severity Warning -Message "No hostname found in Check Point configuration: $Path"
-    $Device.hostname = 'NoHostNameFoundCheckForConfigProblems'
-}
-
-# Reads 'show asset all' for the chassis platform, model and serial number.
-function Update-CheckPointAsset {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowAssetAll')) { return }
-
-    # --- EXTRACT ---
-    # 'show asset all' is a flat 'Key: value' list, so it parses to a lookup rather than rows.
-    $asset = @{}
-    foreach ($line in (Get-MTAutoDrawCaptureText -Path $Path -AsLines)) {
-        if ($line -notmatch '^(?<key>[^:]+):(?<value>.*)$') { continue }
-        $asset[$Matches['key'].Trim()] = $Matches['value'].Trim()
-    }
-
-    # --- MAP + MERGE ---
-    $version = Get-CheckPointVersionObject -Device $Device
-    if (-not $version.Type) { $version.Type = 'Checkpoint' }
-    foreach ($key in 'Platform', 'Model') {
-        if ($asset.ContainsKey($key)) { $version.Hardware += $asset[$key] }
-    }
-    if ($asset.ContainsKey('Serial Number')) { $version.Serial += $asset['Serial Number'] }
-}
-
-# Reads 'show version all' for the Gaia release.
-function Update-CheckPointVersion {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowVersion')) { return }
-
-    # --- EXTRACT / MAP / MERGE ---
-    $version = Get-CheckPointVersionObject -Device $Device
-    $version.Type = 'Checkpoint Gaia'
-    $version.OS = $null
-    if ((Get-MTAutoDrawCaptureText -Path $Path) -match 'Product version .*?(?<release>R\d+\.\d+)') {
-        $version.OS = $Matches['release']
-    }
-}
-
-# Reads 'show interfaces all' into the device's interfaces and the networks they front.
-function Update-CheckPointInterfaces {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterface')) { return }
-
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'checkpoint_gaia_show_interfaces_all' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    foreach ($row in $rows) {
-        $interface = Resolve-MTAutoDrawInterface -Device $Device -Name $row.INTERFACE
-
-        # Gaia reports a VLAN sub-interface's link state as "not available" even when it is carrying
-        # traffic, so its administrative state is the only signal that it is up.
-        $interface.shutdown = -not ($row.LINK_STATE -eq 'link up' -or
-            ($row.STATE -eq 'on' -and $row.TYPE -eq 'vlan' -and $row.LINK_STATE -eq 'not available'))
-        $interface.speed       = $row.SPEED
-        $interface.Description = $row.COMMENT
-        $interface.macaddress  = ConvertTo-CheckPointMacAddress -MacAddress $row.MAC_ADDRESS
-
-        # IPV4_ADDRESS is 'a.b.c.d/prefix' when configured, and a word such as 'Not Configured' when not.
-        $address = Get-NormalizedIPv4Cidr -IPAddress $row.IPV4_ADDRESS
-        if (-not $address) { continue }
-        $interface.IPAddress      = $address.IPAddress
-        $interface.SubnetMask     = $address.PrefixLength
-        $interface.Cidr           = $address.Cidr
-        $interface.SwitchPortType = 'Routed'
-
-        # The comment is the closest thing Gaia has to a network name. It is a description rather than
-        # a name, so it reads poorly on a diagram, but it is better than an unlabelled subnet.
-        $routedVlan = $null
-        if ($row.TYPE -eq 'vlan') {
-            $routedVlan = if ($interface.Interface -like '*.*') { "vlan$(($interface.Interface -split '\.')[1])" } else { $interface.Interface }
-        }
-        $null = Add-MTAutoDrawNetwork -Device $Device -Cidr $address.Cidr -RoutedVlan $routedVlan `
-            -NetworkName $interface.Description -IPAddress $address.IPAddress
-    }
-}
-
-# Reads 'show route all' into the device's routing table.
-function Update-CheckPointRoutes {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$Device,
-        [AllowNull()][AllowEmptyString()][string]$Path
-    )
-
-    # --- GUARD ---
-    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRouteAll')) { return }
-
-    # --- EXTRACT ---
-    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'checkpoint_gaia_show_route' -Path $Path
-    if (@($rows).Count -eq 0) { return }
-
-    # --- MAP + MERGE ---
-    # Gaia prints the one-letter code from the legend at the top of the capture rather than a protocol
-    # name. An unrecognised code is carried through as-is rather than dropped.
-    $protocols = @{ C = 'connected'; L = 'local'; S = 'static'; R = 'RIP'; B = 'BGP'; D = 'BGP'; O = 'OSPF' }
-    $Device.RoutingTable = @(foreach ($row in $rows) {
-        $route = Create-RouteObject
-        $route.RouteProtocol = if ($protocols.ContainsKey([string]$row.PROTOCOL)) { $protocols[[string]$row.PROTOCOL] } else { $row.PROTOCOL }
-        $route.Subnet        = "$($row.NETWORK)/$($row.MASK)"
-        $route.gateway       = $row.NEXTHOPIP
-        $route.Interface     = $row.INTERFACE
-        $route
-    })
-}
-
-# --- Orchestrator ---------------------------------------------------------------------------------
-
-function Process-CheckPointHostFiles {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]$HostID,
-        $ArrayOfObjects   # Kept for dispatcher signature compatibility; duplicate detection is sequential.
-    )
-
-    # 1. IDENTITY - the running configuration is the only capture carrying the hostname.
-    $device = New-MTAutoDrawDevice -Platform 'CheckPoint' -HostID $HostID
-    Update-CheckPointRunningConfig -Device $device -Path $HostID.ShowRun
-    if (-not $device.hostname) {
-        Write-MTAutoDrawDiagnostic -Device $device -Severity Warning -Message "Check Point '$($HostID.HOSTID)' has no usable running configuration; skipping host."
+    if($null -eq $device.hostname ){
+        Write-host  "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
         return $null
     }
-    Write-MTAutoDrawLog -Level Info -Phase Parse -Device $device -Message "Processing CheckPoint Host: $($device.hostname)"
 
-    # 2. CAPTURES - one line per slot, in dependency order. Asset runs before version because it is
-    # the coarser of the two: version then refines Type from 'Checkpoint' to the Gaia release line.
-    Update-CheckPointAsset      -Device $device -Path $HostID.ShowAssetAll
-    Update-CheckPointVersion    -Device $device -Path $HostID.ShowVersion
-    Update-CheckPointInterfaces -Device $device -Path $HostID.ShowInterface
-    Update-CheckPointRoutes     -Device $device -Path $HostID.ShowRouteAll
-
-    # 3. RECONCILE
-    return (Complete-MTAutoDrawDevice -Device $device)
+    if($hostid.ShowAssetAll){#
+        Add-HostDebugText -HostObject $device  "Processing checkpoint Show Asset All:$($hostid.ShowAssetAll)"
+        $device=Get-CheckpointShowAssetAllFromText -ShowAssetAll $hostid.ShowAssetAll -Device $device
+    }
+    if($hostid.ShowVersion){#
+        Add-HostDebugText -HostObject $device  "Processing checkpoint show version:$($hostid.ShowVersion)"
+        $device=Get-CheckpointGaiaVersionFromText -Version $hostid.ShowVersion -Device $device
+    }
+    if($hostid.ShowInterface){#
+        Add-HostDebugText -HostObject $device  "Processing checkpoint show interface:$($hostid.ShowInterface)"
+        $device=Get-CheckPointShowInterfaceFromText -CheckPointInterfaceFile $hostid.ShowInterface -Device $device
+    }
+    if($hostid.ShowRouteAll){
+        Add-HostDebugText -HostObject $device  "Processing checkpoint show route all:$($hostid.ShowRouteAll)"
+        $device=Get-CheckpointShowRouteFromText -device $device -ShowRouteFile $hostid.ShowRouteAll
+    }
+    $device = Update-LocalRoutesWithInterfaces -device $device
+    return $device
 }
+
+
+#Read in the checkpoint config. and process it.
+#Note:These is limited processing of the show config for now. This will be expanded in future as required.
+function Get-CheckPointShowRunFromText{
+    param (
+		[parameter(Mandatory=$true)]
+		$Lconfig
+    )
+    #Create host/device object to hold all the parsed data
+    $HostObject=Create-HostObject
+    $HostObject.Origin="config"
+    $ArrayOfHostNetworks=@()
+    $hostname = (($Lconfig| Select-String -Pattern "(set hostname ).+").Matches.Value -replace "set hostname ",'').trim()
+    if($null -eq $hostname  -or $hostname -eq "" ){
+        $hostname = "NoHostNameFoundCheckForConfigProblems"
+        Add-HostDebugText -HostObject $HostObject "No hostname found in checkpoint config" -BackgroundColor red
+    }
+    $HostObject.hostname = $hostname
+    return $HostObject
+}
+
+
+#Get all of the interfaces out of the show interfaces all command.
+#Input:show interfaces all file
+#Output:Interfaces objects.
+function Get-CheckPointShowInterfaceFromText(){
+    param (
+        [parameter(Mandatory=$true)]
+        $CheckPointInterfaceFile,
+        $device
+    )
+    $ArrayOfHostNetworks=@()
+    $interfaces = @()
+    #Read the file into one big string
+    $CheckPointInterfaceText = Get-Content -raw $CheckPointInterfaceFile
+    if(($CheckPointInterfaceText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success){
+        Add-HostDebugText -HostObject $device  "$($CheckPointInterfaceText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $device  "contains invalid data or is empty"  -BackgroundColor red
+        return $device
+    }
+
+    $device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowInterfaceTemplate -ShowFile $CheckPointInterfaceFile -ReturnArray $true -HostObject $device
+    if($device.ProcessOutputObjects -eq "ERROR"){
+        Add-HostDebugText -HostObject $device  "Error with Show Interface on checkpoint file:$($CheckPointInterfaceFile)"
+        return $device
+    }
+    if($device.ProcessOutputObjects.Count -gt 0 -and $device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+        $tempArray = @()
+        $tempArray += ,$device.ProcessOutputObjects
+        $device.ProcessOutputObjects = $tempArray
+    }
+    foreach ($int in $device.ProcessOutputObjects){
+        $interfaceObject = Create-InterfaceObject
+        $interfaceObject.Interface=$int[0]
+        if($int[4] -eq "link up"){
+            $interfaceObject.shutdown=$false
+        }elseif($int[1] -eq "on" -and $int[3] -eq "vlan" -and $int[4] -eq "not available"){
+            #We have a sub interface that should in theory be up based on the state.
+            $interfaceObject.shutdown=$false
+        }else{
+            $interfaceObject.shutdown=$true
+        }
+
+        $interfaceObject.speed=$int[8]
+        $interfaceObject.Description=$int[9]
+        if($int[10]){
+            $interfaceObject.SubnetMask=($int[10] -split "/")[1]
+            $interfaceObject.IPAddress=($int[10] -split "/")[0]
+            $interfaceObject.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
+            $interfaceObject.SwitchPortType="Routed"
+            if($null -ne $interfaceObject.Cidr){
+                $NetworkObject = Create-NetworkObject
+                $NetworkObject.Cidr = $interfaceObject.Cidr
+                $NetworkObject.NetworkName = $interfaceObject.Description #This is probably not very good from a viewing point of view as this is not really a name but a description.
+                if( $int[3] -eq "vlan"){
+                    if($interfaceObject.Interface -like "*.*"){#we have a sub interface. Lets split out the vlan.
+                        $NetworkObject.Routedvlan = "vlan$(($interfaceObject.Interface -split '\.')[1])"
+                    }else{
+                        $NetworkObject.Routedvlan = $interfaceObject.Interface
+                    }
+                }else {
+                    $NetworkObject.Routedvlan = "no vlan"
+                }
+                $ArrayOfHostNetworks += $NetworkObject
+            }
+        }
+        $interfaceObject.macaddress=($int[2] -replace ":",'').insert(4,".").insert(9,".")
+        $interfaces += $interfaceObject
+        #To make it easier in the future.
+
+        #$interfaceObject.shutdown=$int[3]#TYPE
+        #$interfaceObject.shutdown=$int[4]#LINK_STATE
+        #$interfaceObject.shutdown=$int[5]#MTU
+        #$interfaceObject.shutdown=$int[6]#AUTONEG
+
+        #$interfaceObject.shutdown=$int[10]#IPV6_ADDRESS
+        #$interfaceObject.shutdown=$int[11]#IPV6_LL_ADDRESS
+        #$interfaceObject.shutdown=$int[12]#IPV6_LL_MASK
+    }
+
+    $ArrayOfHostNetworks | % { $_.color = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)" }
+    $device.ArrayOfNetworks=$ArrayOfHostNetworks
+    $device.interfaces = $interfaces
+    return $device
+}
+
+
+
+#Process the show route all for checkpoint
+#Input:Checkpoint show route all file
+#Output: Routing table object.
+function Get-CheckpointShowRouteFromText(){
+    param (
+        [parameter(Mandatory=$true)]
+        $ShowRouteFile,
+        $device
+    )
+    #Read the file into one big string
+    $ShowRouteText = Get-Content -raw $ShowRouteFile
+    $AllRouteObjects=@() #Array of routes(Create-RouteObject) that will be passed back to the host object.
+    if(($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:)").Matches.Success){
+        Add-HostDebugText -HostObject $device  "$($ShowRouteText)" -BackgroundColor Magenta
+        Add-HostDebugText -HostObject $device  "contains invalid data or is empty"  -BackgroundColor red
+        return $device
+    }
+
+    #Add-HostDebugText -HostObject $device  "Starting Python Processing with TextFSM"
+    #Start Python process with TextFSM to convert the Text to a Object
+    $device=Execute-PythonTextFSM -TextFSTETemplate $GTemplate.CheckPointShowRouteTemplate -ShowFile $ShowRouteFile  -ReturnArray $true -HostObject $device
+    if($device.ProcessOutputObjects -eq "ERROR"){
+        Add-HostDebugText -HostObject $device  "Error with show route on Checkpoint routing." -BackgroundColor red
+        return $device
+    }
+
+    if($device.ProcessOutputObjects.Count -gt 0 -and $device.ProcessOutputObjects[0].GetType().Name -eq "string"){
+        $tempArray = @()
+        $tempArray += ,$device.ProcessOutputObjects
+        $device.ProcessOutputObjects = $tempArray
+    }
+    foreach ($Route in $device.ProcessOutputObjects){
+        $RouteObject=Create-RouteObject
+        switch ($Route[0]){
+            C{$RouteObject.RouteProtocol="connected"}
+            L{$RouteObject.RouteProtocol="local"}
+            S{$RouteObject.RouteProtocol="static"}
+            R{$RouteObject.RouteProtocol="RIP"}
+            B{$RouteObject.RouteProtocol="BGP"}
+            D{$RouteObject.RouteProtocol="BGP"} #Default route in bgp
+            O{$RouteObject.RouteProtocol="OSPF"}
+            default{#No idea lets just assign it.
+                $RouteObject.RouteProtocol=$Route[0]
+            }
+        }
+        if($null -eq $RouteObject.RouteProtocol){ #something went wrong, we have a route without a routing protocol
+            Add-HostDebugText -HostObject $device  "Error No routing protocol:$($Route)" -BackgroundColor red
+            continue
+        }
+
+        $RouteObject.Subnet="$($Route[1])/$($Route[2])"
+        $RouteObject.gateway=$Route[3]
+        $RouteObject.Interface=$Route[4]
+        $AllRouteObjects+=$RouteObject
+    }
+    $device.RoutingTable=$AllRouteObjects
+    return $device
+}
+
+
+
+
+# Processes a Checkpoint config file to extract key version and hardware information.
+# Input: Checkpoint config file path.
+# Output: A device object with the populated .Version property.
+function Get-CheckpointShowAssetAllFromText {
+    [CmdletBinding()]
+    param (
+        [parameter(Mandatory=$true)]
+        [string]$ShowVersionFile,
+
+        [parameter(Mandatory=$false)]
+        $device
+    )
+
+
+    # Read the entire file into a single string for validation.
+    $FileContentRaw = Get-Content -Path $ShowVersionFile -Raw
+
+    # --- CONTENT VALIDATION ---
+    # Check for common error strings in the command output.
+    $errorPattern = 'Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|not enabled'
+    if ($FileContentRaw | Select-String -Pattern $errorPattern -Quiet) {
+        # Using Write-Warning as a standard replacement for the custom Add-HostDebugText function.
+        Write-Warning "File '$ShowVersionFile' contains invalid data or error messages. Skipping parsing."
+        return $device
+    }
+    # --- END VALIDATION ---
+
+    # Create the object structure that will hold the parsed data.
+    $VersionObject = Create-ShowVersionObject
+    $VersionObject.Type = "Checkpoint" # Set the type to identify the device vendor.
+
+    # Use a hashtable for efficient key-value storage and lookup.
+    $parsedData = @{}
+    # Split the raw content by newline to process it line by line.
+    foreach ($line in $FileContentRaw.Split([System.Environment]::NewLine)) {
+        if ($line -match ':') {
+            # Split the line into a key and a value at the first colon.
+            $key, $value = $line.Split(':', 2)
+            # Add the cleaned key and value to the hashtable.
+            $parsedData[$key.Trim()] = $value.Trim()
+        }
+    }
+
+    # Map only the key identifying data from the hashtable to the PSCustomObject.
+    if ($parsedData.ContainsKey('Platform')) {
+        $VersionObject.Hardware += $parsedData['Platform']
+    }
+    if ($parsedData.ContainsKey('Model')) {
+        $VersionObject.Hardware += $parsedData['Model']
+    }
+    if ($parsedData.ContainsKey('Serial Number')) {
+        $VersionObject.Serial += $parsedData['Serial Number']
+    }
+
+    # Assign the populated version object to the main device object.
+    $device.Version = $VersionObject
+
+    # Return the updated device object.
+    return $device
+}
+
+
+
+# Processes a Checkpoint Gaia "show version" file to create or update the version object.
+function Get-CheckpointGaiaVersionFromText {
+    [CmdletBinding()]
+    param (
+        [parameter(Mandatory=$true)]
+        [string]$ShowVersionFile,
+
+        [parameter(Mandatory=$false)]
+        $device
+    )
+
+
+
+    # --- NEW: CHECK AND CREATE LOGIC ---
+    # If the Version object does not exist, create it.
+    if (-not $device.Version) {
+        $device.Version = Create-ShowVersionObject
+    }
+
+    # Read the entire file into a single string.
+    $FileContentRaw = Get-Content -Path $ShowVersionFile -Raw
+
+    # Check for common error strings.
+    $errorPattern = 'Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:'
+    if ($FileContentRaw | Select-String -Pattern $errorPattern -Quiet) {
+        Write-Warning "File '$ShowVersionFile' contains invalid data. Update skipped."
+        return $device
+    }
+
+    # --- ALWAYS UPDATE THE OBJECT ---
+    # Update the Type and clear the OS field before parsing.
+    $device.Version.Type = "Checkpoint Gaia"
+    $device.Version.OS = $null # Clear previous value
+
+    # Use a single regex to find the line and capture the version (e.g., R80.30).
+    if ($FileContentRaw -match 'Product version .*?(R\d+\.\d+)') {
+        # Update the OS property directly on the device's Version object.
+        $device.Version.OS = $matches[1]
+    }
+
+    # Return the updated device object.
+    return $device
+}
+
+

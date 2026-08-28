@@ -30,7 +30,6 @@ function Create-ShowIPArpObject() {
     }
 }
 
-# Factory: returns a blank PSCustomObject with the standard 'show version' fields (OS, uptime, image, hardware, serial, MAC list, reload reason, etc.) for a device to populate.
 function Create-ShowVersionObject() {
     return [PSCustomObject]@{
         OS               = $null #VERSION | OS
@@ -69,17 +68,9 @@ function Create-LLDPNeighborObject() {
         ManagementIP               = $null
         VLAN                       = $null
         SERIAL                     = $null
-        PortID                     = $null #Raw remote port ID as advertised; may be an interface, MAC, IP, or local identifier.
-        ChassisIDSubtype           = $null #Raw LLDP chassis-ID subtype, when the vendor supplies it.
-        PortIDSubtype              = $null #Raw LLDP port-ID subtype; determines whether PortID is an interface name.
+        PortID                     = $null #The port id normally is just a mac address. This can be used for matching show lldp neighbors to show lldp neighbors details
         ParentObject               = $null #This will be filled for each host object created from LLDP Neighbors config data
         HasCDPNeighborEntry        = $false #This device has a cdp neighbors entry already. This is used to not draw duplicate entries from CDP neighbors and LLDP Neighbors
-        TargetHostname             = $null #Hostname of the configured device this neighbour resolved to
-        TargetInterface            = $null #Interface name on the target device this neighbour resolved to
-        MatchConfidence            = $null
-        MatchMethod                = $null
-        Ignored                    = $false
-        IgnoreReason               = $null
     }
 }
 
@@ -102,80 +93,6 @@ function Create-CDPNeighborObject() {
         InterfaceIPAddresses     = $null
         Capabilities             = $null
         ParentObject             = $null #This will be filled for each host object created from CDPNeighbors config data
-        TargetHostname           = $null #Hostname of the configured device this neighbour resolved to
-        TargetInterface          = $null #Interface name on the target device this neighbour resolved to
-        MatchConfidence          = $null
-        MatchMethod              = $null
-        Ignored                  = $false
-        IgnoreReason             = $null
-    }
-}
-
-# One security rule, from any vendor that has them. From/To are ZONE names, and a rule may list
-# several of each - those are expanded into individual zone pairs by the caller, because a rule
-# spanning 3 source and 2 destination zones is really 6 statements about the segmentation model.
-#
-# Three vendors fill this in, and they do not all carry the same information:
-#
-#   PAN-OS     both zone lists, from 'show running security-policy'. Zone names here are the
-#              authoritative ones: 'show interface all' truncates them to 16 characters
-#              (Corp-Executive-W), this capture does not (Corp-Executive-WiFi-Zone).
-#   ASA        FromZones only - an ACL is bound inbound to one nameif by 'access-group', which says
-#              where traffic enters but nothing about where it leaves. ToZones is left EMPTY rather
-#              than guessed; anything reading this must cope with that.
-#   FortiGate  both, resolved from srcintf/dstintf through the interface Role, because FortiGate
-#              config here has no zones of its own.
-#
-# Action is normalised to the PAN-OS vocabulary at parse time - ASA 'permit' and FortiGate 'accept'
-# both land here as 'allow'. Every model downstream tests `Action -eq 'allow'`, so normalising once
-# here is what keeps those models free of per-vendor branching.
-function Create-SecurityPolicyRuleObject() {
-    return [PSCustomObject]@{
-        Name          = $null # Rule name as written by the administrator
-        Index         = $null # Evaluation order; rules are first-match so this matters
-        FromZones     = @()
-        ToZones       = @()
-        Source        = @()   # Source addresses or 'any'
-        Destination   = @()   # Destination addresses or 'any'
-        Application   = @()   # application/service entries
-        Action        = $null # allow | deny | drop | reset-*
-        RuleType      = $null # universal | intrazone | interzone | acl
-        Disabled      = $false
-    }
-}
-
-# One ASA 'object-group network|service' block. Members are kept exactly as written - this is not a
-# resolver, and the diagrams show the group name the administrator chose, not an expansion of it.
-#
-# ContainsAny is the single derived field, and the only reason this object exists: an ACE reading
-# 'permit ip any object-group PARTNERS' looks scoped until you find that PARTNERS holds 0.0.0.0/0.
-# That is the rule the risk page has to catch, and the group name alone cannot tell you.
-function Create-PolicyObjectGroupObject() {
-    return [PSCustomObject]@{
-        Name        = $null   # Group name as written
-        Type        = $null   # network | service
-        Members     = @()     # Member lines, as written
-        ContainsAny = $false  # Resolves to 0.0.0.0/0 / 'any', directly or through a nested group
-    }
-}
-
-# One rule from PAN-OS 'show running nat-policy'. TranslatedInterface/TranslatedAddress come from the
-# 'translate-to' line, which is what maps a private segment to the public address it leaves on.
-function Create-NatPolicyRuleObject() {
-    return [PSCustomObject]@{
-        Name                = $null
-        Index               = $null
-        NatType             = $null # ipv4 | nat64 | nptv6
-        FromZones           = @()
-        ToZones             = @()
-        Source              = @()
-        Destination         = @()
-        Service             = $null
-        TranslationType     = $null # 'src' or 'dst'
-        TranslatedInterface = $null # e.g. ethernet1/1
-        TranslatedAddress   = $null # e.g. 203.0.113.200
-        TranslationMode     = $null # e.g. dynamic-ip-and-port
-        RawTranslation      = $null # full translate-to text, kept so nothing is silently dropped
     }
 }
 
@@ -209,10 +126,6 @@ function Create-SpanningTreeInterface() {
         Cost      = $null
         PrioNbr   = $null
         Type      = $null
-        DesignatedBridgeAddress = $null # 'show spanning-tree detail' per-port Designated bridge Address:
-                                         # the chassis MAC physically attached to THIS port - can differ
-                                         # from the VLAN instance's global root Address when the root is
-                                         # multiple hops away.
     }
 }
 
@@ -243,30 +156,17 @@ function Create-FileObject() {
     return [PSCustomObject]@{
         DeviceType                       = $null
         HOSTID                           = $null
-        SourceDirectory                  = $null # Directory-scoped capture group; prevents same host IDs from different runs being merged
-        CaptureGroupKey                  = $null
-        CaptureFiles                     = @()
-        MappingDiagnostics               = @()
         ShowRun                          = $null
         ShowCDPNeighborsDetails          = $null
         ShowIPInterfaceBrief             = $null
         ShowInterfaceStatus              = $null
-        ShowInterfaceTrunk               = $null # Operational trunk mode/native/allowed VLAN table
-        ShowInterfaceSwitchport          = $null # Cisco Small Business operational switchport data
-        ShowInterfaceDescription         = $null # Cisco Small Business interface descriptions
         ShowMacAddressTable              = $null
         ShowSpanningTree                 = $null
         ShowIPRoute                      = $null
         ShowIPRouteVRFstar               = $null #This is for cisco devices to get all of the routes for each VRF: show ip route vrf *
-        ShowIPRouteVRFAll                = $null #Some NX-OS captures use show ip route vrf all instead.
         ShowLLDPNeighborsDetails         = $null
         ShowLLDPNeighbors                = $null
         ShowVersion                      = $null
-        ShowSystem                       = $null # Cisco Small Business system identity
-        ShowInventory                    = $null # Cisco Small Business hardware and serial data
-        ShowVlan                         = $null # VLAN table (Cisco Small Business or Arista EOS)
-        ShowIPInterface                  = $null # Old Cisco Small Business 'show ip interface' (gateway + address tables)
-        ShowSystemId                     = $null # Old Cisco Small Business 'show system id' (serial number)
         ShowIPArp                        = $null
         ShowInterface                    = $null
         ShowInterfaceDetail              = $null #This is used by Junos devices at the time of writing.
@@ -278,18 +178,12 @@ function Create-FileObject() {
         ShowIPBGPVPNv4Neighbors          = $null
         ShowSystemInfo                   = $null # Add this line
         ShowInterfaceAll                 = $null # Add this line
-        ShowRunningSecurityPolicy        = $null # PAN-OS 'show running security-policy'
-        ShowRunningNatPolicy             = $null # PAN-OS 'show running nat-policy'
         ShowArp                          = $null
         ShowEthernetSwitchingTable       = $null
         ShowVlansDetail                  = $null
         ShowAssetAll                     = $null
         ShowInterfaceTerse               = $null # Used for Junos 'show interfaces terse'
         ShowIPBGPNeighbors               = $null
-        ShowIPBGPNeighborsAdvertised     = $null
-        ShowHostname                     = $null # Arista hostname fallback
-        ShowReloadCause                  = $null # Arista optional reload cause
-        HaStatus                         = $null # FortiGate optional HA status
         # --- Fortigate Specific ---
         ShowFullConfig                    = $null
         SystemStatus                      = $null
@@ -298,9 +192,6 @@ function Create-FileObject() {
         ShowRoutingTable                  = $null
         ShowBgpSummary                    = $null
         ShowOspfNeighbor                  = $null
-        ShowFirewallPolicy                = $null
-        ShowSpanningTreeDetails           = $null #aruba
-        ShowInterfaceBrief                = $null #aruba
     }
 }
 
@@ -399,7 +290,6 @@ function Create-InterfaceObject() {
 }
 
 
-# Factory: returns a blank PSCustomObject representing a Layer-3 network/subnet (CIDR, routed VLAN, ARP entries, draw.io shape/color, connector counts, logical draw.io ID).
 function Create-NetworkObject() {
     return [PSCustomObject]@{
         cidr                    = $null
@@ -425,7 +315,6 @@ function Create-SpanningTreeObject() {
     }
 }
 
-# Factory: returns a blank PSCustomObject representing one network device, with all the collections the parsers fill in (interfaces, VLANs, VRFs, CDP/LLDP neighbours, ARP, routes, spanning tree, BGP, firewall policies, version, device type).
 function Create-HostObject() {
     return [PSCustomObject]@{
         hostname              = $null #Hostname of the device data from show run
@@ -440,9 +329,6 @@ function Create-HostObject() {
         ArrayOfIPAddresses    = @() #Array of ip addresses found on the device  from show run
         SpanningTree          = $null #Object containing Spanning tree configuration data from show spanning-tree
         RoutingTable          = @() #Array of routes data from show ip route
-        SecurityPolicy        = @() #Array of Create-SecurityPolicyRuleObject; firewalls only (PAN-OS, ASA, FortiGate)
-        NatPolicy             = @() #Array of Create-NatPolicyRuleObject; firewalls only (PAN-OS today)
-        PolicyObjectGroups    = @() #Array of Create-PolicyObjectGroupObject; ASA only, resolved far enough to spot 'any'
         ParentObject          = $null #This will be filled for each host object created from CDP/lldp config data
         LLDPNeighbors         = @() #Array of LLDP Neighbours
         IPArpEntries          = @() #Array of show ip arp entries
@@ -456,19 +342,13 @@ function Create-HostObject() {
         BGP_AS_Number         = $null #store the bgp AS
         BGPNeighbors          = @() #Array of BGP neighbor objects
         DebugLog              = @() #debug logs created when processing config files.
-        ProcessOutputObjects  = @() #Reserved for extension compatibility; no in-repository writer uses it.
+        ProcessOutputObjects  = @() #Stores raw objects after processing of Execute-PythonTextFSM
         HostTypeIfCDPorLLDP   = @() #If this device is a lldp or cdp neighbor and it's name is a mac address we store it's make here. e.g HP or Dell or whatever
         CPDHostLocation       = $null #The location on the diagram where this object is drawn.
-        ManagementIP          = $null #Management address of the device when it is known separately from the interface addresses
-        ManagementMacAddress  = $null #Chassis/system MAC. Used to match neighbours that identify a device only by MAC (SG/CBS CDP Device-ID, LLDP Chassis ID)
-        TopologyOverviewDrawioId = $null # ID for the Site Topology Overview shape
-        RoutesSummaryDrawioId    = $null # ID for the Layer 3 Routes Summary device shape (set by Add-DrawioTopologyNode)
-        L3TopologyDrawioId   = $null # ID for the Layer 3 Topology Overview device card, if drawn
-        PhysicalHostDrawioId = $null # Transient ID for the CDP-LLDP physical host box on the current page
+        L2OverviewDrawioId      = $null # ID for the simplified L2 overview shape
     }
 }
 
-# Factory: returns a blank PSCustomObject describing one BGP neighbour (local/remote AS, router IDs, peering IP/port, peer group, route-maps, advertised routes).
 function Create-BGPNeighborObject() {
     return [PSCustomObject]@{
         NEIGHBOR            = $null

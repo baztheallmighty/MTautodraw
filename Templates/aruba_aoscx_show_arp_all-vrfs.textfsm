@@ -7,7 +7,7 @@ Value VRF (\S+)
 
 Start
   ^IPv4\s+Address\s+MAC\s+Port\s+Physical\s+Port\s+State
-  ^${IP_ADDRESS}\s+${MAC_ADDRESS}\s+${PORT_ID}\s+${PHYSICAL_PORT}\s+${STATE}(?:\s+${VRF})?\s*$$ -> Record
+  ^${IP_ADDRESS}\s+${MAC_ADDRESS}\s+${PORT_ID}\s+${PHYSICAL_PORT}\s+${STATE}\s+${VRF} -> Record
   ^\s*-*
   ^\s*Total.*$$
   ^. -> Error
