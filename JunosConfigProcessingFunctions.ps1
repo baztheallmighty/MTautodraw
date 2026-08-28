@@ -1,3 +1,4 @@
+# MTAutoDraw-Standard: v1
 #MTAudotDraw
 #Copyright (C) 2022  Myles Treadwell
 #
@@ -14,126 +15,88 @@
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#This file contains all of the functions that process CheckPoint config.
+# This file contains all of the functions that process Junos config.
+#
+# Junos captures are XML ("| display xml"), not text, so every reader reads through
+# Get-JunosXmlDocument; this platform uses no TextFSM template at all.
+#
+# Follows PARSER_STANDARD.md v1.
 
 
-#This functions calls all the other functions to process all of the files for a junos devices.
-#Input: Hostid object.
-#Output: $device object.
-function Process-JunosHostFiles{
-        param (
-		[parameter(Mandatory=$true)]
-		$hostid,
-        $ArrayOfObjects
+# --- Orchestrator ---------------------------------------------------------------------------------
+
+function Process-JunosHostFiles {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$HostID,
+        $ArrayOfObjects   # Kept for dispatcher signature compatibility; duplicate detection is sequential.
     )
 
-        $device=$null
-        if($hostid.showrun -and (Test-Path -Path $hostid.showrun)){
-            try{
-                $config=[xml] (Get-Content -Path $hostid.showrun -raw)
-            }
-            catch {
-                write-host "Invalid XML file: $($hostid.showrun) exiting" -BackgroundColor red
-                return $null
-            }
+    # 1. IDENTITY - the configuration is the only capture carrying the hostname, and it is also where
+    # the interfaces and VLANs come from, so nothing else can run without it.
+    $device = New-MTAutoDrawDevice -Platform 'Junos' -HostID $HostID
+    Update-JunosRunningConfig -Device $device -Path $HostID.ShowRun
+    if (-not $device.hostname) {
+        Write-MTAutoDrawDiagnostic -Device $device -Severity Warning -Message "Junos '$($HostID.HOSTID)' has no usable configuration capture; skipping host."
+        return $null
+    }
 
+    # 2. CAPTURES - one line per slot, in dependency order. The configuration already created the
+    # interfaces, so every reader below merges onto them.
+    Update-JunosVersion               -Device $device -Path $HostID.ShowVersion
+    Update-JunosInterfaces            -Device $device -Path $HostID.ShowInterfaceTerse
+    Update-JunosLldpNeighbors         -Device $device -Path $HostID.ShowLLDPNeighbors
+    Update-JunosRoutes                -Device $device -Path $HostID.ShowRouteAll
+    Update-JunosSpanningTreeInterface -Device $device -Path $HostID.ShowSpanningTreeInterface
+    Update-JunosSpanningTreeBridge    -Device $device -Path $HostID.JunosShowSpanningTreeBridgeFromXML
+    Update-JunosArp                   -Device $device -Path $HostID.ShowArp
+    Update-JunosMacAddressTable       -Device $device -Path $HostID.ShowEthernetSwitchingTable
 
-            # MODIFICATION: Pass the result of the check to the parsing function.
-            $device=Get-JunosShowRunFromXML -Lconfig $config
-
-            $device.DeviceIdentifier=($hostid.showrun -replace "\.show run.*",'' -replace "^.*\\",'' -replace "\.show configuration.*",'' )
-        }else{
-            write-host "File doesn't exist: $($hostid.showrun)" -BackgroundColor red
-            return $null
-        }
-        Add-HostDebugText -HostObject $device "Processing Junos show config"
-        if($null -eq $device.hostname ){
-            Write-host "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor red
-            return $null
-        }
-        foreach ($ExistingDevice in $ArrayOfObjects){
-            if($ExistingDevice.hostname -eq $device.hostname){
-                Add-HostDebugText -HostObject $device "Hostname already exists $($ExistingDevice.hostname) - $($device.hostname). This means you either have the same code twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor red
-                Add-HostDebugText -HostObject $device "Found problem at: $($hostid.HOSTID)" -BackgroundColor red
-                Add-HostDebugText -HostObject $device "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
-                Add-HostDebugText -HostObject $device "$($ArrayOfObjects|ft hostname,DeviceIdentifier| out-string)"
-                if(!($SkipHostnameErrorCheck)){
-                    Add-HostDebugText -HostObject $device 'Exiting please manually fix this error.'  -BackgroundColor red
-                    Start-CleanupAndExit
-                }
-            }
-        }
-
-        if($hostid.ShowVersion){
-            Add-HostDebugText -HostObject $device "Processing Junos show version: $($hostid.ShowVersion)"
-            $device=Get-JunosShowVersionFromXML -JunosShowVersionFile $hostid.ShowVersion -Device $device
-        }
-        if($hostid.ShowInterfaceTerse){
-            Add-HostDebugText -HostObject $device "Processing Junos show interface terse:$($hostid.ShowInterfaceTerse)"
-            $device=Get-JunosShowInterfaceTerseFromXML -JunosInterfaceTerseFile $hostid.ShowInterfaceTerse -Device $device
-        }
-        if($hostid.ShowLLDPNeighbors){#CDP must be processed before LLDP.
-            Add-HostDebugText -HostObject $device "Processing show LLDP Details:$($hostid.ShowLLDPNeighbors)"
-            $device=Get-JunosShowLLDPNeighbors -JunosShowLLDPNeighborsFile $hostid.ShowLLDPNeighbors -Device $device
-        }
-        if($hostid.ShowRouteAll){
-            Add-HostDebugText -HostObject $device "Processing Junos show route all:$($hostid.ShowRouteAll)"
-            $device=Get-JunosShowRouteAllFromXML -device $device -JunosShowRouteAllFile $hostid.ShowRouteAll
-        }
-        if($hostid.ShowSpanningTreeInterface){
-            Add-HostDebugText -HostObject $device "Processing Junos Show Spanning Tree Interface:$($hostid.ShowSpanningTreeInterface)"
-            $device=Get-JunosShowSpanningTreeInterfaceFromXML -device $device -ShowSpanningTreeInterfaceFile $hostid.ShowSpanningTreeInterface
-        }
-        if($hostid.JunosShowSpanningTreeBridgeFromXML){
-            Add-HostDebugText -HostObject $device "Processing Junos Show Spanning Tree Bridge :$($hostid.JunosShowSpanningTreeBridgeFromXML)"
-            $device=Get-JunosShowSpanningTreeBridgeFromXML -device $device -JunosShowSpanningTreeBridgeFile $hostid.JunosShowSpanningTreeBridgeFromXML
-        }
-        if ($hostid.ShowArp) {
-            $device = Get-JunosArpTableFromXML -JunosArpFile $hostid.ShowArp -Device $device
-        }
-        if ($hostid.ShowEthernetSwitchingTable) {
-            $device = Get-JunosMacAddressTableFromXML -JunosMacTableFile $hostid.ShowEthernetSwitchingTable -Device $device
-        }
-        ## Update VLAN memberships using the more reliable 'show vlans detail' output.
-        ## This runs AFTER the main config parse to correct any ambiguities.
-        #if ($hostid.ShowVlansDetail -and (Test-Path -Path $hostid.ShowVlansDetail)) {
-        #    $device = Get-JunosVlansFromDetailXML -JunosVlansFile $hostid.ShowVlansDetail -Device $device
-        #}
-        $device = Update-LocalRoutesWithInterfaces -device $device
-        return $device
+    # 3. RECONCILE
+    return (Complete-MTAutoDrawDevice -Device $device)
 }
 
 
 #Extract all the information from the show version all xml file
-function Get-JunosShowVersionFromXML{
-    param (
-		[parameter(Mandatory=$true)]
-		$JunosShowVersionFile,
-        $device
+function Update-JunosVersion {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
-    $ShowVersion = [xml] (Get-Content -Raw $JunosShowVersionFile )
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowVersion')) { return }
+
+    # --- EXTRACT / MAP / MERGE ---
+    $ShowVersion = Get-JunosXmlDocument -Path $Path
     $VersionObject=Create-ShowVersionObject
     $VersionObject.Hostname =  $ShowVersion.'rpc-reply'.'multi-routing-engine-results'.'multi-routing-engine-item'.'software-information'.'host-name'
     $VersionObject.Hardware =  $ShowVersion.'rpc-reply'.'multi-routing-engine-results'.'multi-routing-engine-item'.'software-information'.'product-model'
 
     $device.Version=$VersionObject
 
-    return $device
 }
 
 
 
-function Get-JunosShowLLDPNeighbors{
-    param (
-        [parameter(Mandatory=$true)]
-        $JunosShowLLDPNeighborsFile,
-        $device
+# Parses Junos 'show lldp neighbors' XML output into the device's LLDP neighbour objects. Logs a warning and returns the device unchanged if the XML cannot be parsed.
+function Update-JunosLldpNeighbors {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowLLDPNeighbors')) { return }
+
+    # --- EXTRACT ---
     try {
-        $Neighbors = [xml] (Get-Content -Raw $JunosShowLLDPNeighborsFile )
+        $Neighbors = Get-JunosXmlDocument -Path $Path
     } catch {
-        Write-Warning "Could not parse XML file: $JunosShowLLDPNeighborsFile"
-        return $device
+        Write-MTAutoDrawDiagnostic -Device $Device -Severity Warning -Message "Could not parse XML file: $Path"
+        return
     }
 
     $AllLLDPDetailsObjects=@()
@@ -152,35 +115,42 @@ function Get-JunosShowLLDPNeighbors{
         }elseif($Neighbor.'lldp-local-port-id'){
             $LLDPObject.InterfaceLocalDevice=($Neighbor.'lldp-local-port-id' -replace "\.0$",'')
         }else{
-            $LLDPObject.InterfaceLocalDevice="Unknown-Interface-$(Get-Random)"
+            $LLDPObject.InterfaceLocalDevice=$null
         }
 
         $LLDPObject.ChassisID=$Neighbor.'lldp-remote-chassis-id'
+        $LLDPObject.ChassisIDSubtype=$Neighbor.'lldp-remote-chassis-id-subtype'
+        $LLDPObject.PortIDSubtype=$Neighbor.'lldp-remote-port-id-subtype'
 
-        # --- START OF LOGIC FIX ---
-
-        # This section correctly handles inconsistent Juniper XML output.
-        $remotePortId = $Neighbor.'lldp-remote-port-id'
-        $remotePortDesc = $Neighbor.'lldp-remote-port-description'
-
-        # Always assign the description property. This is crucial for Tier 2 matching.
+        $remotePortId = ([string]$Neighbor.'lldp-remote-port-id').Trim()
+        $remotePortDesc = ([string]$Neighbor.'lldp-remote-port-description').Trim()
+        $LLDPObject.PortID = if ($remotePortId) { $remotePortId } else { $null }
         $LLDPObject.NeighborInterfaceDescription = $remotePortDesc
 
-        # Now, intelligently determine the Interface Name.
-        # Prioritize the specific Port ID tag if it exists.
-        if (-not [string]::IsNullOrEmpty($remotePortId)) {
-            $LLDPObject.InterfaceRemoteDevice = $remotePortId
+        # A remote port ID is not necessarily an interface name. Junos brief XML commonly
+        # advertises it as a MAC address. Interface-name subtypes are semantic interfaces;
+        # locally-assigned values are accepted only when they look like an interface.
+        $portIdSubtype = ([string]$LLDPObject.PortIDSubtype).Trim()
+        $portIdIsInterface = $false
+        if ($portIdSubtype -match '(?i)interface') {
+            $portIdIsInterface = $true
         }
-        # If no Port ID, check if the description LOOKS like an interface name.
-        elseif (Check-InterfaceType -string $remotePortDesc) {
-            $LLDPObject.InterfaceRemoteDevice = $remotePortDesc
+        elseif ($portIdSubtype -match '(?i)local' -and $remotePortId -and (Check-InterfaceType -string $remotePortId)) {
+            $portIdIsInterface = $true
         }
-        # Otherwise, we have a description but no clear interface name.
-        else {
-            $LLDPObject.InterfaceRemoteDevice = "Unknown Interface"
+        elseif (-not $portIdSubtype -and $remotePortId -and (Check-InterfaceType -string $remotePortId)) {
+            $portIdIsInterface = $true
         }
 
-        # --- END OF LOGIC FIX ---
+        if ($portIdIsInterface -and $remotePortId) {
+            $LLDPObject.InterfaceRemoteDevice = $remotePortId
+        }
+        elseif ($remotePortDesc -and (Check-InterfaceType -string $remotePortDesc)) {
+            $LLDPObject.InterfaceRemoteDevice = $remotePortDesc
+        }
+        else {
+            $LLDPObject.InterfaceRemoteDevice = $null
+        }
 
         # Clean up common Juniper ".0" suffix from the name
         if($LLDPObject.InterfaceRemoteDevice -match "\.0$"){
@@ -195,15 +165,10 @@ function Get-JunosShowLLDPNeighbors{
         $AllLLDPDetailsObjects+=$LLDPObject
     }
 
-    # Handle cases where multiple neighbors report the same interface name (common with unmanaged switches)
-    foreach ($LLDPDevice in $AllLLDPDetailsObjects ){
-        if(($AllLLDPDetailsObjects | where { $_.hostname -eq $LLDPDevice.hostname -and $_.InterfaceRemoteDevice -eq $LLDPDevice.InterfaceRemoteDevice}).count -gt 1){
-            $LLDPDevice.InterfaceRemoteDevice = "$($LLDPDevice.InterfaceRemoteDevice)___$(Get-Random)"
-        }
-    }
+    # Do not mutate duplicate remote interface names. The record tuple of local port,
+    # chassis ID, raw port ID, and system name already distinguishes LLDP observations.
 
     $device.LLDPNeighbors=$AllLLDPDetailsObjects | sort -property @{Expression={[int]($_.InterfaceLocalDevice -replace '[a-zA-Z-]+','' -replace "/",'')}}
-    return $device
 }
 
 
@@ -216,17 +181,21 @@ function Get-JunosShowLLDPNeighbors{
 
 
 
-function Get-JunosShowSpanningTreeBridgeFromXML {
+# Parses Junos 'show spanning-tree bridge' XML into the device's spanning-tree object (per-VLAN root bridges, priorities), and records when STP is not enabled at global level.
+function Update-JunosSpanningTreeBridge {
+    [CmdletBinding()]
     param(
-        [parameter(Mandatory = $true)]
-        $JunosShowSpanningTreeBridgeFile,
-        [parameter(Mandatory = $true)]
-        $device
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    $FunctionName = "Get-JunosShowSpanningTreeBridgeFromXML"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'JunosShowSpanningTreeBridgeFromXML')) { return }
 
-    $SpanningTreeXml = [xml](Get-Content -Raw $JunosShowSpanningTreeBridgeFile)
+    $FunctionName = "Update-JunosSpanningTreeBridge"
+
+    # --- EXTRACT ---
+    $SpanningTreeXml = Get-JunosXmlDocument -Path $Path
 
     # Check for the specific "not enabled" output.
     $disabledMessage = $SpanningTreeXml.SelectSingleNode("/rpc-reply/output[text()='Spanning-tree is not enabled at global level.']")
@@ -234,7 +203,7 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
         # Create a new SpanningTree object and mark it as disabled.
         $device.SpanningTree = Create-SpanningTreeObject
         $device.SpanningTree.SpanningTreeMode = "SpanningTree Disabled"
-        return $device
+        return
     }
 
     $namespaceManager = [System.Xml.XmlNamespaceManager]::new($SpanningTreeXml.NameTable)
@@ -244,7 +213,7 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
         # This catch-all handles any other XML format where stp-bridge is not present.
         $device.SpanningTree = Create-SpanningTreeObject
         $device.SpanningTree.SpanningTreeMode = "SpanningTree NotPresent"
-        return $device
+        return
     }
 
 
@@ -284,13 +253,13 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
 
         # --- Root Bridge Information ---
         $stpVlanObject.RootIDPriority = if ($rootPriorityNode) { $rootPriorityNode.'#text' } else { 'N/A' }
-        $stpVlanObject.Address = $rootMac
+        $stpVlanObject.Address = ConvertTo-NormalizedMacAddress $rootMac
         $stpVlanObject.RootBridgeHelloTime = if ($helloTimeNode) { $helloTimeNode.'#text' } else { 'N/A' }
         $stpVlanObject.RootBridgeAgingTime = if ($maxAgeNode) { $maxAgeNode.'#text' } else { 'N/A' }
 
         # --- Local Bridge Information ---
         $stpVlanObject.BridgeIDPriority = if ($bridgePriorityNode) { $bridgePriorityNode.'#text' } else { 'N/A' }
-        $stpVlanObject.BridgeIDPriorityaddress = $thisMac
+        $stpVlanObject.BridgeIDPriorityaddress = ConvertTo-NormalizedMacAddress $thisMac
 
         if (-not $isRootBridge) {
             $rootCostNode = $cistParams.SelectSingleNode("j:root-cost", $namespaceManager)
@@ -305,20 +274,23 @@ function Get-JunosShowSpanningTreeBridgeFromXML {
     }
 
     $device.SpanningTree.RootBridgeForVlans = $device.SpanningTree.SpanningTreeArray | Where-Object { $_.RootBridge -eq $true } | Select-Object -ExpandProperty VlanID
-
-    return $device
 }
 
 
 
-function Get-JunosShowSpanningTreeInterfaceFromXML {
-    param (
-        [parameter(Mandatory=$true)]
-        $ShowSpanningTreeInterfaceFile,
-        [parameter(Mandatory=$true)]
-        $device
+# Parses Junos 'show spanning-tree interface' XML to attach per-interface STP state (port role, cost) onto the device's interface objects.
+function Update-JunosSpanningTreeInterface {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
-    $SpanningTreeInterfacesXml = [xml] (Get-Content -Raw $ShowSpanningTreeInterfaceFile)
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowSpanningTreeInterface')) { return }
+
+    # --- EXTRACT ---
+    $SpanningTreeInterfacesXml = Get-JunosXmlDocument -Path $Path
 
     if ($device.interfaces -and $SpanningTreeInterfacesXml.'rpc-reply'.'stp-interface-information'.'stp-instance'.'stp-interfaces'.'stp-interface-entry') {
 
@@ -363,35 +335,35 @@ function Get-JunosShowSpanningTreeInterfaceFromXML {
         }
     }
 
-    return $device
 }
 
 
 # UPDATED FUNCTION
-function get-JunosShowRouteAllFromXML {
-    param (
-        [parameter(Mandatory=$true)]
-        $JunosShowRouteAllFile,
-
-        [parameter(Mandatory=$true)]
-        $device
+function Update-JunosRoutes {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRouteAll')) { return }
 
     $routeObjects = [System.Collections.Generic.List[pscustomobject]]::new()
 
-
+    # --- EXTRACT ---
     try {
-        $xmlContent = [xml](Get-Content -Path $JunosShowRouteAllFile -Raw)
+        $xmlContent = Get-JunosXmlDocument -Path $Path
     }
     catch {
-        Write-Warning "Failed to parse '$JunosShowRouteAllFile' as XML. It might be a plain text file or corrupted. Skipping."
-        return $device
+        Write-MTAutoDrawDiagnostic -Device $Device -Severity Warning -Message "Failed to parse '$Path' as XML. It might be a plain text file or corrupted. Skipping."
+        return
     }
 
     $namespaceUri = $xmlContent.DocumentElement.'route-information'.NamespaceURI
     if (-not $namespaceUri) {
-        Write-Warning "Could not detect a Junos routing namespace in '$JunosShowRouteAllFile'. Skipping."
-        return $device
+        Write-MTAutoDrawDiagnostic -Device $Device -Severity Warning -Message "Could not detect a Junos routing namespace in '$Path'. Skipping."
+        return
     }
 
     $namespace = @{ jrt = $namespaceUri }
@@ -432,7 +404,7 @@ function get-JunosShowRouteAllFromXML {
                 }
             }
 
-            # This logic now only runs on routes that have a gateway (e.g., Static, BGP, OSPF).
+            # Interface lookup applies only to gateway-bearing routes such as static, BGP, and OSPF.
             $localProtocolsForGatewaySearch = @('Receive', 'Aggregate') # Protocols that can have gateways but we might still want to skip the search for.
             if ($routeObject.Gateway -and $device.interfaces -and ($localProtocolsForGatewaySearch -notcontains $routeObject.RouteProtocol)) {
 
@@ -453,7 +425,6 @@ function get-JunosShowRouteAllFromXML {
     }
 
     $device.RoutingTable = $routeObjects
-    return $device
 }
 
 
@@ -482,14 +453,18 @@ function get-JunosShowRouteAllFromXML {
 
 
 #Extract all the information from the 'show interfaces terse' xml file
-function Get-JunosShowInterfaceTerseFromXML {
-    param (
-        [parameter(Mandatory = $true)]
-        $JunosInterfaceTerseFile,
-        [parameter(Mandatory = $true)]
-        $device
+function Update-JunosInterfaces {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
-    [xml]$Interfaces = Get-Content -Raw $JunosInterfaceTerseFile
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterfaceTerse')) { return }
+
+    # --- EXTRACT ---
+    $Interfaces = Get-JunosXmlDocument -Path $Path
     
     # --- Flag for debug logging for the specific host ---
     #$enableDebug = ($device.hostname -eq 'xxxx')
@@ -553,7 +528,7 @@ function Get-JunosShowInterfaceTerseFromXML {
                                     $ip, $prefix = $ipString -Split '/'
                                     
                                     # Calculate the full network CIDR
-                                    $networkAddr = Get-NetworkAddress -IPAddress $ip -PrefixLength ([int]$prefix)
+                                    $networkAddr = Get-JunosNetworkAddress -IPAddress $ip -PrefixLength ([int]$prefix)
                                     $cidr = "$networkAddr/$prefix"
 
                                     if ($i -eq 0) { # Handle Primary IP Address
@@ -577,14 +552,13 @@ function Get-JunosShowInterfaceTerseFromXML {
 
     # --- START: Final debug output for all interfaces ---
     if ($enableDebug) {
-        Add-HostDebugText -HostObject $device -text "--- FINAL INTERFACE STATE BEFORE RETURN ---" -BackgroundColor "DarkBlue"
+        Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $device -Message "--- FINAL INTERFACE STATE BEFORE RETURN ---"
         # Select key properties to display in the log for clarity
         $finalInterfaceState = $device.interfaces | Format-Table Interface, shutdown, IPAddress, SubnetMask, Cidr, IntStatus -AutoSize | Out-String
-        Add-HostDebugText -HostObject $device -text $finalInterfaceState -BackgroundColor "DarkBlue"
+        Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $device -Message $finalInterfaceState
     }
     # --- END: Final debug output ---
 
-    return $device
 }
 
 
@@ -610,7 +584,7 @@ function Get-JunosShowInterfaceTerseFromXML {
 #            return $vlan.number
 #        }
 #    }
-#    Add-HostDebugText -HostObject $device "Cant find vlan name in list. $($VlanName) in $($VlanArray)" -ForegroundColor red
+
 #    return $null
 #}
 
@@ -630,25 +604,27 @@ function Get-JunosShowInterfaceTerseFromXML {
 #
 # Extracts all ARP entries from a Junos 'show arp' XML file using the existing object creator.
 #
-function Get-JunosArpTableFromXML {
-    param (
-        [parameter(Mandatory = $true)]
-        $JunosArpFile,
-        [parameter(Mandatory = $true)]
-        $device
+function Update-JunosArp {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $device "Processing Junos ARP table: $JunosArpFile"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowArp')) { return }
+
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $device -Message "Processing Junos ARP table: $Path"
 
     $AllIPArpObjects = @()
 
+    # --- EXTRACT ---
     try {
-        # Read the file and cast it directly to an XML object.
-        $ArpXml = [xml](Get-Content -Path $JunosArpFile -Raw)
+        $ArpXml = Get-JunosXmlDocument -Path $Path
     }
     catch {
-        Add-HostDebugText -HostObject $device "Invalid XML file or could not read file: $JunosArpFile" -BackgroundColor Red
-        return $device # Return the unmodified device object on error
+        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $device -Message "Invalid XML file or could not read file: $Path"
+        return
     }
 
     # Iterate through each <arp-table-entry> node in the XML.
@@ -674,67 +650,197 @@ function Get-JunosArpTableFromXML {
     # Assign the completed array of ARP entries to the main device object.
     $device.IPArpEntries = $AllIPArpObjects
 
-    Add-HostDebugText -HostObject $device "Finished processing ARP table. Found $($AllIPArpObjects.Count) entries."
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $device -Message "Finished processing ARP table. Found $($AllIPArpObjects.Count) entries."
 
     # Return the modified device object.
-    return $device
+}
+
+#
+# Resolves the OUI of a learned MAC to a vendor name, the value the per-port MAC bubble groups by.
+# Matches the other platforms: try the 28-bit prefix first, then fall back to the 24-bit one.
+#
+function Get-JunosMacVendor {
+    [CmdletBinding()]
+    param([AllowNull()][AllowEmptyString()][string]$MacAddress)
+
+    $hex = [string]$MacAddress -replace '[^0-9A-Fa-f]', ''
+    if ($hex.Length -ne 12) { return 'UNKNOWN Vendor' }
+    $colonForm = (0..5 | ForEach-Object { $hex.Substring($_ * 2, 2) }) -join ':'
+    foreach ($length in 8, 5) {
+        if ($GMacAddressToVendorMapping[$colonForm.Substring(0, $length)]) { return $GMacAddressToVendorMapping[$colonForm.Substring(0, $length)] }
+    }
+    return 'UNKNOWN Vendor'
+}
+
+#
+# ELS carries the VLAN twice - a numeric id and a name - and splits the two across the entry and
+# its wrapper depending on the output style: the brief style puts the id on the wrapper and the
+# name on the child. The numeric id wins wherever it is found, because that is what the pre-ELS
+# <mac-vlan-tag> put in this field; the name is only a fallback. Returns '' when neither exists.
+#
+function Get-JunosMacTableVlanLabel {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]$Element,
+        [AllowNull()]$Parent
+    )
+
+    foreach ($name in @('l2ng-l2-vlan-id', 'l2ng-l2-mac-vlan-name')) {
+        foreach ($source in @($Element, $Parent)) {
+            if (-not $source) { continue }
+            $value = [string]$source.$name
+            if (-not [string]::IsNullOrWhiteSpace($value)) { return $value.Trim() }
+        }
+    }
+    return ''
+}
+
+#
+# Junos publishes the forwarding table under two unrelated XML schemas, and both are still in the
+# field, so the reader detects which one it was handed rather than replacing one with the other:
+#
+#   pre-ELS   <ethernet-switching-table-information><ethernet-switching-table><mac-table-entry>
+#   ELS       <l2ng-l2ald-rtb-macdb><l2ng-l2ald-mac-entry-vlan>          (what 22.4 emits)
+#
+# The two root names live here, once, and Update-JunosMacAddressTable asks through this. It is
+# XPath rather than property access because an empty container element - which is exactly how a
+# switch with nothing learned reports - reads back as absent through the property adapter, and
+# "the table is empty" must not be mistaken for "this is a schema nobody taught the reader".
+#
+function Test-JunosMacTableSchema {
+    [CmdletBinding()]
+    param([AllowNull()]$Xml)
+
+    if (-not $Xml) { return $false }
+    foreach ($root in @('/rpc-reply/l2ng-l2ald-rtb-macdb', '/rpc-reply/ethernet-switching-table-information')) {
+        if ($Xml.SelectSingleNode($root)) { return $true }
+    }
+    return $false
+}
+
+#
+# Every field is renamed between the two schemas, and ELS has no <mac-type> equivalent at all.
+# Returns rows in one shape - MacAddress, Vlan, Type, Interface - so the caller maps only once.
+#
+function Get-JunosMacTableEntry {
+    [CmdletBinding()]
+    param([AllowNull()]$Xml)
+
+    if (-not $Xml) { return }
+
+    foreach ($entry in @($Xml.SelectNodes('/rpc-reply/ethernet-switching-table-information/ethernet-switching-table/mac-table-entry'))) {
+        if (-not $entry) { continue }
+        [pscustomobject]@{
+            MacAddress = [string]$entry.'mac-address'
+            Vlan       = [string]$entry.'mac-vlan-tag'
+            Type       = [string]$entry.'mac-type'
+            Interface  = [string]$entry.'mac-interface'
+        }
+    }
+
+    # The 'detail' and 'extensive' styles put every field on the <l2ng-l2ald-mac-entry-vlan>
+    # element itself. The brief style makes that same element a per-VLAN wrapper around
+    # <l2ng-mac-entry> children instead, so the VLAN identity has to be inherited downwards.
+    foreach ($vlanEntry in @($Xml.SelectNodes('/rpc-reply/l2ng-l2ald-rtb-macdb/l2ng-l2ald-mac-entry-vlan'))) {
+        if (-not $vlanEntry) { continue }
+        $children = @($vlanEntry.'l2ng-mac-entry' | Where-Object { $_ })
+        foreach ($entry in @(if ($children.Count -gt 0) { $children } else { $vlanEntry })) {
+            $vlan = Get-JunosMacTableVlanLabel -Element $entry -Parent $vlanEntry
+
+            # There is no ELS equivalent of <mac-type>. The entry flags are the closest thing the
+            # schema carries, so they occupy Type rather than leaving it blank; the extensive form
+            # spells them 'entry-flags' and the brief form 'flags'.
+            $flags = [string]$entry.'l2ng-l2-mac-entry-flags'
+            if ([string]::IsNullOrWhiteSpace($flags)) { $flags = [string]$entry.'l2ng-l2-mac-flags' }
+
+            [pscustomobject]@{
+                MacAddress = [string]$entry.'l2ng-l2-mac-address'
+                Vlan       = $vlan
+                Type       = $flags.Trim()
+                Interface  = [string]$entry.'l2ng-l2-mac-logical-interface'
+            }
+        }
+    }
 }
 
 #
 # Extracts all MAC address entries from a Junos 'show ethernet-switching table' XML file.
 #
-function Get-JunosMacAddressTableFromXML {
-    param (
-        [parameter(Mandatory = $true)]
-        $JunosMacTableFile,
-        [parameter(Mandatory = $true)]
-        $device
+function Update-JunosMacAddressTable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $device "Processing Junos MAC address table: $JunosMacTableFile"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowEthernetSwitchingTable')) { return }
 
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Processing Junos MAC address table: $Path"
+
+    # --- EXTRACT ---
     try {
-        # Read the file and cast it directly to an XML object.
-        $MacXml = [xml](Get-Content -Path $JunosMacTableFile -Raw)
+        $MacXml = Get-JunosXmlDocument -Path $Path
     }
     catch {
-        Add-HostDebugText -HostObject $device "Invalid XML file or could not read file: $JunosMacTableFile" -BackgroundColor Red
-        return $device # Return the unmodified device object on error
+        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "Invalid XML file or could not read file: $Path"
+        return
+    }
+    if (-not $MacXml) { return }
+
+    # A switch with nothing in its forwarding table is normal, and is not the same thing as a
+    # schema this reader does not know, so the two are separated before anything is logged.
+    if (-not (Test-JunosMacTableSchema -Xml $MacXml)) {
+        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "MAC address table capture matched neither the pre-ELS nor the ELS schema: $Path"
+        return
     }
 
-    # Iterate through each <mac-table-entry> node in the XML.
-    foreach ($entry in $MacXml.'rpc-reply'.'ethernet-switching-table-information'.'ethernet-switching-table'.'mac-table-entry') {
+    $entries = @(Get-JunosMacTableEntry -Xml $MacXml)
+    if ($entries.Count -eq 0) {
+        Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "MAC address table is empty: $Path"
+        return
+    }
+
+    # --- MAP + MERGE ---
+    $missingInterfaces = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $merged = 0
+    foreach ($entry in $entries) {
 
         # Skip entries that are not useful (e.g., Flood entries or internal router entries).
-        if ($entry.'mac-address' -eq '*' -or $entry.'mac-interface' -eq 'Router') {
+        if ($entry.MacAddress -eq '*' -or $entry.Interface -eq 'Router') {
             continue
         }
 
+        # Clean up the interface name (e.g., "ge-0/0/23.0" becomes "ge-0/0/23") to match other configs.
+        $name = ([string]$entry.Interface).Trim() -replace '\.0$', ''
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+
         # Use the existing Create-MacAddressObject function for consistency.
         $MacObject = Create-MacAddressObject
+        $MacObject.MacAddress = ConvertTo-NormalizedMacAddress (([string]$entry.MacAddress).Trim())
+        if ([string]::IsNullOrWhiteSpace($MacObject.MacAddress)) { continue }
+        $MacObject.Vlan              = $entry.Vlan
+        $MacObject.Type              = $entry.Type
+        $MacObject.Interface         = $name
+        $MacObject.VendorCompanyName = Get-JunosMacVendor -MacAddress $MacObject.MacAddress
 
-        # Populate the object with data from the XML nodes.
-        $MacObject.MacAddress = $entry.'mac-address'
-        $MacObject.Vlan       = $entry.'mac-vlan-tag'
-        $MacObject.Type       = $entry.'mac-type'
-
-        # Clean up the interface name (e.g., "ge-0/0/23.0" becomes "ge-0/0/23") to match other configs.
-        $MacObject.Interface  = $entry.'mac-interface' -replace '\.0$', ''
-
-        # Find the corresponding interface object on the device.
-        $deviceInterface = $device.interfaces | Where-Object { $_.interface -eq $MacObject.Interface }
-
-        if ($deviceInterface) {
-            # If the interface is found, add the new MAC address object to its array.
-            $deviceInterface.MacAddressArray += $MacObject
+        # Find the corresponding interface object on the device. A MAC learned on a port the
+        # configuration never declared is a capture inconsistency, not a reason to invent a port.
+        $deviceInterface = Resolve-MTAutoDrawInterface -Device $Device -Name $name -NoCreate
+        if (-not $deviceInterface) {
+            $null = $missingInterfaces.Add($name)
+            continue
         }
-        else {
-            Add-HostDebugText -HostObject $device "Could not find interface $($MacObject.Interface) to associate MAC address $($MacObject.MacAddress) with." -BackgroundColor Yellow
-        }
+        $deviceInterface.MacAddressArray += , $MacObject
+        $merged++
     }
 
-    Add-HostDebugText -HostObject $device "Finished processing MAC address table."
-    return $device
+    # Aggregate unmatched MACs by device so a busy uplink produces one actionable diagnostic.
+    if ($missingInterfaces.Count -gt 0) {
+        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "Could not find $($missingInterfaces.Count) interface(s) to associate learned MAC addresses with: $((@($missingInterfaces) | Sort-Object) -join ', ')."
+    }
+
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Finished processing MAC address table. Merged $merged of $($entries.Count) entries."
 }
 
 
@@ -742,7 +848,8 @@ function Get-JunosMacAddressTableFromXML {
 
 
 
-function Get-NetworkAddress {
+# Computes the network address (subnet base IP) for an IP + prefix length using 32-bit mask arithmetic. Returns the dotted-quad network address string.
+function Get-JunosNetworkAddress {
     param($IPAddress, $PrefixLength)
     $ip = [System.Net.IPAddress]::Parse($IPAddress)
     $mask = 0xFFFFFFFF -shl (32 - $PrefixLength)
@@ -777,19 +884,33 @@ function Expand-JunosInterfaceRange {
 
 
 
-function Get-JunosShowRunFromXML {
-    param (
-        [parameter(Mandatory = $true)]
-        $Lconfig
+# Reads a Junos 'show configuration' XML capture: the hostname, the VLAN database, and every
+# interface with its addressing, aggregation and switching configuration. This is the capture the
+# whole device is built from - the operational captures only annotate what it produced.
+function Update-JunosRunningConfig {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    $device = Create-HostObject
-    $device.Origin = "config"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRun')) { return }
+
+    # --- EXTRACT ---
+    try {
+        $Lconfig = Get-JunosXmlDocument -Path $Path
+    }
+    catch {
+        Write-MTAutoDrawDiagnostic -Device $Device -Severity Warning -Message "Invalid XML file: $Path"
+        return
+    }
+
     $ArrayOfHostNetworks = @()
     $hostname = $Lconfig.'rpc-reply'.configuration.system.'host-name'
     if ($null -eq $hostname -or $hostname -eq "") {
         $hostname = "NoHostNameFoundCheckForConfigProblems"
-        Add-HostDebugText -HostObject $device "No hostname found in Junos config" -BackgroundColor red
+        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $device -Message "No hostname found in Junos config"
     }
     $device.hostname = $hostname
 
@@ -851,14 +972,14 @@ function Get-JunosShowRunFromXML {
                     $allMemberNames += Expand-JunosInterfaceRange -Name $member.name
                 }
 
-                # --- START: CORRECTED member-range PARSING ---
+                # Parse inclusive member ranges while preserving the prefix from the start value.
                 foreach ($memberRange in @($rangeNode.'member-range')) {
                     if ($memberRange.name -match '(.+/)(\d+)$') {
                         # Capture the results from the first match immediately
                         $prefix = $matches[1]
                         $start = [int]$matches[2]
 
-                        # Now, perform the second match
+                        # Parse the range endpoint after saving the first match's prefix and start.
                         if ($memberRange.'end-range' -match '(.+/)(\d+)$') {
                             $end = [int]$matches[2]
 
@@ -870,8 +991,6 @@ function Get-JunosShowRunFromXML {
                         }
                     }
                 }
-                # --- END: CORRECTED member-range PARSING ---
-
                 foreach ($ifaceName in ($allMemberNames | Sort-Object -Unique)) {
                     if (-not $interfaceObjects.ContainsKey($ifaceName)) {
                         $obj = Create-InterfaceObject
@@ -981,7 +1100,7 @@ function Get-JunosShowRunFromXML {
                                         $ip = $ipParts[0]
                                         $prefix = [int]$ipParts[1]
                                         $subnetMask = "$prefix"
-                                        $networkAddr = Get-NetworkAddress -IPAddress $ip -PrefixLength $prefix
+                                        $networkAddr = Get-JunosNetworkAddress -IPAddress $ip -PrefixLength $prefix
                                         $cidr = "$networkAddr/$prefix"
 
                                         if ($i -eq 0) { # Primary IP
@@ -997,7 +1116,7 @@ function Get-JunosShowRunFromXML {
                                         }
                                     }
                                 } catch {
-                                    Write-Warning "Failed to parse IP Address '$($addressEntry.name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
+                                    Write-MTAutoDrawDiagnostic -Device $Device -Severity Warning -Message "Failed to parse IP Address '$($addressEntry.name)' on interface '$($obj.Interface)'. Error: $($_.Exception.Message)"
                                 }
                             }
                         }
@@ -1155,7 +1274,7 @@ function Get-JunosShowRunFromXML {
     [array]$interfaces = $interfaceObjects.Values | Sort-Object { $_.Interface -replace '\d+', { $_.Value.PadLeft(4, '0') } }
 
     foreach ($ag in ($interfaces | where { $_.interface -like "ae*"})) {
-        $ag.ShapeColor = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)"
+        $ag.ShapeColor = Get-DeterministicRgbColor -Seed "aggregate|$($ag.Interface)"
         $interfaces | where { $_.ChannelGroup -eq $ag.interface } | ForEach-Object { $_.ShapeColor = $ag.ShapeColor }
     }
 
@@ -1181,8 +1300,25 @@ function Get-JunosShowRunFromXML {
         $prefix = if ($_.Cidr) { ($_.Cidr -split '/')[1] } else { 'N/A' }
         "$($_.Interface): $($_.IPAddress)/$prefix"
     }
-    Add-HostDebugText -HostObject $device "Final Parsed IP Report: $($ipReport -join '; ')"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $device -Message "Final Parsed IP Report: $($ipReport -join '; ')"
 
-    return $device
 }
 
+
+# Junos captures taken with "| display xml" carry the echoed command on the first line and a
+# "{master:0}" / "root@host>" prompt after the closing tag. A direct [xml] cast throws on both.
+# This trims to the outermost element before casting.
+function Get-JunosXmlDocument {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $raw = Get-MTAutoDrawCaptureText -Path $Path
+    if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
+
+    $open = $raw.IndexOf('<')
+    if ($open -lt 0) { return $null }
+    $closeTag = '</rpc-reply>'
+    $close = $raw.LastIndexOf($closeTag)
+    $trimmed = if ($close -gt $open) { $raw.Substring($open, ($close + $closeTag.Length) - $open) } else { $raw.Substring($open) }
+
+    return [xml]$trimmed
+}

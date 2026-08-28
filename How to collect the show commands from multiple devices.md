@@ -1,536 +1,169 @@
-# Overview
-Here is a very basic way of collecting the show commands from multiple switches,routers,firewalls,etc. This process allows you to run one or serval commands on a device and collect the output. 
+# Collecting the captures
 
-There are much better ways of doing this however this one is very easy to do.
-It could also be modified to run any command you wish via ssh. 
+MTAutoDraw does not talk to your devices. It reads text files that hold the raw output of `show`
+commands, one file per command per device, and turns them into a diagram. This guide covers getting
+those files.
 
+Use the collector that ships in this repository: **[`DataCollection/NetworkAudit.ps1`](DataCollection/NetworkAudit.ps1)**.
+It is a Windows PowerShell 7 and WinForms application that logs into a list of devices over SSH or
+Telnet, runs the read-only commands MTAutoDraw needs, writes them out in the expected layout, and can
+hand the result straight to `AutoDraw.ps1`.
 
-# Step 1
-Open powershell so the commands below can be copy and pasted in and run manually
+[`DataCollection/README.md`](DataCollection/README.md) is the full reference for the collector — every
+tab, setting, profile, and troubleshooting entry. What follows is the short path from a clean checkout
+to a diagram.
 
-# Step 2
-Fill in the details below and run this section. 
+## What you need
 
-```powershell
-$Pass="xxxx"
-$username="xxx"
+- Windows 10 or 11.
+- PowerShell 7 or newer (`pwsh.exe`).
+- [Posh-SSH](https://www.powershellgallery.com/packages/Posh-SSH) 3.2.7 or newer, for SSH targets.
+- Network reach from this machine to the devices, and read-only credentials for them.
 
-# If you have multiple creds you can create multiple variables like this.
-$AnotherPass = "yyyy"
-```
-
-# Step 3 
-Edit the following array adding and removing devices as required.
-You can use different passwords like example number 2 with `$AnotherPass`
-
-```powershell
-$NetworkDevices=@(
-    @("10.147.224.67", $username, $Pass),
-    @("10.147.224.66", $username, $Pass),
-    @("10.147.224.6", $username, $AnotherPass),
-    @("10.147.224.68", $username, $Pass)
-)
-```
-
-# Step 4
-Copy and paste the above code into powershell manually. 
-You will need to press Y and then enter to accept the key. 
-It is necessary to accept the Host key. Unfortunately it is not possible to bypass this step as plink.exe / putty doesn't permit it. 
-This is only necessary to do once per ip address as the key is save into the registry. 
-This should display the out of show version or give a error that will need to be resolved. 
-Note: You may wish to change the command below if the device is not a cisco. 
+Check Posh-SSH with:
 
 ```powershell
-# Cisco
-$Commands = @("show version")
-# Junos
-# $Commands = @("show version|no-more")
-# Palo alto
-# $Commands = @("show sysinfo")
-
-foreach ($Device in $NetworkDevices){
-	write-host $Device[0] -ForegroundColor green
-	foreach ($command in $Commands){
-		$CommandResults=""
-		write-host $command -ForegroundColor red
-		# This now correctly uses the password associated with the device in the array
-		$CommandResults = .\plink.exe -a "$($Device[1])@$($Device[0])" -pw "$($Device[2])" "$($command)"
-		write-host $CommandResults -ForegroundColor green
-	}
-	write-host (get-date) -ForegroundColor red
-}
+Get-Module -ListAvailable Posh-SSH | Sort-Object Version -Descending
 ```
 
-# Step 5 
-Change the folder where you want to store the config. Note this must have a trailing `\`
+The collector checks for it at the start of a run and tells you what is missing. It installs nothing
+by itself.
+
+## Step 1 — Launch
+
+From the repository root:
 
 ```powershell
-$Folder="C:\code\2022-05-05-2\" #Folder where you want to save the files
+pwsh.exe -STA -NoProfile -File .\DataCollection\NetworkAudit.ps1
 ```
 
-# Step 6
-Create a array of commands you want to run on the switch / router / firewall. Here are some examples.
-### Arista
-```powershell
-$AristaCommands = @(
+`-STA` is required; WinForms will not start without it.
 
-    # config
-    "show run",
-    # --- System & Hardware ---
-    "show boot-config",
-    "show clock",
-    "show environment cooling",
-    "show environment power",
-    "show environment temperature",
-    "show hostname",
-    "show inventory",
-    "show module",
-    "show reload cause",
-    "show snmp community",
-    "show version",
-    "show vrf",
+## Step 2 — Enter your password sets
 
-    # --- Interfaces ---
-    "show interfaces",
-    "show interfaces description",
-    "show interfaces status",
-    "show interfaces transceiver",
-    "show interfaces transceiver detail",
-    "show ip interface brief",
-    "show ip helper-address",
-    
-    # --- Layer 2 Switching ---
-    "show vlan",
-    "show mac address-table",
-    "show lldp neighbors",
-    "show lldp neighbors detail",
-    "show mlag",
-    "show port-channel detailed",
-    "show mac security interface detail",
-    "show mac security mka counters",
-    "show mac security participants detail",
+On the **Devices** tab choose **Enter / manage passwords...**.
 
+A password set is a name, a username, a login password, and optionally an enable password. The name is
+a label — `SWITCHES`, `FIREWALL`, `JUNIPER` — that device rows point at, so one credential can serve
+many devices and you never type it twice.
 
-    "show spanning-tree",
-    "show spanning-tree root",
-    "show spanning-tree blockedports",
+Passwords live in memory for the life of the process. They are never written to the JSON, the CSVs,
+the manifest, the logs, or the error files, and closing the window discards them.
 
-    # --- Routing & Protocols ---
-    "show ip route vrf all",
-    "show ip route",
-    "show ip arp",
-    "show ip access-lists",
-    "show ip mroute vrf all detail",
-    "show pim ipv4 interface",
-    "show pim ipv4 neighbor",
-    
-    "show vrrp",
-    "show vrrp all",
-    "show vrrp group",
-    "show vrrp VRF",
-    
-    # --- BGP ---
-    "show ip bgp vrf all",
-    "show ip bgp detail vrf all",
-    "show ip bgp summary vrf all",
-    "show ipv6 bgp summary vrf all",
+## Step 3 — Enter your devices
 
-    # --- OSPF ---
-    "show ip ospf database",
-    "show ip ospf interface brief",
-    "show ip ospf neighbor vrf all",
-    "show ip ospf neighbor",
-    "show ip ospf summary",
-    "show ip ospf vrf all",
+`DataCollection/NetworkAudit.config.json` ships with six **disabled example rows**. They exist to show
+the shape of a device entry; replace them with your own.
 
-    # --- ISIS ---
-    "show isis neighbors",
+Each row is:
 
-    # --- Process & Monitoring ---
-    "show processes top once"
-)
-```
-### Aruba
-```powershell
+| Field | Meaning |
+|---|---|
+| `Run` | Include this device when its site is selected. |
+| `Device / IP address` | DNS name or IP used to connect. |
+| `Site` | Free-text grouping. One site becomes one diagram. |
+| `Credential name` | The name of a password set — not a username. |
+| `Device type` | A forced profile, or `Auto` to detect it. |
 
-$Commands = @(
-    "show vsx",
-    "show vsx status",
-    "show interface",
-    "show interface brief",
-    "show arp all-vrfs",
-    "show lldp neighbor-info",
-    "show lldp neighbor-info detail",
-    "show ip interface brief",
-    "show ip interface",
-    "show ip route all-vrfs",
-    "show interface dom detail",
-    "show bfd all-vrfs",
-    "show bgp all-vrfs all summary",
-    "show bgp all-vrfs all",
-    "show bgp all-vrfs all neighbors",
-    "show aaa authentication port-access interface all client-status",
-    "show mac-address-table",
-    "show spanning-tree",
-    "show spanning-tree root",
-    "show spanning-tree port",
-    "show spanning-tree detail",
-    "show spanning-tree mst",
-    "show spanning-tree mst detail",
-    "show spanning-tree inconsistent-ports",
-    "show ntp associations",
-    "show ntp status",
-    "show system",
-    "show vlan",
-    "show vlan vsx-peer",
-    "show vsf detail",
-    "show version",
-    "show hostname",
-    "show ipv6 interface brief",
-    "show ipv6 interface all-vrfs",
-    "show arp all-vrfs",
-    "show arp summary all-vrfs",
-    "show ip ospf all-vrfs",
-    "show ip ospf neighbors all-vrfs",
-    "show lacp interfaces",
-    "show lacp aggregates",
-    "show lacp configuration",
-    "show vrf",
-    "show run all",
-    "show run",
-    "show environment",
-    "show vrrp",
-    "show vrrp details",
-    "show lag"
-)
+For a whole site at once, paste one target per line into the large box, pick the default site, type,
+and password set, then choose **Add pasted switches to device list**. Existing targets are left alone,
+so per-device overrides survive a re-paste.
 
+**Save configuration** writes the edits atomically — a temporary file is written and then swapped in,
+so an interrupted save cannot leave you with half a config.
 
+Leave `Device type` on `Auto` unless detection gets it wrong. Forcing a profile skips detection, which
+is what you want for gear that answers `show version` ambiguously, and what you do not want otherwise.
 
-```
-### Cisco
-```powershell
-$Commands= @(
-    "show ip route vrf `*",
-    "show ip route vrf all",
-    "show snmp",
-    "show logging",
-    "show license all",
-    "show ntp status",
-    "show environment all",
-    "show environment",
-    "show env power all",
-    "show switch detail",
-    "show interfaces transceiver detail",
-    "show vtp status",
-    "show interfaces counters errors",
-    "show processes cpu history",
-    "show processes cpu",
-    "show version",
-    "show run",
-    "show cdp neighbors",
-    "show cdp neighbors detail",
-    "show lldp neighbors",
-    "show lldp neighbors detail",
-    "show interface description",
-    "show interface status",
-    "show interface counter",
-    "show interface counter error",
-    "show interface trunk",
-    "show interface",
-    "show ip interface brief",
-    "show vlan",
-    "show spanning-tree",
-    "show spanning-tree summary",
-    "show spanning-tree root",
-    "show spanning-tree blockedports",
-    "show vpc brief",
-    "show vpc",
-    "show ip bgp summary",
-    "show ip bgp",
-    "show ip bgp database",
-    "show ip bgp neighbors",
-    "show ip bgp ipv4 all",
-    "show ip bgp ipv6 all",
-    "show ip rip database",
-    "show eigrp neighbor",
-    "show ospf neighbor",
-    "show ospf enabled interfaces",
-    "show mac address-table",
-    "show ip arp",
-    "show etherchannel summary",
-    "show port-channel summary",
-    "show ip route",
-    "show standby",
-    "show vrf",
-    "show inventory",
-    "show hsrp all",
-    "show hsrp",
-    "show bfd sessions",
-    "show bfd neighbors details",
-    "show ip bgp vpnv4 all neighbors",
-    "show forwarding ipv4 route",
-    "show forwarding adjacency",
-    "show ip eigrp topology",
-    "show ip ospf interface brief",
-    "show ip ospf database router",
-    "show ip ospf database network",
-    "show ip ospf database",
-    "show policy-map interface input",
-    "show policy-map interface output",
-    "show policy-map interface brief",
-    "show queue",
-    "show queueing",
-    "show qos",
-    "show hqf interface",
-    "show table-map",
-    "show history",
-    "show ntp status",
-    "show protocols",
-    "show ip nat translations",
-    "show standby",
-    "show monitor session all",
-    "show port-security",
-    "show monitor session remote",
-    "show monitor session local",
-    "show lacp",
-    "show lacp counters",
-    "show lacp internal",
-    "show lacp neighbor detail",
-    "show cef interface",
-    "show ip cef detail",
-    "show cef linecard detail",
-    "show mpls traffic-eng forwarding-adjacency",
-    "show isis database",
-    "show isis adjacency",
-    "show clns interface",
-    "show isis topology",
-    "show clns is-neighbors",
-    "show clns is-neighbors detail"
-)
-```
-### CheckPoint
-```powershell
-$Commands= @(
-    "show sysenv all",
-    "show asset all",
-    "show ospf neighbors detailed",
-    "show ospf summary",
-    "show rip summary",
-    "show ospf interfaces detailed",
-    "show bgp summary",
-    "show bgp peers detailed",
-    "show version all",
-    "show interfaces all",
-    "show arp dynamic all",
-    "show route all",
-    "show configuration",
-    "show uptime",
-    "show pbr summary",
-    "show pbr rules",
-    "show ntp active",
-    "show ntp servers",
-    "show vpn tunnels",
-    "show vrrp summary",
-    "show cluster state"
-)
+## Step 4 — Run Safe Preflight
+
+On the **Run** tab pick one site (or **All Sites**), then **1. Safe Preflight**.
+
+Preflight is the cheap version of the run. Offline it looks for duplicate targets, missing sites or
+password sets, unknown or empty profiles, edited commands that are no longer read-only, and gaps
+between a forced profile and the commands MTAutoDraw needs. Online it tests the port, authenticates,
+validates the host key, learns the prompt, and runs the minimum read-only commands needed to identify
+the device.
+
+It does not enter enable mode, disable paging, run collection commands, or write capture files.
+
+| Result | Meaning |
+|---|---|
+| `Pass` | Authentication, prompt handling, and device detection all worked. |
+| `Warning` | Reachable but wants attention — Telnet, a profile disagreement, unrecognized detection output. |
+| `Fail` | Connectivity, authentication, host key, prompt handling, or detection failed. |
+
+Read the detail messages on anything that is not a `Pass`. They name the commands attempted, the ones
+rejected, and where the session stopped, which is usually enough to fix it without a packet capture.
+
+## Step 5 — Run the full audit
+
+**2. Run Full Audit**.
+
+If preflight is missing, stale, or was not clean, you get one consolidated confirmation listing the
+affected devices — informative, not blocking. Workers run concurrently up to `settings.throttleLimit`
+(25 by default) and the grid reports each device through Connecting, Detecting, Preparing, Running
+command X/Y, and Complete.
+
+Output lands in a timestamped folder:
+
+```text
+NetworkAudit_yyyyMMdd_HHmmss\
+├── Summary.csv
+├── RunManifest.json
+├── Debug.log
+└── SiteName\
+    └── DeviceName\
+        ├── device-info.txt
+        ├── fingerprint.txt
+        ├── paging.txt
+        └── DeviceName.show.version.txt
 ```
 
-### Cisco ASA
-```powershell
-$Commands= @(
-    "show version",
-    "show ip",
-    "show environment",
-    "show failover",
-    "show bgp summary",
-    "show bgp neighbors",
-    "show ospf neighbor detail",
-    "show eigrp neighbors",
-    "show eigrp topology",
-    "show interface",
-    "show configuration",
-    "show route",
-    "show arp",
-    "show zone",
-    "show vpn-sessiondb summary",
-    "show port-channel summary",
-    "show port-channel detail",
-    "show interface summary",
-    "show policy-route",
-    "show firewall",
-    "show inventory",
-    "show ipsec sa summary",
-    "show ipsec stats",
-    "show ntp status",
-    "show cluster info",
-    "show traffic",
-    "show policy-route",
-    "show inventory",
-    "show bridge-group",
-    "changeto system",
-    "show context",
-    "show context count"
-)
-```
+The per-device folder is what MTAutoDraw reads. File naming already matches the
+`Identifier.Command-Name.txt` convention described in the main [README](README.md#file-naming-convention),
+so nothing needs renaming.
 
-### PA firewall
-```powershell
-$Commands= @(
-    "show system info",
-    "show lldp neighbors all",
-    "show interface all",
-    "show routing route",
-    "show routing summary",
-    "show arp all",
-    "show lacp aggregate-ethernet all",
-    "show vlan all",
-    "show vpn tunnel",
-    "show ntp",
-    "show mac all",
-    "show high-availability all",
-    "show chassis inventory",
-    "show config running",
-    "request license info",
-    "show config pushed-shared-policy",
-    "show running nat-policy",
-    "show running security-policy"
-)
-```
+The manifest records requested devices, requested and resolved types, site scope, preflight state,
+final status, and the commands actually executed. It never contains passwords.
 
-### WLC
-```powershell
-$Commands= @(
-    "show run-config",
-    "show wlan summary",
-    "show wlan apgroups",
-    "show logging",
-    "show rf-profile summary",
-    "show mobility summary",
-    "show mobility anchor",
-    "show mobility ap-list",
-    "show guest-lan summary",
-    "show cdp entry all",
-    "show route summary",
-    "show system route",
-    "show rules",
-    "show sysinfo",
-    "show stats switch detailed",
-    "show port detailed-info",
-    "show port vlan",
-    "show network summary",
-    "show network profile details",
-    "show dhcp summary",
-    "show ldap summary",
-    "show system interfaces",
-    "show license all",
-    "show tacacs summary",
-    "show network summary",
-    "show interface detailed virtual",
-    "show interface detailed management",
-    "show ap summary",
-    "show ap inventory all",
-    "show ap cdp all",
-    "show run-config commands"
-)
-```
+## Step 6 — Generate the diagram
 
-### Blue coat 
-```
-show interface all
-show version
-show routing-domain
-show virtual-ip
-show accelerated-pac
-show bridge
-show dns
-show dns-forwarding
-show failover configuration
-show forwarding
-show general
-show ip-default-gateway 
-show ip-route-table
-show licenses
-show ntp
-show policy config
-show private-network
-show proxy-services
-show management-services
-show static-routes
-show tcp-ip
-show wccp status
-show arp-table
-```
+**3. Generate Site Diagram**, once a site has finished.
 
-### Juniper (XML Output)
-```powershell
-$Commands= @(
-    "show configuration | display xml | no-more",
-    "show spanning-tree bridge | display xml | no-more",
-    "show spanning-tree interface detail | display xml | no-more",
-    "show lldp neighbors | display xml | no-more",
-    "show ethernet-switching table detail | display xml | no-more",
-    "show arp | display xml | no-more",
-    "show route all | display xml | no-more",
-    "show vrrp | display xml | no-more",
-    "show virtual-chassis device-topology | display xml | no-more",
-    "show virtual-chassis  | display xml | no-more",
-    "show system uptime | display xml | no-more",
-    "show version  | display xml | no-more",
-    "show version detail all-members | display xml | no-more",
-    "show interfaces detail | display xml | no-more",
-    "show vlans detail | display xml | no-more",
-    "show lacp interfaces | display xml | no-more",
-    "show chassis | display xml | no-more",
-    "show ethernet-switching table extensive | display xml | no-more",
-    "show log messages | display xml | no-more"
-)
-```
+The collector checks the captures against the devices it expected, warns you before drawing a partial
+site, validates the MTAutoDraw script, Python runtime, templates, and TextFSM wrapper, then runs
+`AutoDraw.ps1` in a separate process and reports Pass, Warn, or Fail with device and parser-error
+counts.
 
-### Juniper (Set/Text Output)
-```powershell
-$Commands= @(
-    "show log messages  | no-more",
-    "show configuration  | no-more",
-    "show configuration | display set | no-more",
-    "show spanning-tree bridge  | no-more",
-    "show spanning-tree interface  | no-more",
-    "show spanning-tree interface detail | no-more",
-    "show lldp neighbors  | no-more",
-    "show ethernet-switching table detail  | no-more",
-    "show arp  | no-more",
-    "show route all  | no-more",
-    "show vrrp  | no-more",
-    "show virtual-chassis device-topology  | no-more",
-    "show virtual-chassis   | no-more",
-    "show system uptime  | no-more",
-    "show version   | no-more",
-    "show version detail all-members  | no-more",
-    "show interfaces detail  | no-more",
-    "show vlans detail  | no-more",
-    "show lacp interfaces  | no-more",
-    "show chassis  | no-more"
-)
-```
+MTAutoDraw is never invoked on its own — you ask for it explicitly.
 
-# Step 7
-Run the below and the output of the show commands will be put into files for you. 
+`settings.mtautoDrawRoot` defaults to `..`, which is correct while `DataCollection/` sits inside this
+repository. Point it elsewhere if you move the collector.
 
-```powershell
-foreach ($Device in $NetworkDevices){
-    write-host $Device[0] -BackgroundColor Red
-	foreach ($command in $Commands){
-		$CommandResults=""
-		write-host $command -BackgroundColor Red
-        # This now correctly uses the password associated with the device in the array
-		$CommandResults= .\plink.exe -batch -a "$($Device[1])@$($Device[0])" -pw "$($Device[2])" "$($command)"
-		$CommandResults | out-file "$($Folder)$($Device[0]).$($command -replace "\*","star" -replace  "\s*\|\s*display\s*xml\s*",'' -replace    "\s*\|\s*no-more\s*",'' -replace "\s*\|\s*display set\s*","displayset").txt"
-	}
-	write-host (get-date) -BackgroundColor Red
-}
-```
+## If you cannot run the collector
 
-# known issues
-* Plink has issues with paging on some devices.
-* Plink also doesn't support enable passwords or expert passwords. 
-````
+You do not have to use it. MTAutoDraw only cares about the files, not how they were produced — so any
+method works: a terminal emulator's session logging, your existing automation, or your NMS's archive
+of `show` output.
 
+Two things must be true of whatever you use:
+
+1. **One command's complete raw output per file**, unpaged and untruncated.
+2. **Files named `Identifier.Command-Name.txt`**, with the `Identifier` identical across every file
+   from a given device.
+
+The main [README](README.md#required-commands) lists the required commands per platform and the naming
+rules in full. `DataCollection/NetworkAudit.config.json` is also readable on its own: its `profiles`
+section holds the exact command list this project runs against each of the 23 supported platforms.
+
+## Known issues
+
+- **Junos must be captured as XML.** Use `| display xml` on every Junos command. The text output of
+  several Junos commands is ambiguous enough that it cannot be parsed reliably. The collector's
+  `juniperOutputMode` setting handles this and defaults to `XML`.
+- **Paging must be off.** A capture containing `--More--` is a truncated capture. The collector
+  disables paging per profile; if you collect by hand, set `terminal length 0` or the platform's
+  equivalent first.
+- **The device identifier must be stable.** If half a device's files say `SW1` and the other half say
+  `10.0.0.1`, MTAutoDraw sees two devices with half the data each.
