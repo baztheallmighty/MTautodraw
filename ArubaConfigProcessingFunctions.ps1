@@ -1,290 +1,89 @@
-#This functions calls all the other functions to process all of the files for an Aruba device.
-#Input: Hostid object.
-#Output: $device object.
+# MTAutoDraw-Standard: v1
+# --- Orchestrator ---------------------------------------------------------------------------------
+
 function Process-ArubaHostFiles {
-    param (
-        [parameter(Mandatory = $true)]
-        $hostid,
-        $ArrayOfObjects
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$HostID,
+        $ArrayOfObjects   # Kept for dispatcher signature compatibility; duplicate detection is sequential.
     )
 
-    $Device = $null
-
-    Write-Host "Process-ArubaHostFiles : START HostID '$($hostid.HOSTID)'" 
-    Write-Host "$($hostid|fl|out-string)" 
-
-    # 1) Create the device object from the config ("show run"/"show configuration") file.
-    if ($hostid.showrun -and (Test-Path -Path $hostid.showrun)) {
-
-        Write-Host "Process-ArubaHostFiles : Reading showrun file: $($hostid.showrun)"
-
-        $config = Get-Content -Path $hostid.showrun -Raw
-
-        Write-Host "Process-ArubaHostFiles : Parsing showrun into device object"
-        $Device = Get-ArubaShowRunFromText -Lconfig $config
-        
-        if (-not $Device.interfaces) {
-            $Device.interfaces = @()
-        }
-        elseif ($Device.interfaces -isnot [System.Collections.IList]) {
-            #Ensure that it is an array. 
-            $Device.interfaces = @($Device.interfaces)
-        }
-        
-        # Keep identifier logic consistent with Cisco (hostid extracted from filename)
-        $DeviceIdentifier = ($hostid.showrun -replace "\.show run.*", '' -replace "^.*\\", '' -replace "\.show configuration.*", '')
-        if ($Device) {
-            $Device.DeviceIdentifier = $DeviceIdentifier
-            Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : DeviceIdentifier set to '$DeviceIdentifier'"
-        }
-        else {
-            Write-Host "Process-ArubaHostFiles : Get-ArubaShowRunFromText returned null" -BackgroundColor Red
-        }
-    }
-    else {
-        Write-Host "Process-ArubaHostFiles : showrun file missing for hostid '$($hostid.HOSTID)': $($hostid.showrun)" -BackgroundColor Red
+    # 1. IDENTITY - the running configuration is the only capture with a hostname, and it also creates
+    # the interfaces every reader below merges onto.
+    $device = New-MTAutoDrawDevice -Platform 'ArubaOS-CX' -HostID $HostID
+    Update-ArubaRunningConfig -Device $device -Path $HostID.ShowRun
+    if ([string]::IsNullOrEmpty($device.hostname) -or $device.hostname -like '*NoHostNameFound*') {
+        Write-MTAutoDrawDiagnostic -Device $device -Severity Warning -Message "Aruba '$($HostID.HOSTID)' has no usable hostname; skipping host."
         return $null
     }
+    Write-MTAutoDrawLog -Level Info -Phase Parse -Device $device -Message "Processing Aruba Host: $($device.hostname)"
 
-    # If we still don't have a valid device object, we can't proceed.
-    if ($null -eq $Device) {
-        Write-Host "Process-ArubaHostFiles : Failed to build Aruba device object, skipping host: $($hostid.showrun)" -BackgroundColor Red
-        return $null
-    }
+    # 2. CAPTURES - one line per slot, in dependency order. The neighbour readers run before the
+    # interface ones, as they always have. Update-ArubaInterfaceBrief and Update-ArubaLldpNeighbors
+    # are fallbacks: each returns immediately when the richer capture already produced data.
+    Update-ArubaVersion             -Device $device -Path $HostID.ShowVersion
+    Update-ArubaLldpNeighborDetails -Device $device -Path $HostID.ShowLLDPNeighborsDetails
+    Update-ArubaLldpNeighbors       -Device $device -Path $HostID.ShowLLDPNeighbors
+    Update-ArubaInterfaces          -Device $device -Path $HostID.ShowInterface
+    Update-ArubaInterfaceBrief      -Device $device -Path $HostID.ShowInterfaceBrief
+    Update-ArubaSpanningTree        -Device $device -Path $HostID.ShowSpanningTreeDetails
+    Update-ArubaRoutes              -Device $device -Path $HostID.ShowIPRoute
+    if ($GDrawAprEntries) { Update-ArubaArp -Device $device -Path $HostID.ShowIPArp }
+    # GDrawCDP is the "draw layer 2 links" toggle on this platform, which is what the MAC table feeds.
+    if ($GDrawPortsWithMacs -ne 0 -and $GDrawCDP) { Update-ArubaMacAddressTable -Device $device -Path $HostID.ShowMacAddressTable }
 
-    # Hostname validation (same semantics as Cisco)
-    if ([string]::IsNullOrEmpty($Device.hostname) -or $Device.hostname -like "*NoHostNameFound*") {
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Hostname missing or invalid. hostname='$($Device.hostname)'" -BackgroundColor Red
-        Write-Host "Can't find hostname in file skipping host: $($hostid.showrun)" -BackgroundColor Red
-        return $null
-    }
+    # 3. RECONCILE - the networks are derived from the interfaces once every reader has had its say,
+    # because an address can arrive from the running config, 'show interface' or the brief table.
+    Resolve-ArubaInterfaceNetworks -Device $device
+    return (Complete-MTAutoDrawDevice -Device $device)
+}
 
-    # Now that $Device is a valid object, we can begin logging.
-    Add-HostDebugText -HostObject $Device "Processing Aruba Host: $($Device.hostname)"
+# Builds ArrayOfIPAddresses and ArrayOfNetworks from the finalised interface list. Not an Update-*
+# reader: it consumes no capture, only what the readers have already produced.
+function Resolve-ArubaInterfaceNetworks {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)]$Device)
 
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : START pipeline for host '$($Device.hostname)'"
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : showrun='$($hostid.showrun)'"
-
-    # Duplicate hostname check (same behavior as Cisco)
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Checking for duplicate hostname in ArrayOfObjects"
-    foreach ($ExistingDevice in $ArrayOfObjects) {
-        if ($ExistingDevice.hostname -eq $Device.hostname) {
-
-            Add-HostDebugText -HostObject $Device "Hostname already exists $($ExistingDevice.hostname) - $($Device.hostname). This means you either have the same config twice in the folder or someone has named two devices the same. This script requries unquie hostnames." -BackgroundColor Red
-            Add-HostDebugText -HostObject $Device "Found problem at: $($hostid.HOSTID)" -BackgroundColor Red
-
-            # NOTE: This relies on $ArrayOfHostIDs existing in the caller scope, same as Cisco.
-            Add-HostDebugText -HostObject $Device "Existing HostID's:$($ArrayOfHostIDs | ft HOSTID,showrun | out-string)"
-            Add-HostDebugText -HostObject $Device "$($ArrayOfObjects | ft hostname,DeviceIdentifier | out-string)"
-
-            if (!($SkipHostnameErrorCheck)) {
-                Add-HostDebugText -HostObject $Device 'Exiting please manually fix this error.' -BackgroundColor Red
-                Start-CleanupAndExit
-            }
-        }
-    }
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Duplicate hostname check complete"
-    # 2) Version / platform info
-    if ($hostid.ShowVersion) {
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : ShowVersion path='$($hostid.ShowVersion)'"
-    }
-    if ($hostid.ShowVersion -and (Test-Path $hostid.ShowVersion)) {
-        Add-HostDebugText -HostObject $Device "Processing show version: $($hostid.ShowVersion)"
-        $Device = Get-ArubaShowVersionFromText -ShowVersionFile $hostid.ShowVersion -Device $Device
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Completed show version parsing. Device.Version='$($Device.Version)'"
-    }
-    else {
-        if ($hostid.ShowVersion) {
-            Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : ShowVersion file not found, skipping: $($hostid.ShowVersion)" -BackgroundColor Yellow
-        }
-    }
-    # 3) Neighbor discovery (LLDP/CDP equivalents)
-    if ($hostid.ShowLLDPNeighborsDetails) {
-        Add-HostDebugText -HostObject $Device "Processing show LLDP Details: $($hostid.ShowLLDPNeighborsDetails)"
-        $Device = Get-ArubaShowLLDPNeighborsDetailsFromText -ShowLLDPDetailsFile $hostid.ShowLLDPNeighborsDetails -Device $Device
-    }
-    elseif ($hostid.ShowLLDPNeighbors) {
-        Add-HostDebugText -HostObject $Device "Processing show LLDP Neighbors: $($hostid.ShowLLDPNeighbors)"
-        $Device = Get-ArubaShowLLDPNeighborsFromText -ShowLLDPNeighborsFile $hostid.ShowLLDPNeighbors -Device $Device
-    }
-    else {
-        Add-HostDebugText -HostObject $Device "No LLDP neighbor files found (details or summary)." -BackgroundColor Yellow
-    }
-    
-    
-    # 4) Interfaces (choose one source like Cisco does)
-    if ($hostid.ShowInterface) {
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : ShowInterface path='$($hostid.ShowInterface)'"
-    }
-    if ($hostid.ShowInterface -and (Test-Path $hostid.ShowInterface)) {
-        Add-HostDebugText -HostObject $Device "Processing Show Interface : $($hostid.ShowInterface)"
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Interfaces before update count=$(@($Device.interfaces).Count)"
-        $Device = Get-ArubaShowInterfacesFromTextfsm -ShowInterfaceFile $hostid.ShowInterface -Device $Device
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Interfaces after update count=$(@($Device.interfaces).Count)"
-    }
-    elseif ($hostid.ShowInterfaceBrief -and (Test-Path $hostid.ShowInterfaceBrief)) {
-        Add-HostDebugText -HostObject $Device "Processing Show ip Interface Brief: $($hostid.ShowInterfaceBrief)"
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Interfaces before update count=$(@($Device.interfaces).Count)"
-        $Device = Get-ArubaShowInterfaceBriefFromTextfsm -ShowInterfaceBriefFile $hostid.ShowInterfaceBrief -Device $Device
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Interfaces after update count=$(@($Device.interfaces).Count)"
-    }
-    else {
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : No interface source files found (ShowInterface / ShowIPInterfaceBrief), skipping." -BackgroundColor Yellow
-    }
-
-    # 5) Interface status (optional)
-    if ($hostid.ShowInterfaceStatus) {
-        Add-HostDebugText -HostObject $Device "Processing Show Interface status: $($hostid.ShowInterfaceStatus)"
-        # TODO: Aruba interface status parser
-    }
-
-    # 6) Spanning-tree (optional)
-    if ($hostid.ShowSpanningTreeDetails) {
-        Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree Details: $($hostid.ShowSpanningTreeDetails)"
-        $Device = Get-ArubaShowSpanningTreeDetailsFromText -ShowSpanningTreeDetailsFile $hostid.ShowSpanningTreeDetails -Device $Device
-    }
-    elseif ($hostid.ShowSpanningTree) {
-        Add-HostDebugText -HostObject $Device "Processing Show Spanning Tree: $($hostid.ShowSpanningTree)"
-        $Device = Get-ArubaShowSpanningTreeFromText -ShowSpanningTreeFile $hostid.ShowSpanningTree -Device $Device
-        # TODO: Aruba spanning-tree (non-detail) parser implementation
-    }
-    # 7) Routing table (optional)
-    if ($hostid.ShowIPRoute) {
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : ShowIPRoute path='$($hostid.ShowIPRoute)'"
-    }
-    if ($hostid.ShowIPRoute -and (Test-Path $hostid.ShowIPRoute)) {
-        Add-HostDebugText -HostObject $Device "Processing Show ip route: $($hostid.ShowIPRoute)"
-        $Device = Get-ArubaShowIPRouteFromText -ShowIPRouteFile $hostid.ShowIPRoute -Device $Device
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Routing table count=$(@($Device.RoutingTable).Count)"
-    }
-    elseif ($hostid.ShowIPRouteVRFstar) {
-        Add-HostDebugText -HostObject $Device "Processing Show ip route vrf *: $($hostid.ShowIPRouteVRFstar)"
-        # $Device = Get-ArubaShowIPRouteallvrfsFromText -ShowIPRouteFile $hostid.ShowIPRouteVRFstar -Device $Device
-    }
-    else {
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : No route file found (ShowIPRoute / ShowIPRouteVRFstar), skipping." -BackgroundColor Yellow
-    }
-
-    # 8) ARP (optional)
-    if ($hostid.ShowIPArp) {
-        Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : ShowIPArp path='$($hostid.ShowIPArp)'"
-    }
-    if ($hostid.ShowIPArp -and (Test-Path $hostid.ShowIPArp)) {
-        if ($GDrawAprEntries) {
-            Add-HostDebugText -HostObject $Device "Processing Show ip Arp: $($hostid.ShowIPArp)"
-            $Device = Get-ArubaShowIPArpText -ShowIPArpFile $hostid.ShowIPArp -Device $Device
-            Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : ARP entries count=$(@($Device.IPArpEntries).Count)"
-        }
-        else {
-            Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : GDrawAprEntries disabled, skipping ARP parsing." -BackgroundColor Yellow
-        }
-    }
-    else {
-        if ($hostid.ShowIPArp) {
-            Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : ARP file not found, skipping: $($hostid.ShowIPArp)" -BackgroundColor Yellow
-        }
-    }
-
-	# 9) MAC address table (optional, and keep the same performance guardrails)
-	if ($hostid.ShowMacAddressTable -and $GDrawPortsWithMacs -ne 0) {
-		if ($GDrawCDP) {
-			Add-HostDebugText -HostObject $Device "Processing Show Mac Address Table: $($hostid.ShowMacAddressTable)"
-			$Device = Get-ArubaShowMacAddressTableFromText -ShowMacAddressTable $hostid.ShowMacAddressTable -Device $Device
-		}
-	}
-
-    # 10) Post-processing: Build IP Array and Network Objects from fully populated interfaces
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Building ArrayOfIPAddresses and ArrayOfNetworks from finalized interfaces"
-    
     $Device.ArrayOfIPAddresses = @()
     $Device.ArrayOfNetworks = @()
 
     foreach ($int in $Device.interfaces) {
-        # Track Primary IP
-        if ($int.IPAddress) {
-            $Device.ArrayOfIPAddresses += $int.IPAddress
+        foreach ($address in $int.IPAddress, $int.SecondaryIPAddress) {
+            if ($address) { $Device.ArrayOfIPAddresses += $address }
         }
-        # Track Secondary IP
-        if ($int.SecondaryIPAddress) {
-            $Device.ArrayOfIPAddresses += $int.SecondaryIPAddress
-        }
-
-        # Build Primary Network Object
-        if ($int.Cidr) {
+        foreach ($cidr in $int.Cidr, $int.SecondaryCidr) {
+            if (-not $cidr) { continue }
             $NetworkObject = Create-NetworkObject
-            $NetworkObject.Cidr = $int.Cidr
-            if ($int.Interface -like "*vlan*") {
-                $NetworkObject.Routedvlan = $int.Interface
-            } else {
-                $NetworkObject.Routedvlan = "no vlan"
-            }
-            $NetworkObject.color = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)"
-            $Device.ArrayOfNetworks += $NetworkObject
-        }
-
-        # Build Secondary Network Object
-        if ($int.SecondaryCidr) {
-            $NetworkObject = Create-NetworkObject
-            $NetworkObject.Cidr = $int.SecondaryCidr
-            if ($int.Interface -like "*vlan*") {
-                $NetworkObject.Routedvlan = $int.Interface
-            } else {
-                $NetworkObject.Routedvlan = "no vlan"
-            }
-            $NetworkObject.color = "$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0),$(Get-Random -Maximum 255 -Minimum 0)"
+            $NetworkObject.Cidr = $cidr
+            $NetworkObject.Routedvlan = if ($int.Interface -like "*vlan*") { $int.Interface } else { "no vlan" }
+            $NetworkObject.color = Get-DeterministicRgbColor -Seed "network|$($NetworkObject.Cidr)"
             $Device.ArrayOfNetworks += $NetworkObject
         }
     }
 
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Final IP Count=$(@($Device.ArrayOfIPAddresses).Count), Final Network Count=$(@($Device.ArrayOfNetworks).Count)"
-
-    # Final normalization step used across vendors
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Running Update-LocalRoutesWithInterfaces"
-    $Device = Update-LocalRoutesWithInterfaces -device $Device
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : Completed Update-LocalRoutesWithInterfaces"
-
-    Add-HostDebugText -HostObject $Device "Process-ArubaHostFiles : END pipeline for host '$($Device.hostname)'"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Resolve-ArubaInterfaceNetworks : Final IP Count=$(@($Device.ArrayOfIPAddresses).Count), Final Network Count=$(@($Device.ArrayOfNetworks).Count)"
 }
 
-function Get-ArubaShowLLDPNeighborsFromText {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowLLDPNeighborsFile,
 
-        [parameter(Mandatory = $true)]
-        $Device
+# Parses an Aruba 'show lldp neighbors' capture into the device's LLDP neighbour objects, with per-neighbour local/remote interface and capability details. Logs a warning and returns the device unchanged if the capture is invalid or empty.
+function Update-ArubaLldpNeighbors {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    $ShowLLDPText = Get-Content -Raw $ShowLLDPNeighborsFile
+    # --- GUARD ---
+    if (@($Device.LLDPNeighbors).Count -gt 0) { return }   # the detail capture is richer
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowLLDPNeighbors')) { return }
 
-    if (($ShowLLDPText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|LLDP is not enabled|not enabled)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$ShowLLDPText" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    if ($null -eq $GTemplate -or $GTemplate.PSObject.Properties.Name -notcontains "ArubaAoscxLldpNeighbor") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowLLDPNeighborsFromText : GTemplate.ArubaAoscxLldpNeighbor is not set." -BackgroundColor Red
-        return $Device
-    }
-
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_lldp_neighbors'] -ShowFile $ShowLLDPNeighborsFile -ReturnArray $true -HostObject $Device
-
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Error running TextFSM for Aruba AOS-CX show lldp neighbors."
-        return $Device
-    }
-
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        $tempArray = @()
-        $tempArray += , $Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_lldp_neighbors' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
     $AllLLDPObjects = @()
 
-    foreach ($LLDPNeighbor in $Device.ProcessOutputObjects) {
+    foreach ($LLDPNeighbor in $rows) {
         # Expected output order depends on your TextFSM template.
         # Based on the sample table, you typically want:
         # 0 LOCAL_INTERFACE (LOCAL-PORT)
@@ -295,19 +94,13 @@ function Get-ArubaShowLLDPNeighborsFromText {
         #
         # If your template outputs a different order, update indexes here.
 
-        if ($LLDPNeighbor.Count -lt 3) {
-            Add-HostDebugText -HostObject $Device "Get-ArubaShowLLDPNeighborsFromText : Skipping malformed LLDP record: $($LLDPNeighbor | Out-String)" -BackgroundColor Yellow
-            continue
-        }
-
         $LLDPObject = Create-LLDPNeighborObject
 
-        # Safe extraction with bounds checks (since templates vary)
-        $localIf   = if ($LLDPNeighbor.Count -ge 1) { $LLDPNeighbor[0].ToString().Trim() } else { "" }
-        $chassisId = if ($LLDPNeighbor.Count -ge 2) { $LLDPNeighbor[1].ToString().Trim() } else { "" }
-        $portId    = if ($LLDPNeighbor.Count -ge 3) { $LLDPNeighbor[2].ToString().Trim() } else { "" }
-        $portDesc  = if ($LLDPNeighbor.Count -ge 4) { $LLDPNeighbor[3].ToString().Trim() } else { "" }
-        $sysName   = if ($LLDPNeighbor.Count -ge 5) { $LLDPNeighbor[4].ToString().Trim() } else { "" }
+        $localIf   = ([string]$LLDPNeighbor.LOCAL_INTERFACE).Trim()
+        $chassisId = ([string]$LLDPNeighbor.CHASSIS_ID).Trim()
+        $portId    = ([string]$LLDPNeighbor.NEIGHBOR_PORT_ID).Trim()
+        $portDesc  = ([string]$LLDPNeighbor.NEIGHBOR_INTERFACE).Trim()
+        $sysName   = ([string]$LLDPNeighbor.NEIGHBOR_NAME).Trim()
 
         # Only populate fields required by Create-LLDPNeighborObject()
         $LLDPObject.InterfaceLocalDevice = Replace-InterfaceShortName -string $localIf
@@ -341,48 +134,27 @@ function Get-ArubaShowLLDPNeighborsFromText {
         Expression = { [int](($_.InterfaceLocalDevice -replace '[a-zA-Z-]+', '' -replace "/", '') ) }
     }
 
-    return $Device
 }
 
 
-function Get-ArubaShowLLDPNeighborsDetailsFromText {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowLLDPDetailsFile,
-
-        [parameter(Mandatory = $true)]
-        $Device
+# Parses an Aruba 'show lldp neighbors detail' capture to enrich the device's LLDP neighbours with detail fields (system description, management address, chassis id). Logs a warning and returns the device unchanged on invalid/empty input.
+function Update-ArubaLldpNeighborDetails {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    $ShowLLDPDetailText = Get-Content -Raw $ShowLLDPDetailsFile
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowLLDPNeighborsDetails')) { return }
 
-    if (($ShowLLDPDetailText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|LLDP is not enabled|not enabled)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$ShowLLDPDetailText" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    if ($null -eq $GTemplate -or $GTemplate.PSObject.Properties.Name -notcontains "ArubaAoscxLldpNeighborDetails") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowLLDPNeighborsDetailsFromText : GTemplate.ArubaAoscxLldpNeighborDetails is not set." -BackgroundColor Red
-        return $Device
-    }
-
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_lldp_neighbors-info_detail'] -ShowFile $ShowLLDPDetailsFile -ReturnArray $true -HostObject $Device
-
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Error running TextFSM for Aruba AOS-CX show lldp neighbors details."
-        return $Device
-    }
-
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        $tempArray = @()
-        $tempArray += , $Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_lldp_neighbors-info_detail' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
     $AllLLDPDetailsObjects = @()
 
-    foreach ($LLDPNeighbor in $Device.ProcessOutputObjects) {
+    foreach ($LLDPNeighbor in $rows) {
         # Expected output order from your TextFSM:
         # 0 LOCAL_INTERFACE
         # 1 CHASSIS_ID
@@ -394,13 +166,8 @@ function Get-ArubaShowLLDPNeighborsDetailsFromText {
         # 7 NEIGHBOR_PORT_ID
         # 8 NEIGHBOR_INTERFACE (Port-Desc)
 
-        if ($LLDPNeighbor.Count -lt 9) {
-            Add-HostDebugText -HostObject $Device "Get-ArubaShowLLDPNeighborsDetailsFromText : Skipping malformed LLDP record (expected 9 fields): $($LLDPNeighbor | Out-String)" -BackgroundColor Yellow
-            continue
-        }
-
         if ($GSkipCDPLLDPPhones) {
-            $desc = ($LLDPNeighbor[3] | ForEach-Object { $_.ToString() })
+            $desc = [string]$LLDPNeighbor.NEIGHBOR_DESCRIPTION
             if ($desc -like "*Phone*" -or $desc -like "*Endpoint*") {
                 continue
             }
@@ -409,17 +176,17 @@ function Get-ArubaShowLLDPNeighborsDetailsFromText {
         $LLDPObject = Create-LLDPNeighborObject
 
         # Only populate fields required by Create-LLDPNeighborObject()
-        $LLDPObject.InterfaceLocalDevice = Replace-InterfaceShortName -string ($LLDPNeighbor[0].ToString().Trim())
-        $LLDPObject.ChassisID            = $LLDPNeighbor[1].ToString().Trim()
-        $LLDPObject.Hostname             = $LLDPNeighbor[2].ToString().Trim()
-        $LLDPObject.SystemDescription    = $LLDPNeighbor[3].ToString().Trim()
-        $LLDPObject.Capabilities         = $LLDPNeighbor[5].ToString().Trim()
-        $LLDPObject.ManagementIP         = $LLDPNeighbor[6].ToString().Trim()
+        $LLDPObject.InterfaceLocalDevice = Replace-InterfaceShortName -string (([string]$LLDPNeighbor.LOCAL_INTERFACE).Trim())
+        $LLDPObject.ChassisID            = ([string]$LLDPNeighbor.CHASSIS_ID).Trim()
+        $LLDPObject.Hostname             = ([string]$LLDPNeighbor.NEIGHBOR_NAME).Trim()
+        $LLDPObject.SystemDescription    = ([string]$LLDPNeighbor.NEIGHBOR_DESCRIPTION).Trim()
+        $LLDPObject.Capabilities         = ([string]$LLDPNeighbor.CAPABILITIES).Trim()
+        $LLDPObject.ManagementIP         = ([string]$LLDPNeighbor.MGMT_ADDRESS).Trim()
 
-        $remotePortIdRaw = $LLDPNeighbor[7].ToString().Trim()
+        $remotePortIdRaw = ([string]$LLDPNeighbor.NEIGHBOR_PORT_ID).Trim()
         $LLDPObject.InterfaceRemoteDevice        = Replace-InterfaceShortName -string $remotePortIdRaw
         $LLDPObject.PortID                       = $remotePortIdRaw
-        $LLDPObject.NeighborInterfaceDescription = $LLDPNeighbor[8].ToString().Trim()
+        $LLDPObject.NeighborInterfaceDescription = ([string]$LLDPNeighbor.NEIGHBOR_INTERFACE).Trim()
 
         $LLDPObject.ParentObject = $Device.hostname
 
@@ -442,21 +209,23 @@ function Get-ArubaShowLLDPNeighborsDetailsFromText {
         Expression = { [int](($_.InterfaceLocalDevice -replace '[a-zA-Z-]+', '' -replace "/", '') ) }
     }
 
-    return $Device
 }
 
 # Process an ArubaOS-CX "show running-config" / "show configuration" blob.
 # Extract only generic config-driven data (avoid anything you will later parse via TextFSM sections).
-function Get-ArubaShowRunFromText {
-    param (
-        [parameter(Mandatory = $true)]
-        $Lconfig
+function Update-ArubaRunningConfig {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Write-Host "Get-ArubaShowRunFromText : START"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRun')) { return }
 
-    $HostObject = Create-HostObject
-    $HostObject.Origin = "config"
+    # --- EXTRACT ---
+    $Lconfig = Get-MTAutoDrawCaptureText -Path $Path
+    $HostObject = $Device
 
     # Hostname
     $hostname = Get-RegexGroupValue -InputText $Lconfig -Pattern '(?m)^\s*hostname\s+(.+?)\s*$'
@@ -465,7 +234,7 @@ function Get-ArubaShowRunFromText {
     }
     $HostObject.hostname = $hostname
 
-    Add-HostDebugText -HostObject $HostObject "Get-ArubaShowRunFromText : Parsed hostname='$($HostObject.hostname)'"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $HostObject -Message "New-ArubaDeviceFromShowRun : Parsed hostname='$($HostObject.hostname)'"
 
     # Version
     $version = Get-RegexGroupValue -InputText $Lconfig -Pattern '(?m)^\s*!Version\s+(.+?)\s*$'
@@ -474,10 +243,10 @@ function Get-ArubaShowRunFromText {
     }
     if ($version) {
         $HostObject.Version = $version
-        Add-HostDebugText -HostObject $HostObject "Get-ArubaShowRunFromText : Parsed Version='$($HostObject.Version)'"
+        Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $HostObject -Message "New-ArubaDeviceFromShowRun : Parsed Version='$($HostObject.Version)'"
     }
     else {
-        Add-HostDebugText -HostObject $HostObject "Get-ArubaShowRunFromText : No version found in config" -BackgroundColor Yellow
+        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $HostObject -Message "New-ArubaDeviceFromShowRun : No version found in config"
     }
 
     # Spanning-tree
@@ -548,15 +317,13 @@ function Get-ArubaShowRunFromText {
     # Interfaces
     $AllInterfaces = ($Lconfig | Select-String -Pattern '(?smi)^\s*interface\s+.+?(?=^\s*interface\s+|\Z)' -AllMatches).Matches.Value
 
-    # Array mapping removed from here. The parser now just gives us the interface array natively.
-    $HostObject.interfaces = Get-ArubaShowInterfacesFromText -HostObject $HostObject -AllInterfaces $AllInterfaces
-
-    return $HostObject
+    # The interface parser accepts the extracted configuration blocks directly.
+    $HostObject.interfaces = Get-ArubaInterfacesFromConfigText -HostObject $HostObject -AllInterfaces $AllInterfaces
 }
 
 
 # Parse ArubaOS-CX interface blocks from running config
-function Get-ArubaShowInterfacesFromText {
+function Get-ArubaInterfacesFromConfigText {
     param (
         [parameter(Mandatory = $true)]
         $AllInterfaces,
@@ -691,42 +458,25 @@ function Get-ArubaShowInterfacesFromText {
 
 
 #Process the ArubaOS-CX show interfaces file and update existing interfaces created from show run.
-function Get-ArubaShowInterfacesFromTextfsm {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowInterfaceFile,
-        $Device
+function Update-ArubaInterfaces {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfacesFromTextfsm: START file='$ShowInterfaceFile'"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterface')) { return }
 
-    #Read the file into one big string
-    $ShowInterfaceText = Get-Content -Raw $ShowInterfaceFile
-
-    if (($ShowInterfaceText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|LLDP is not enabled)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowInterfaceText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfacesFromTextfsm: contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_interface'] -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfacesFromTextfsm: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
-        return $Device
-    }
-
-    # Normalize single-record return shape
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_interface' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
     $updatedCount = 0
     
-    foreach ($int in $Device.ProcessOutputObjects) {
+    foreach ($int in $rows) {
         
-        $ifName = Replace-InterfaceShortName -string $int[0]
+        $ifName = Replace-InterfaceShortName -string $int.INTERFACE
 
         $Interface = $Device.interfaces | Where-Object { $_.Interface -eq $ifName } | Select-Object -First 1
 
@@ -742,9 +492,9 @@ function Get-ArubaShowInterfacesFromTextfsm {
         $updatedCount++
 
         # Status
-        $linkStatus = $int[1]
-        $adminState = $int[2]
-        $stateInfo  = $int[3]
+        $linkStatus = $int.LINK_STATUS
+        $adminState = $int.LINK_ADMIN
+        $stateInfo  = $int.LINK_STATE_INFO
 
         if ($linkStatus) {
             if (($linkStatus | Select-String "xcvrAbsen|sfpAbsent").Matches.Success) {
@@ -763,17 +513,17 @@ function Get-ArubaShowInterfacesFromTextfsm {
         }
 
         # Description
-        if ($int[5] -and $int[5].Trim() -ne "") {
-            $Interface.Description = $int[5].Trim()
+        if ($int.INTERFACE_DESC -and $int.INTERFACE_DESC.Trim() -ne "") {
+            $Interface.Description = $int.INTERFACE_DESC.Trim()
         }
 
         # Hardware / MAC / Duplex / Speed
-        if ($int[6]) { $Interface.HardwareType = $int[6] }
-        if ($int[7]) { $Interface.macaddress   = $int[7] }
-        if ($int[11]) { $Interface.Duplex      = $int[11] }
+        if ($int.HW_TYPE) { $Interface.HardwareType = $int.HW_TYPE }
+        if ($int.MAC_ADDRESS) { $Interface.macaddress   = $int.MAC_ADDRESS }
+        if ($int.DUPLEX) { $Interface.Duplex      = $int.DUPLEX }
 
-        if ($int[13]) {
-            $speed = $int[13].Trim()
+        if ($int.SPEED) {
+            $speed = $int.SPEED.Trim()
             if ($speed -match '^(?<n>\d+)\s*Mb/s$') {
                 $Interface.Speed = "$($Matches.n)Mb/s"
             }
@@ -785,12 +535,12 @@ function Get-ArubaShowInterfacesFromTextfsm {
             }
         }
 
-        if ($int[9] -and $int[9].Trim() -ne "" -and $int[9].Trim() -ne "--") {
-            $Interface.MediaType = $int[9].Trim()
+        if ($int.IF_TYPE -and $int.IF_TYPE.Trim() -ne "" -and $int.IF_TYPE.Trim() -ne "--") {
+            $Interface.MediaType = $int.IF_TYPE.Trim()
         }
 
-        if ($int[10] -and $int[10].Trim() -ne "" -and $int[10].Trim() -ne "n/a") {
-            $ipCidr = $int[10].Trim()
+        if ($int.IP_ADDRESS -and $int.IP_ADDRESS.Trim() -ne "" -and $int.IP_ADDRESS.Trim() -ne "n/a") {
+            $ipCidr = $int.IP_ADDRESS.Trim()
             $Interface.IPAddress   = $ipCidr -replace "\/.*", ''
             $Interface.SubnetMask  = $ipCidr -replace ".*\/", ''
             
@@ -803,25 +553,25 @@ function Get-ArubaShowInterfacesFromTextfsm {
             }
         }
 
-        if ($int[17]) {
-            $vlanMode = $int[17].Trim().ToLower()
+        if ($int.VLAN_MODE) {
+            $vlanMode = $int.VLAN_MODE.Trim().ToLower()
 
             if ($vlanMode -eq "access") {
                 $Interface.SwitchportMode = "access"
                 $Interface.SwitchPortType = "Switched"
-                if ($int[18] -and $int[18].Trim() -ne "") {
-                    $Interface.SwitchportAccessVlan = $int[18].Trim()
+                if ($int.VLAN_ACCESS -and $int.VLAN_ACCESS.Trim() -ne "") {
+                    $Interface.SwitchportAccessVlan = $int.VLAN_ACCESS.Trim()
                 }
             }
             elseif ($vlanMode -eq "trunk") {
                 $Interface.SwitchportMode = "trunk"
                 $Interface.SwitchPortType = "Switched"
 
-                if ($int[19] -and $int[19].Trim() -ne "") {
-                    $Interface.NativeVlan = $int[19].Trim()
+                if ($int.VLAN_NATIVE -and $int.VLAN_NATIVE.Trim() -ne "") {
+                    $Interface.NativeVlan = $int.VLAN_NATIVE.Trim()
                 }
 
-                $trunks = $int[20]
+                $trunks = $int.VLAN_TRUNK
                 if ($trunks) {
                     if ($trunks -is [System.Collections.IEnumerable] -and !($trunks -is [string])) {
                         $Interface.SwitchportTrunkVlan = (($trunks | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ -ne "" }) -join ",")
@@ -833,7 +583,7 @@ function Get-ArubaShowInterfacesFromTextfsm {
             }
         }
 
-        $aggList = $int[21]
+        $aggList = $int.AGGREGATED_INTERFACES
         if ($aggList) {
             $aggItems = @()
             if ($aggList -is [System.Collections.IEnumerable] -and !($aggList -is [string])) {
@@ -858,40 +608,28 @@ function Get-ArubaShowInterfacesFromTextfsm {
                         $memberInterface.ChannelGroup = $lagNumber
                     }
                     else {
-                        Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfacesFromTextfsm: Member '$member' not found in show run interfaces" -BackgroundColor Yellow
+                        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "Update-ArubaInterfaces: Member '$member' not found in show run interfaces"
                     }
                 }
             }
         }
     }
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfacesFromTextfsm: END updatedCount=$updatedCount"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaInterfaces: END updatedCount=$updatedCount"
 }
 
 #Process ArubaOS-CX "show version" output using regex (no TextFSM template for OS-CX).
-function Get-ArubaShowVersionFromText {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowVersionFile,
-
-        [parameter(Mandatory = $true)]
-        $Device
+function Update-ArubaVersion {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowVersionFromText: START file='$ShowVersionFile'"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowVersion')) { return }
 
-    if (-not (Test-Path -Path $ShowVersionFile)) {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowVersionFromText: ShowVersion file not found '$ShowVersionFile'" -BackgroundColor Red
-        return $Device
-    }
-
-    $ShowVersionText = Get-Content -Raw $ShowVersionFile
-
-    if (($ShowVersionText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowVersionText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowVersionFromText: contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
+    # --- EXTRACT ---
+    $ShowVersionText = Get-MTAutoDrawCaptureText -Path $Path
 
     $VersionObject = Create-ShowVersionObject
     $VersionObject.Type = "ArubaOS-CX"
@@ -956,63 +694,44 @@ function Get-ArubaShowVersionFromText {
     # Final assignment (no new properties created)
     $Device.Version = $VersionObject
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowVersionFromText: Parsed Type='$($VersionObject.Type)' OS='$($VersionObject.OS)' Image='$($VersionObject.Image)' HardwareCount=$(@($VersionObject.Hardware).Count) SerialCount=$(@($VersionObject.Serial).Count) MacCount=$(@($VersionObject.MacAddressArray).Count)"
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowVersionFromText: END"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaVersion: Parsed Type='$($VersionObject.Type)' OS='$($VersionObject.OS)' Image='$($VersionObject.Image)' HardwareCount=$(@($VersionObject.Hardware).Count) SerialCount=$(@($VersionObject.Serial).Count) MacCount=$(@($VersionObject.MacAddressArray).Count)"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaVersion: END"
 }
 
 
 
 
-function Get-ArubaShowIPArpText {
-    param (
-        [parameter(Mandatory=$true)]
-        $ShowIPArpFile,
-        $Device
+# Parses an Aruba 'show ip arp' capture into the device's ARP entries, resolving each to its interface. Logs a warning and returns the device unchanged if the capture is invalid or empty.
+function Update-ArubaArp {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: START file='$ShowIPArpFile'"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowIPArp')) { return }
 
-    $ShowIPArpText = Get-Content -Raw $ShowIPArpFile
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_arp_all-vrfs' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
-    if (($ShowIPArpText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:|LLDP is not enabled)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowIPArpText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: Executing TextFSM template ArubaAoscxShowArpAll"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTemplate.ArubaAoscxShowArpAll -ShowFile $ShowIPArpFile -ReturnArray $true -HostObject $Device
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: Raw ProcessOutputObjects count=$(@($Device.ProcessOutputObjects).Count)"
-
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: Normalizing single record output shape"
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: Building subnet lookup from interfaces"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaArp: Building subnet lookup from interfaces"
     $subnetLookup = @{}
     $Device.interfaces | Where-Object { $_.Cidr } | ForEach-Object { $subnetLookup[$_.Cidr] = $true }
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: subnetLookupCount=$($subnetLookup.Count)"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaArp: subnetLookupCount=$($subnetLookup.Count)"
 
     $builtCount = 0
-    $Device.IPArpEntries = foreach ($entry in $Device.ProcessOutputObjects) {
+    $Device.IPArpEntries = foreach ($entry in $rows) {
 
         $IPArpObject = Create-ShowIPArpObject
 
         $IPArpObject.PROTOCOL  = "IPv4"
-        $IPArpObject.ipaddress = $entry[0].Trim()
-        $IPArpObject.MAC       = $entry[1].Trim()
+        $IPArpObject.ipaddress = $entry.IP_ADDRESS.Trim()
+        $IPArpObject.MAC       = $entry.MAC_ADDRESS.Trim()
 
-        $physicalPort = $entry[3].Trim()
-        $portId       = $entry[2].Trim()
+        $physicalPort = $entry.PHYSICAL_PORT.Trim()
+        $portId       = $entry.PORT_ID.Trim()
 
         if ($physicalPort -ne "") {
             $IPArpObject.INTERFACE = $physicalPort
@@ -1021,7 +740,7 @@ function Get-ArubaShowIPArpText {
             $IPArpObject.INTERFACE = $portId
         }
 
-        $state = $entry[4].Trim()
+        $state = $entry.STATE.Trim()
         if ($state -ne "") {
             $IPArpObject.TYPE = $state
         }
@@ -1052,214 +771,51 @@ function Get-ArubaShowIPArpText {
 
         $builtCount++
         if (($builtCount % 50) -eq 0) {
-            Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: Built ARP entries so far=$builtCount"
+            Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaArp: Built ARP entries so far=$builtCount"
         }
 
         $IPArpObject
     }
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPArpText: END builtCount=$builtCount"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaArp: END builtCount=$builtCount"
 }
 
 
 
-function Get-ArubaShowIPRouteallvrfsFromText {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowIPRouteFile,
 
-        $Device
+
+# Parses an Aruba 'show ip route' capture into the device's routing table (code, subnet, gateway, interface). Logs a warning and returns the device unchanged if the capture is invalid or empty.
+function Update-ArubaRoutes {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: START file='$ShowIPRouteFile'"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowIPRoute')) { return }
 
-    $ShowRouteText = Get-Content -Raw $ShowIPRouteFile
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_ip_route' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
-    if (($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Executing TextFSM template ArubaAoscxIpRoute"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_ip_route'] -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Raw ProcessOutputObjects count=$(@($Device.ProcessOutputObjects).Count)"
-
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Normalizing single record output shape"
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Building ActiveInterfaces cache"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaRoutes : Building ActiveInterfaces cache"
     $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: ActiveInterfaces count=$(@($ActiveInterfaces).Count)"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaRoutes : ActiveInterfaces count=$(@($ActiveInterfaces).Count)"
 
     $routeRecordCount = 0
     $routeObjectCount = 0
 
-    $AllRouteObjects = foreach ($route in $Device.ProcessOutputObjects) {
+    $AllRouteObjects = foreach ($route in $rows) {
 
         $routeRecordCount++
 
-        $ip     = $route[0]
-        $prefix = $route[1]
-        $vrf    = $route[2]
-        $subnet = "$ip/$prefix"
-
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Record[$routeRecordCount] subnet='$subnet' vrf='$vrf'"
-
-        $interfaces = @()
-        $metrics    = @()
-        $statuses   = @()
-
-        if ($route[3] -is [System.Collections.IEnumerable] -and !($route[3] -is [string])) {
-            $interfaces = @($route[3] | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ -ne "" })
-        }
-        elseif ($route[3]) {
-            $interfaces = @($route[3].ToString().Trim())
-        }
-
-        if ($route[4] -is [System.Collections.IEnumerable] -and !($route[4] -is [string])) {
-            $metrics = @($route[4] | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ -ne "" })
-        }
-        elseif ($route[4]) {
-            $metrics = @($route[4].ToString().Trim())
-        }
-
-        if ($route[5] -is [System.Collections.IEnumerable] -and !($route[5] -is [string])) {
-            $statuses = @($route[5] | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ -ne "" })
-        }
-        elseif ($route[5]) {
-            $statuses = @($route[5].ToString().Trim())
-        }
-
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Record[$routeRecordCount] viaCount=$($interfaces.Count) metricCount=$($metrics.Count) statusCount=$($statuses.Count)"
-
-        if ($interfaces.Count -eq 0) {
-            $RouteObject = Create-RouteObject
-            $RouteObject.Subnet = $subnet
-            $RouteObject.VRF = $vrf
-            $RouteObject.RouteProtocol = $null
-
-            $routeObjectCount++
-            $RouteObject
-            continue
-        }
-
-        for ($i = 0; $i -lt $interfaces.Count; $i++) {
-            $RouteObject = Create-RouteObject
-            $RouteObject.Subnet = $subnet
-            $RouteObject.VRF = $vrf
-
-            if ($i -lt $statuses.Count -and $statuses[$i]) {
-                $RouteObject.RouteProtocol = $statuses[$i]
-            }
-
-            if ($i -lt $metrics.Count -and $metrics[$i]) {
-                $m = $metrics[$i]
-                $RouteObject.METRIC = $m
-
-                if ($m -match '^\[(\d+)\/(\d+)\]$') {
-                    $RouteObject.DISTANCE = $Matches[1]
-                    $RouteObject.METRIC   = $Matches[2]
-                }
-            }
-
-            $via = $interfaces[$i]
-            Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Record[$routeRecordCount] viaIndex=$i via='$via'"
-
-            if ($via -match '^\d+\.\d+\.\d+\.\d+$') {
-                $RouteObject.gateway = $via
-
-                foreach ($intf in $ActiveInterfaces) {
-                    if ((Find-Subnet -addr1 $intf.cidr -addr2 $RouteObject.gateway).condition) {
-                        $RouteObject.interface = $intf.Interface
-                        break
-                    }
-                }
-
-                Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: Record[$routeRecordCount] via='$via' resolvedOutInt='$($RouteObject.interface)'"
-            }
-            else {
-                $RouteObject.interface = $via
-            }
-
-            if ($RouteObject.Subnet -eq "0.0.0.0/0") {
-                $RouteObject.defaultgateway = $true
-            }
-
-            $routeObjectCount++
-            $RouteObject
-        }
-    }
-
-    $Device.RoutingTable = $AllRouteObjects
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteallvrfsFromText: END routeRecordCount=$routeRecordCount routeObjectCount=$routeObjectCount"
-    return $Device
-}
-
-
-
-function Get-ArubaShowIPRouteFromText {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowIPRouteFile,
-
-        $Device
-    )
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : START file='$ShowIPRouteFile'"
-
-    $ShowRouteText = Get-Content -Raw $ShowIPRouteFile
-
-    if (($ShowRouteText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowRouteText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : Executing TextFSM template ArubaAoscxIpRoute"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_ip_route'] -ShowFile $ShowIPRouteFile -ReturnArray $true -HostObject $Device
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : ERROR from Execute-PythonTextFSM" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : Raw ProcessOutputObjects count=$(@($Device.ProcessOutputObjects).Count)"
-
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : Normalizing single record output shape"
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : Building ActiveInterfaces cache"
-    $ActiveInterfaces = $Device.interfaces | Where-Object { $_.cidr -and $_.IntStatus -ne "down" }
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : ActiveInterfaces count=$(@($ActiveInterfaces).Count)"
-
-    $routeRecordCount = 0
-    $routeObjectCount = 0
-
-    $AllRouteObjects = foreach ($route in $Device.ProcessOutputObjects) {
-
-        $routeRecordCount++
-
-        # Array indices mapped strictly to the new TextFSM tabular output
-        $vrf             = $route[0]
-        $subnet          = $route[1]
-        $nexthop         = $route[2]
-        $interface       = $route[3]
-        $origin_type     = $route[5]
-        $distance_metric = $route[6]
+        $vrf             = $route.VRF
+        $subnet          = $route.PREFIX
+        $nexthop         = $route.NEXTHOP
+        $interface       = $route.INTERFACE
+        $origin_type     = $route.ORIGIN_TYPE
+        $distance_metric = $route.DISTANCE_METRIC
 
         
 
@@ -1306,92 +862,36 @@ function Get-ArubaShowIPRouteFromText {
     }
 
     $Device.RoutingTable = $AllRouteObjects
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowIPRouteFromText : END routeRecordCount=$routeRecordCount routeObjectCount=$routeObjectCount"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaRoutes : END routeRecordCount=$routeRecordCount routeObjectCount=$routeObjectCount"
 }
 
-function Get-ArubaShowSpanningTreeDetailsFromText {
+# Parses an Aruba 'show spanning-tree details' capture into the device's spanning-tree object (root bridge, priority, per-VLAN interface state). Logs a warning and returns the device unchanged if the file is missing or invalid.
+function Update-ArubaSpanningTree {
     [CmdletBinding()]
-    param (
-        [parameter(Mandatory = $true)]
-        [string]$ShowSpanningTreeDetailsFile,
-
-        [parameter(Mandatory = $true)]
-        $Device
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    if (-not (Test-Path $ShowSpanningTreeDetailsFile)) {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowSpanningTreeDetailsFromText : File not found $ShowSpanningTreeDetailsFile" -BackgroundColor Yellow
-        return $Device
-    }
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowSpanningTreeDetails')) { return }
 
-    if (-not $Device.SpanningTree) {
-        $Device.SpanningTree = Create-SpanningTreeObject
-    }
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_spanning-tree_detail' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
-    if (-not $Device.SpanningTree.SpanningTreeArray) {
-        $Device.SpanningTree.SpanningTreeArray = @()
-    }
-    elseif ($Device.SpanningTree.SpanningTreeArray -isnot [System.Collections.IList]) {
-        $Device.SpanningTree.SpanningTreeArray = @($Device.SpanningTree.SpanningTreeArray)
-    }
+    $Rows = @($rows)
 
-    if (-not $Device.SpanningTree.RootBridgeForVlans) {
-        $Device.SpanningTree.RootBridgeForVlans = @()
-    }
-    elseif ($Device.SpanningTree.RootBridgeForVlans -isnot [System.Collections.IList]) {
-        $Device.SpanningTree.RootBridgeForVlans = @($Device.SpanningTree.RootBridgeForVlans)
-    }
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaSpanningTree : Raw row count=$(@($Rows).Count)"
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowSpanningTreeDetailsFromText : Executing TextFSM template ArubaAoscxSpanningTreeDetail"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_spanning-tree_detail'] -ShowFile $ShowSpanningTreeDetailsFile -ReturnArray $true -HostObject $Device
-
-    if ($Device.ProcessOutputObjects -eq "ERROR" -or -not $Device.ProcessOutputObjects) {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowSpanningTreeDetailsFromText : ERROR from Execute-PythonTextFSM" -BackgroundColor Red
-        return $Device
-    }
-
-    # Normalize single-record output shape (same pattern used elsewhere)
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
-
-    $Rows = @($Device.ProcessOutputObjects)
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowSpanningTreeDetailsFromText : Raw ProcessOutputObjects count=$(@($Rows).Count)"
-
-    # TextFSM output is array-of-arrays in this project.
-    # Index mapping (matches template Value order):
-    # 0  PROTOCOL
-    # 1  INSTANCE
-    # 2  ROOT_PRIORITY
-    # 3  ROOT_MAC
-    # 4  ROOT_HELLO
-    # 5  ROOT_SELF
-    # 6  BRIDGE_PRIORITY
-    # 7  BRIDGE_MAC
-    # 8  BRIDGE_HELLO
-    # 9  PORT
-    # 10 ROLE
-    # 11 STATE
-    # 12 COST
-    # 13 PRIORITY
-    # 14 TYPE
-    # 15 BPDU_TX
-    # 16 BPDU_RX
-    # 17 TCN_TX
-    # 18 TCN_RX
-
-    # Set mode/protocol
+    # The template's Filldown values repeat the instance header on every port row, so the instance
+    # fields are read off the first row of each group and the port fields off every row.
     $First = $Rows | Select-Object -First 1
-    if ($First -and $First.Count -ge 1 -and $First[0]) {
-        $Device.SpanningTree.SpanningTreeMode = $First[0]
+    if ($First -and $First.PROTOCOL) {
+        $Device.SpanningTree.SpanningTreeMode = $First.PROTOCOL
     }
 
-    # Group by instance (index 1)
-    $Groups = $Rows | Group-Object -Property { $_[1] }
+    $Groups = $Rows | Group-Object -Property { $_.INSTANCE }
 
     foreach ($G in $Groups) {
         if (-not $G.Name) { continue }
@@ -1401,23 +901,20 @@ function Get-ArubaShowSpanningTreeDetailsFromText {
 
         $StInstance = Create-SpanningTreeVlan
         $StInstance.VlanID = $G.Name
-        $StInstance.protocol = $Head[0]
+        $StInstance.protocol = $Head.PROTOCOL
 
         # Root bridge fields
-        if ($Head.Count -ge 3 -and $Head[2]) { $StInstance.RootIDPriority = [int]$Head[2] }
-        if ($Head.Count -ge 4 -and $Head[3]) { $StInstance.Address = $Head[3] }
-        if ($Head.Count -ge 5 -and $Head[4]) { $StInstance.RootBridgeHelloTime = [int]$Head[4] }
+        if ($Head.ROOT_PRIORITY) { $StInstance.RootIDPriority = [int]$Head.ROOT_PRIORITY }
+        if ($Head.ROOT_MAC)      { $StInstance.Address = ConvertTo-NormalizedMacAddress $Head.ROOT_MAC }
+        if ($Head.ROOT_HELLO)    { $StInstance.RootBridgeHelloTime = [int]$Head.ROOT_HELLO }
 
-        # "This bridge is the root"
-        $StInstance.RootBridge = $false
-        if ($Head.Count -ge 6 -and $Head[5] -and $Head[5].ToString().Trim() -ne "") {
-            $StInstance.RootBridge = $true
-        }
+        # ROOT_SELF only matches when the capture says "This bridge is the root".
+        $StInstance.RootBridge = -not [string]::IsNullOrWhiteSpace([string]$Head.ROOT_SELF)
 
         # Local bridge fields
-        if ($Head.Count -ge 7 -and $Head[6]) { $StInstance.BridgeIDPriority = [int]$Head[6] }
-        if ($Head.Count -ge 8 -and $Head[7]) { $StInstance.BridgeIDPriorityaddress = $Head[7] }
-        if ($Head.Count -ge 9 -and $Head[8]) { $StInstance.BridgeIDPriorityHelloTime = [int]$Head[8] }
+        if ($Head.BRIDGE_PRIORITY) { $StInstance.BridgeIDPriority = [int]$Head.BRIDGE_PRIORITY }
+        if ($Head.BRIDGE_MAC)      { $StInstance.BridgeIDPriorityaddress = ConvertTo-NormalizedMacAddress $Head.BRIDGE_MAC }
+        if ($Head.BRIDGE_HELLO)    { $StInstance.BridgeIDPriorityHelloTime = [int]$Head.BRIDGE_HELLO }
 
         if (-not $StInstance.SpanningTreeInterfaces) {
             $StInstance.SpanningTreeInterfaces = @()
@@ -1428,17 +925,16 @@ function Get-ArubaShowSpanningTreeDetailsFromText {
 
         # Port table -> SpanningTreeInterfaces
         foreach ($R in $InstanceRows) {
-            if (-not $R -or $R.Count -lt 10) { continue }
-            if (-not $R[9] -or $R[9].ToString().Trim() -eq "") { continue }
+            if (-not $R -or [string]::IsNullOrWhiteSpace([string]$R.PORT)) { continue }
 
             $If = Create-SpanningTreeInterface
-            $If.Interface = $R[9]
-            $If.Role      = if ($R.Count -ge 11) { $R[10] } else { $null }
-            $If.Status    = if ($R.Count -ge 12) { $R[11] } else { $null }
+            $If.Interface = $R.PORT
+            $If.Role      = $R.ROLE
+            $If.Status    = $R.STATE
 
-            if ($R.Count -ge 13 -and $R[12]) { $If.Cost = [int]$R[12] }
-            if ($R.Count -ge 14 -and $R[13]) { $If.PrioNbr = [int]$R[13] }
-            if ($R.Count -ge 15 -and $R[14]) { $If.Type = $R[14].ToString().Trim() }
+            if ($R.COST)     { $If.Cost = [int]$R.COST }
+            if ($R.PRIORITY) { $If.PrioNbr = [int]$R.PRIORITY }
+            if ($R.TYPE)     { $If.Type = ([string]$R.TYPE).Trim() }
 
             $StInstance.SpanningTreeInterfaces += $If
         }
@@ -1451,93 +947,46 @@ function Get-ArubaShowSpanningTreeDetailsFromText {
         }
     }
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowSpanningTreeDetailsFromText : Parsed instances $(@($Device.SpanningTree.SpanningTreeArray).Count)"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaSpanningTree : Parsed instances $(@($Device.SpanningTree.SpanningTreeArray).Count)"
 }
 
 
-function Get-ArubaShowInterfaceBriefFromTextfsm {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowInterfaceBriefFile,
-
-        [parameter(Mandatory = $true)]
-        $Device
+# Parses an Aruba 'show interfaces brief' capture to set per-interface admin/oper status and description on the device's interface objects. Logs a warning and returns the device unchanged if the file is missing or invalid.
+function Update-ArubaInterfaceBrief {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: START file='$ShowInterfaceBriefFile'"
+    # --- GUARD ---
+    if (@($Device.interfaces | Where-Object IntStatus).Count -gt 0) { return }   # 'show interface' is richer
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterfaceBrief')) { return }
 
-    if (-not (Test-Path -Path $ShowInterfaceBriefFile)) {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: File not found '$ShowInterfaceBriefFile'" -BackgroundColor Yellow
-        return $Device
-    }
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_ip_interface_brief' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
-    $text = Get-Content -Raw $ShowInterfaceBriefFile
-
-    if (($text | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Ambiguous command:)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$text" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    if ($null -eq $GTemplate -or $GTemplate.PSObject.Properties.Name -notcontains "ArubaAoscxShowIPInterfaceBrief") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: GTemplate.ArubaAoscxShowIPInterfaceBrief is not set." -BackgroundColor Red
-        return $Device
-    }
-
-    if (-not $Device.interfaces) {
-        $Device.interfaces = @()
-    }
-    elseif ($Device.interfaces -isnot [System.Collections.IList]) {
-        $Device.interfaces = @($Device.interfaces)
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: Executing TextFSM template ArubaAoscxShowIPInterfaceBrief"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_ip_interface_brief'] -ShowFile $ShowInterfaceBriefFile -ReturnArray $true -HostObject $Device
-
-    if ($Device.ProcessOutputObjects -eq "ERROR" -or -not $Device.ProcessOutputObjects) {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
-        return $Device
-    }
-
-    # Normalize single-record return shape
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        $tmp = @()
-        $tmp += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tmp
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: Raw records count=$(@($Device.ProcessOutputObjects).Count)"
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaInterfaceBrief: Raw records count=$(@($rows).Count)"
 
     $updatedCount = 0
     $createdCount = 0
 
-    foreach ($row in $Device.ProcessOutputObjects) {
+    foreach ($row in $rows) {
 
-        # Template field order:
-        # 0 PORT
-        # 1 NATIVE_VLAN
-        # 2 MODE
-        # 3 TYPE
-        # 4 ENABLED
-        # 5 STATUS
-        # 6 REASON
-        # 7 SPEED
-        # 8 DESCRIPTION
+        if (-not $row) { continue }
 
-        if (-not $row -or $row.Count -lt 6) { continue }
-
-        $port     = if ($row.Count -ge 1) { $row[0].ToString().Trim() } else { "" }
+        $port     = ([string]$row.PORT).Trim()
         if ([string]::IsNullOrWhiteSpace($port)) { continue }
 
-        $native   = if ($row.Count -ge 2) { $row[1].ToString().Trim() } else { "" }
-        $mode     = if ($row.Count -ge 3) { $row[2].ToString().Trim() } else { "" }
-        $type     = if ($row.Count -ge 4) { $row[3].ToString().Trim() } else { "" }
-        $enabled  = if ($row.Count -ge 5) { $row[4].ToString().Trim() } else { "" }
-        $status   = if ($row.Count -ge 6) { $row[5].ToString().Trim() } else { "" }
-        $reason   = if ($row.Count -ge 7) { $row[6].ToString().Trim() } else { "" }
-        $speedRaw = if ($row.Count -ge 8) { $row[7].ToString().Trim() } else { "" }
-        $descRaw  = if ($row.Count -ge 9) { $row[8].ToString().Trim() } else { "" }
+        $native   = ([string]$row.NATIVE_VLAN).Trim()
+        $mode     = ([string]$row.MODE).Trim()
+        $type     = ([string]$row.TYPE).Trim()
+        $enabled  = ([string]$row.ENABLED).Trim()
+        $status   = ([string]$row.STATUS).Trim()
+        $reason   = ([string]$row.REASON).Trim()
+        $speedRaw = ([string]$row.SPEED).Trim()
+        $descRaw  = ([string]$row.DESCRIPTION).Trim()
 
         $ifName = Replace-InterfaceShortName -string $port
 
@@ -1649,59 +1098,33 @@ function Get-ArubaShowInterfaceBriefFromTextfsm {
         }
     }
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowInterfaceBriefFromTextfsm: END updatedCount=$updatedCount createdCount=$createdCount"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaInterfaceBrief: END updatedCount=$updatedCount createdCount=$createdCount"
 }
 
 
 
 
 # Process the ArubaOS-CX "show mac-address-table" file
-function Get-ArubaShowMacAddressTableFromText {
-    param (
-        [parameter(Mandatory = $true)]
-        $ShowMacAddressTable,
-        $Device
+function Update-ArubaMacAddressTable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: START file='$ShowMacAddressTable'"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowMacAddressTable')) { return }
 
-    $ShowMacAddressTableText = Get-Content -Raw $ShowMacAddressTable
-
-    if (($ShowMacAddressTableText | Select-String "(Line has invalid autocommand|Invalid input detected at|Syntax error while parsing|Line has invalid autocommand|Ambiguous command:|LLDP is not enabled)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "$($ShowMacAddressTableText)" -BackgroundColor Magenta
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: contains invalid data or is empty" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: Executing TextFSM template ArubaAoscxShowMacAddressTable"
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['aruba_aoscx_show_mac-address-table'] -ShowFile $ShowMacAddressTable -ReturnArray $true -HostObject $Device
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: ERROR from Execute-PythonTextFSM" -BackgroundColor Red
-        return $Device
-    }
-
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: Raw ProcessOutputObjects count=$(@($Device.ProcessOutputObjects).Count)"
-
-    # Normalize single-record output shape (TextFSM sometimes returns a single row as a flat array)
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: Normalizing single record output shape"
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
+    # --- EXTRACT ---
+    $rows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'aruba_aoscx_show_mac-address-table' -Path $Path
+    if (@($rows).Count -eq 0) { return }
 
     $addedCount = 0
-    foreach ($MacRow in $Device.ProcessOutputObjects) {
-        # TextFSM fields (from your template):
-        # 0 = MAC_ADDRESS
-        # 1 = VLAN_ID
-        # 2 = TYPE
-        # 3 = PORT
-        $mac  = ($MacRow[0]).Trim()
-        $vlan = ($MacRow[1]).Trim()
-        $type = ($MacRow[2]).Trim()
-        $port = ($MacRow[3]).Trim()
+    foreach ($MacRow in $rows) {
+        $mac  = ([string]$MacRow.MAC_ADDRESS).Trim()
+        $vlan = ([string]$MacRow.VLAN_ID).Trim()
+        $type = ([string]$MacRow.TYPE).Trim()
+        $port = ([string]$MacRow.PORT).Trim()
 
         if ([string]::IsNullOrWhiteSpace($port)) { continue }
         if ($port -in @("CPU","Router","Switch")) { continue }
@@ -1742,7 +1165,7 @@ function Get-ArubaShowMacAddressTableFromText {
 
         $DeviceInterface = $Device.interfaces | Where-Object { $_.interface -eq $MacAddressobject.Interface }
         if ($null -eq $DeviceInterface) {
-            Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: Could not find interface '$($MacAddressobject.Interface)' for port '$port'. Replace-InterfaceShortName might be the problem." -BackgroundColor Red
+            Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "Update-ArubaMacAddressTable: Could not find interface '$($MacAddressobject.Interface)' for port '$port'. Replace-InterfaceShortName might be the problem."
             continue
         }
 
@@ -1750,10 +1173,9 @@ function Get-ArubaShowMacAddressTableFromText {
         $addedCount++
 
         if (($addedCount % 100) -eq 0) {
-            Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: Added MACs so far=$addedCount"
+            Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaMacAddressTable: Added MACs so far=$addedCount"
         }
     }
 
-    Add-HostDebugText -HostObject $Device "Get-ArubaShowMacAddressTableFromText: END addedCount=$addedCount"
-    return $Device
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Update-ArubaMacAddressTable: END addedCount=$addedCount"
 }

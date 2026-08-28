@@ -28,6 +28,7 @@ Start
   ^Internal.+Flash,\s${FLASH}
   ^\s*\d+:.\S+\s*${INTERFACES}.*
   ^License mode:\s${LICENSE_MODE}
+  ^Licensing mode is\s+.*
   ^.+License State:\s${LICENSE_STATE}
   ^Maximum Physical.+:\s${MAX_INTF}
   ^Maximum VLANs.+:\s${MAX_VLANS}

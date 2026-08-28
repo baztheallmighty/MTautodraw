@@ -1,3 +1,4 @@
+# MTAutoDraw-Standard: v1
 #MTAudotDraw
 #Copyright (C) 2022  Myles Treadwell
 #
@@ -14,236 +15,400 @@
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# This file contains all of the functions that process Palo Alto config.
+# Palo Alto PAN-OS capture processing. Follows PARSER_STANDARD.md v1; the orchestrator is at the foot
+# of the file, after the readers it calls.
 
-# This is the main function for processing a single Palo Alto device's files.
-function Process-PaloAltoHostFiles {
-    param (
-        [parameter(Mandatory=$true)]
-        $hostid,
-        $ArrayOfObjects # Included for signature consistency with other processing functions
+# --- Capture readers ------------------------------------------------------------------------------
+# Each one: GUARD, EXTRACT, MAP, MERGE. Each takes -Device and -Path, returns nothing, and is safe to
+# call with a $null path - so the orchestrator needs no per-slot if-wrappers.
+
+# Parses a Palo Alto 'show arp' output into the device's ARP entries, resolving each entry to its owning interface/subnet. Skips lines that do not match the expected format.
+function Update-PaloAltoArp {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    # For Palo Alto, all initial processing relies on the 'show system info' command.
-    if ($hostid.ShowSystemInfo -and (Test-Path -Path $hostid.ShowSystemInfo)) {
-        # The helper function creates and populates the entire device object.
-        $Device = Get-PaloAltoSystemInfoFromText -ShowSystemInfoFile $hostid.ShowSystemInfo
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowArp')) { return }
 
-        # If the device object was successfully created, add the DeviceIdentifier from the filename.
-        if ($Device) {
-            $Device.DeviceIdentifier = ($hostid.ShowSystemInfo -replace "\.show system info.*", '' -replace "^.*\\", '')
-            Add-HostDebugText -HostObject $Device "Processing Palo Alto Host: $($Device.hostname)"
-        } else {
-            # The parsing function will have already logged a critical error.
-            return $null
+    $knownNetworks = @($Device.interfaces | ForEach-Object { Get-MTAutoDrawInterfaceIPv4Address -Interface $_ } | Where-Object Cidr | ForEach-Object {
+        [pscustomobject]@{ Cidr = $_.Cidr; Prefix = [int](($_.Cidr -split '/')[1]) }
+    } | Sort-Object Prefix -Descending)
+
+    # --- EXTRACT / MAP / MERGE ---
+    $Device.IPArpEntries = @(foreach ($line in (Get-MTAutoDrawCaptureText -Path $Path -AsLines)) {
+        if ($line -notmatch '^\s*(?<interface>\S+)\s+(?<ip>\d{1,3}(?:\.\d{1,3}){3})\s+(?<mac>[0-9a-fA-F:.-]{12,17})\s+\S+\s+(?<status>\S+)\s+(?<ttl>\d+)\s*$') { continue }
+        $arp = Create-ShowIPArpObject
+        $arp.ipaddress = $Matches['ip']
+        $arp.MAC = ConvertTo-NormalizedMacAddress $Matches['mac']
+        $arp.INTERFACE = $Matches['interface']
+        $arp.TYPE = $Matches['status']
+        $arp.AGE = $Matches['ttl']
+        $arp.VendorCompanyName = 'UNKNOWN Vendor'
+        foreach ($network in $knownNetworks) {
+            $candidate = Get-NormalizedIPv4Cidr -IPAddress $arp.ipaddress -PrefixLength ([string]$network.Prefix)
+            if ($candidate -and $candidate.Cidr -eq $network.Cidr) { $arp.Cidr = $network.Cidr; break }
         }
-    } else {
-        Add-HostDebugText -HostObject $Device "Required file 'show system info' was not found for hostid '$($hostid.HOSTID)'"
-        return $null
-    }
-
-    # Process the 'show interface all' file if it was found for this host.
-    if ($hostid.ShowInterfaceAll) {
-        Add-HostDebugText -HostObject $Device "Processing Palo Alto show interface all: $($hostid.ShowInterfaceAll)"
-        $Device = Get-PaloAltoShowInterfaceAllFromText -ShowInterfaceFile $hostid.ShowInterfaceAll -Device $Device
-    }
-
-    if($hostid.ShowRouteAll){
-        $Device = Get-PaloAltoRouteFromText -ShowRouteAllFile $hostid.ShowRouteAll -Device $Device
-    }
-    $Device = Update-LocalRoutesWithInterfaces -device $Device
-    return $Device
+        $arp
+    })
 }
 
-# Processes 'show system info' output to create and populate a complete host object.
-function Get-PaloAltoSystemInfoFromText {
-    param (
-        [parameter(Mandatory=$true)]
-        $ShowSystemInfoFile
+# Reads 'show system info' for the device identity and its management addressing. This is the only
+# capture Palo Alto carries a hostname in, so the orchestrator gates identity on it.
+function Update-PaloAltoSystemInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
 
-    # Create the base host object to be populated.
-    $Device = Create-HostObject
-    $Device.Origin = "show system info"
-    $Device.DeviceType = "PaloAlto"
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowSystemInfo')) { return }
 
-    # Read the file content and perform basic validation.
-    $SystemInfoText = Get-Content -raw $ShowSystemInfoFile
-    if ([string]::IsNullOrWhiteSpace($SystemInfoText) -or ($SystemInfoText | Select-String "(Invalid input|Command fail|Unknown command)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "File '$ShowSystemInfoFile' contains invalid data or is empty." -BackgroundColor Red
-        return $null # Return null on critical failure
-    }
-
-    # Split the command output into individual lines for processing.
-    $lines = $SystemInfoText -split '[\r\n]+'
-
-    foreach ($line in $lines) {
-        # Match lines that follow the 'key: value' format.
-        if ($line -match '^\s*([^:]+):\s*(.*)') {
-            $key = $Matches[1].Trim()
-            $value = $Matches[2].Trim()
-
-            # Assign the extracted value to the correct property on the main Device object.
-            switch ($key) {
-                'hostname'          { $Device.hostname = $value }
-                'model'             { $Device.Platform = $value } # The 'model' maps to the 'Platform' property.
-                'ip-address'        { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementIP' -Value $value -Force }
-                'public-ip-address' { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementPublicIP' -Value $value -Force }
-                'netmask'           { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementNetmask' -Value $value -Force }
-                'default-gateway'   { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementGateway' -Value $value -Force }
-                'mac-address'       { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementMacAddress' -Value $value -Force }
-            }
+    # --- EXTRACT / MAP / MERGE ---
+    # 'show system info' is a flat 'key: value' list. The management fields have no home in the host
+    # schema, so they are attached as note properties; NeighborResolution reads ManagementIP.
+    foreach ($line in (Get-MTAutoDrawCaptureText -Path $Path -AsLines)) {
+        if ($line -notmatch '^\s*(?<key>[^:]+):\s*(?<value>.*)') { continue }
+        $key = $Matches['key'].Trim()
+        $value = $Matches['value'].Trim()
+        switch ($key) {
+            'hostname'          { $Device.hostname = $value }
+            'model'             { $Device.Platform = $value } # The 'model' maps to the 'Platform' property.
+            'ip-address'        { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementIP' -Value $value -Force }
+            'public-ip-address' { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementPublicIP' -Value $value -Force }
+            'netmask'           { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementNetmask' -Value $value -Force }
+            'default-gateway'   { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementGateway' -Value $value -Force }
+            'mac-address'       { $Device | Add-Member -MemberType NoteProperty -Name 'ManagementMacAddress' -Value $value -Force }
         }
     }
-
-    # A hostname is critical for the rest of the script. If it wasn't found, fail processing for this device.
-    if ([string]::IsNullOrWhiteSpace($Device.hostname)) {
-        Add-HostDebugText -HostObject $Device "CRITICAL: No hostname found in '$ShowSystemInfoFile'." -BackgroundColor Red
-        return $null
-    }
-
-    return $Device
 }
 
-# Processes the 'show interface all' command output using two TextFSM templates to build a complete interface list.
-function Get-PaloAltoShowInterfaceAllFromText {
-    param (
-        [parameter(Mandatory=$true)]
-        $ShowInterfaceFile,
-        [parameter(Mandatory=$true)]
-        $Device
+# Processes the 'show interface all' command output using two TextFSM templates to build a complete
+# interface list. PAN-OS prints one table of hardware ports and a second of the logical interfaces
+# configured on top of them, in the same capture - hence two templates over one file.
+function Update-PaloAltoInterfaces {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
     )
-    
-    [array]$AllInterfaces=@()
-    # --- Step 1: Process HARDWARE interface details first to create base objects ---
-    Add-HostDebugText -HostObject $Device "  -> Processing hardware interfaces..."
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['paloalto_panos_show_interface_hardware'] -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Error processing hardware interfaces from '$($ShowInterfaceFile)'." -BackgroundColor Red
-        return $Device # Return the device as-is on failure
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowInterfaceAll')) { return }
+
+    # --- EXTRACT: hardware ports first, so the logical rows have something to merge into ---
+    $hardwareRows = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'paloalto_panos_show_interface_hardware' -Path $Path
+    $logicalRows  = Invoke-MTAutoDrawTextFSM -Device $Device -Template 'paloalto_panos_show_interface_logical' -Path $Path
+    if (@($hardwareRows).Count -eq 0 -and @($logicalRows).Count -eq 0) { return }
+
+    # --- MAP + MERGE: hardware ---
+    foreach ($row in $hardwareRows) {
+        $interface = Resolve-MTAutoDrawInterface -Device $Device -Name $row.INTERFACE
+        $interface.Speed      = $row.SPEED
+        $interface.Duplex     = $row.DUPLEX
+        $interface.IntStatus  = ($row.STATE -replace 'down\(autoneg\)', 'down')
+        $interface.macaddress = $row.MAC_ADDRESS
+        $interface.shutdown   = $interface.IntStatus -ne 'up'
     }
 
-    # Handle cases where only one result is returned
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
-    }
-
-    # Create an interface object for each physical/hardware entry found
-    foreach ($hardwareInt in $Device.ProcessOutputObjects) {
-        $interfaceObject = Create-InterfaceObject
-        $interfaceObject.Interface = $hardwareInt[0]
-        $interfaceObject.Speed = $hardwareInt[2]
-        $interfaceObject.Duplex = $hardwareInt[3]
-        $interfaceObject.IntStatus = ($hardwareInt[4] -replace 'down\(autoneg\)',"down")
-        $interfaceObject.macaddress = $hardwareInt[5]
-
-        # Set the shutdown status based on the interface state
-        if ($interfaceObject.IntStatus -ne "up") {
-            $interfaceObject.shutdown = $true
-        } else {
-            $interfaceObject.shutdown = $false
+    # --- MAP + MERGE: logical ---
+    # An interface here with no hardware row is purely logical (loopback.1, tunnel.1, a VLAN
+    # interface); find-or-create covers both cases in one path.
+    foreach ($row in $logicalRows) {
+        $existing = Resolve-MTAutoDrawInterface -Device $Device -Name $row.INTERFACE -NoCreate
+        $interface = if ($existing) { $existing } else {
+            $new = Resolve-MTAutoDrawInterface -Device $Device -Name $row.INTERFACE
+            $new.shutdown = $false   # a logical interface is up unless its hardware port says otherwise
+            $new
         }
+        $interface.Zone = $row.ZONE
 
-        $AllInterfaces += $interfaceObject
-    }
-    
-    # --- Step 2: Process LOGICAL interface details and merge them with existing objects ---
-    Add-HostDebugText -HostObject $Device "  -> Processing and merging logical interfaces..."
-    $Device = Execute-PythonTextFSM -TextFSTETemplate $GTextFSMTemplates['paloalto_panos_show_interface_logical'] -ShowFile $ShowInterfaceFile -ReturnArray $true -HostObject $Device
-    if ($Device.ProcessOutputObjects -eq "ERROR") {
-        Add-HostDebugText -HostObject $Device "Error processing logical interfaces from '$($ShowInterfaceFile)'." -BackgroundColor Red
-        return $Device # Return the device with any hardware data that was processed
-    }
-
-    # Handle cases where only one result is returned
-    if ($Device.ProcessOutputObjects.Count -gt 0 -and $Device.ProcessOutputObjects[0].GetType().Name -eq "string") {
-        $tempArray = @()
-        $tempArray += ,$Device.ProcessOutputObjects
-        $Device.ProcessOutputObjects = $tempArray
+        $addressInfo = Get-NormalizedIPv4Cidr -IPAddress ([string]$row.IP_ADDRESS)
+        if (-not $addressInfo) { continue }
+        $interface.IPAddress      = $addressInfo.IPAddress
+        $interface.SubnetMask     = $addressInfo.PrefixLength
+        $interface.SwitchPortType = 'Routed'
+        $interface.Cidr           = $addressInfo.Cidr
+        # PAN-OS tags every logical interface, so the tag is always the routed VLAN - including tag 0,
+        # which is an untagged interface and is written 'vlan0' rather than 'no vlan'.
+        $null = Add-MTAutoDrawNetwork -Device $Device -Cidr $addressInfo.Cidr -RoutedVlan "vlan$([string]$row.VLAN_ID)" -IPAddress $addressInfo.IPAddress
     }
 
-    foreach ($logicalInt in $Device.ProcessOutputObjects) {
-        # Find the corresponding interface object we created in the hardware step
-        $interfaceToUpdate = $AllInterfaces | Where-Object { $_.Interface -eq $logicalInt[0] } | Select-Object -First 1
-
-        if ($interfaceToUpdate) {
-            # If it exists, UPDATE it with the logical details
-            $interfaceToUpdate.Zone = $logicalInt[3]
-
-            # Check for and process IP address information
-            if ($logicalInt[6] -and $logicalInt[6].tolower() -ne "[n/a]" -and $logicalInt[6] -ne "N/A") {
-                $interfaceToUpdate.IPAddress = ($logicalInt[6] -split "/")[0]
-                $interfaceToUpdate.SubnetMask = ($logicalInt[6] -split "/")[1]
-                $interfaceToUpdate.SwitchPortType = "Routed"
-
-                if ($interfaceToUpdate.IPAddress -and $interfaceToUpdate.SubnetMask) {
-                    $interfaceToUpdate.Cidr = (Get-IPv4Subnet -IPAddress $interfaceToUpdate.IPAddress -PrefixLength $interfaceToUpdate.SubnetMask).cidrid
-                    if ($null -ne $interfaceToUpdate.Cidr) {
-                        $NetworkObject = Create-NetworkObject
-                        $NetworkObject.Cidr = $interfaceToUpdate.Cidr
-                        $NetworkObject.Routedvlan = "vlan$($logicalInt[5])"
-                        $Device.ArrayOfNetworks += $NetworkObject
-                    }
-                }
-            }
-        } else {
-            # If it doesn't exist, it's a purely logical interface (e.g., vlan, loopback). Create a new object for it.
-            $interfaceObject = Create-InterfaceObject
-            $interfaceObject.Interface = $logicalInt[0]
-            $interfaceObject.Zone = $logicalInt[3]
-            $interfaceObject.shutdown = $false # Logical interfaces are assumed to be up unless otherwise specified
-
-            if ($logicalInt[6] -and $logicalInt[6] -ne "[n/a]") {
-                $interfaceObject.IPAddress = ($logicalInt[6] -split "/")[0]
-                $interfaceObject.SubnetMask = ($logicalInt[6] -split "/")[1]
-                $interfaceObject.SwitchPortType = "Routed"
-
-                if ($interfaceObject.IPAddress -and $interfaceObject.SubnetMask) {
-                    $interfaceObject.Cidr = (Get-IPv4Subnet -IPAddress $interfaceObject.IPAddress -PrefixLength $interfaceObject.SubnetMask).cidrid
-                    if ($null -ne $interfaceObject.Cidr) {
-                        $NetworkObject = Create-NetworkObject
-                        $NetworkObject.Cidr = $interfaceObject.Cidr
-                        $NetworkObject.Routedvlan = "vlan$($logicalInt[5])"
-                        $Device.ArrayOfNetworks += $NetworkObject
-                    }
-                }
-            }
-            $AllInterfaces += $interfaceObject
+    # PAN-OS prints additional addresses on continuation lines beneath the logical row.
+    # TextFSM records the primary row; retain those continuation addresses explicitly.
+    $secondaryByInterface = @{}
+    $currentLogicalInterface = $null
+    foreach ($line in (Get-MTAutoDrawCaptureText -Path $Path -AsLines)) {
+        if ($line -match '^\s*(?<interface>\S+)\s+\d+\s+\d+\s+.*$') {
+            $currentLogicalInterface = $Matches['interface']
+            continue
         }
+        if ($currentLogicalInterface -and $line -match '^\s+(?<address>\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})\s*$') {
+            if (-not $secondaryByInterface.ContainsKey($currentLogicalInterface)) {
+                $secondaryByInterface[$currentLogicalInterface] = [System.Collections.Generic.List[string]]::new()
+            }
+            $secondaryByInterface[$currentLogicalInterface].Add($Matches['address'])
+            continue
+        }
+        $currentLogicalInterface = $null
     }
-    $Device.interfaces = $AllInterfaces
-    return $Device
+
+    foreach ($interfaceName in $secondaryByInterface.Keys) {
+        $interfaceObject = Resolve-MTAutoDrawInterface -Device $Device -Name $interfaceName -NoCreate
+        if (-not $interfaceObject) {
+            Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "Ignoring secondary address continuation for unknown interface '$interfaceName'."
+            continue
+        }
+        $secondaryAddresses = [System.Collections.Generic.List[string]]::new()
+        $secondaryMasks = [System.Collections.Generic.List[string]]::new()
+        $secondaryCidrs = [System.Collections.Generic.List[string]]::new()
+        foreach ($address in $secondaryByInterface[$interfaceName]) {
+            $addressInfo = Get-NormalizedIPv4Cidr -IPAddress $address
+            if (-not $addressInfo) {
+                Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "Ignoring malformed secondary address '$address' on '$interfaceName'."
+                continue
+            }
+            $secondaryAddresses.Add($addressInfo.IPAddress)
+            $secondaryMasks.Add($addressInfo.PrefixLength)
+            $secondaryCidrs.Add($addressInfo.Cidr)
+            # A continuation line carries no tag, so the network is recorded as 'vlan' with no number.
+            $null = Add-MTAutoDrawNetwork -Device $Device -Cidr $addressInfo.Cidr -RoutedVlan 'vlan' -IPAddress $addressInfo.IPAddress
+        }
+        $interfaceObject.SecondaryIPAddress = @($secondaryAddresses)
+        $interfaceObject.SecondarySubnetMask = @($secondaryMasks)
+        $interfaceObject.SecondaryCidr = @($secondaryCidrs)
+    }
 }
 
 
 
 
 
-# Main function to parse the Palo Alto routing table text.
-# Main function to parse the Palo Alto routing table text.
-function Get-PaloAltoRouteFromText {
-    param (
-        [parameter(Mandatory=$true)]
-        [string]$ShowRouteAllFile,
+# Splits a PAN-OS policy capture into its top-level rule blocks.
+#
+#   "Allow VPN Traffic from Outside; index: 2" {
+#           from Outside;
+#           to [ Corp-VPN-Zone Corp-DC ];
+#           action allow;
+#   }
+#
+# Regex per rule rather than TextFSM: the format is brace-delimited and nested, which TextFSM's
+# line-oriented state machine handles badly, and values appear either bare or as [ bracketed lists ].
+function Split-PaloAltoPolicyBlocks {
+    param([Parameter(Mandatory = $true)][string]$Text)
 
-        [parameter(Mandatory=$true)]
-        $Device
+    $blocks = [System.Collections.Generic.List[object]]::new()
+    # (?s) so the body can span lines; non-greedy up to the first line-initial closing brace, which is
+    # how PAN-OS closes a rule - inner braces are always indented.
+    foreach ($match in [regex]::Matches($Text, '(?ms)^"(?<name>[^"]*?)(?:;\s*index:\s*(?<index>\d+))?"\s*\{(?<body>.*?)^\}')) {
+        $blocks.Add([pscustomobject]@{
+            Name  = $match.Groups['name'].Value.Trim()
+            Index = if ($match.Groups['index'].Success) { [int]$match.Groups['index'].Value } else { $null }
+            Body  = $match.Groups['body'].Value
+        })
+    }
+    return $blocks
+}
+
+# Reads one `key value;` field out of a rule body, returning it as a list. PAN-OS writes a single
+# value bare ("from Outside;") and multiple values bracketed ("to [ A B ];"), and both forms mean the
+# same thing to the reader, so both collapse to a list here.
+function Get-PaloAltoPolicyFieldValues {
+    param(
+        [Parameter(Mandatory = $true)][string]$Body,
+        [Parameter(Mandatory = $true)][string]$Key
     )
-    Add-HostDebugText -HostObject $Device "  -> Processing Palo Alto show route all..."
-    if (-not (Test-Path -Path $ShowRouteAllFile -PathType Leaf)) {
-        Add-HostDebugText -HostObject $Device "Error processing Palo Alto show route all from '$($ShowRouteAllFile)'." -BackgroundColor Red
-        return $Device 
+
+    $match = [regex]::Match($Body, "(?m)^\s*$([regex]::Escape($Key))\s+(?<value>.*?);\s*$")
+    if (-not $match.Success) { return @() }
+    $value = $match.Groups['value'].Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($value)) { return @() }
+    if ($value -match '^\[\s*(?<items>.*?)\s*\]$') {
+        return @($Matches['items'] -split '\s+' | Where-Object { $_ })
     }
-    $ShowRouteText = Get-Content -Raw -Path $ShowRouteAllFile
-    if ([string]::IsNullOrWhiteSpace($ShowRouteText) -or ($ShowRouteText | Select-String "(Invalid input|Command fail|Unknown command)").Matches.Success) {
-        Add-HostDebugText -HostObject $Device "File '$ShowRouteAllFile' contains invalid data or is empty." -BackgroundColor Red
-        return $Device 
+    return @($value)
+}
+
+# Parses a Palo Alto 'show running security-policy' capture into the device's security-policy rule objects (source/destination, zones, action). Validates the capture first.
+function Update-PaloAltoSecurityPolicy {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
+    )
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRunningSecurityPolicy')) { return }
+
+    # --- EXTRACT ---
+    $text = Get-MTAutoDrawCaptureText -Path $Path
+    $rules = [System.Collections.Generic.List[object]]::new()
+    foreach ($block in (Split-PaloAltoPolicyBlocks -Text $text)) {
+        $rule = Create-SecurityPolicyRuleObject
+        $rule.Name        = $block.Name
+        $rule.Index       = $block.Index
+        $rule.FromZones   = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'from')
+        $rule.ToZones     = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'to')
+        $rule.Source      = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'source')
+        $rule.Destination = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'destination')
+        $rule.Application = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'application/service')
+        $rule.Action      = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'action') | Select-Object -First 1
+        $rule.RuleType    = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'type') | Select-Object -First 1
+        $rule.Disabled    = [bool](@(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'disabled') -contains 'yes')
+        $rules.Add($rule)
     }
+
+    # --- MERGE ---
+    $Device.SecurityPolicy = @($rules)
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "  -> Parsed $($rules.Count) security rules."
+}
+
+# Parses a Palo Alto 'show running nat-policy' capture into the device's NAT policy rule objects. Validates the capture first.
+function Update-PaloAltoNatPolicy {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
+    )
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRunningNatPolicy')) { return }
+
+    # --- EXTRACT ---
+    $text = Get-MTAutoDrawCaptureText -Path $Path
+    $rules = [System.Collections.Generic.List[object]]::new()
+    foreach ($block in (Split-PaloAltoPolicyBlocks -Text $text)) {
+        $rule = Create-NatPolicyRuleObject
+        $rule.Name        = $block.Name
+        $rule.Index       = $block.Index
+        $rule.NatType     = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'nat-type') | Select-Object -First 1
+        $rule.FromZones   = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'from')
+        $rule.ToZones     = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'to')
+        $rule.Source      = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'source')
+        $rule.Destination = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'destination')
+        $rule.Service     = @(Get-PaloAltoPolicyFieldValues -Body $block.Body -Key 'service') | Select-Object -First 1
+
+        # translate-to is a quoted free-text field, e.g.
+        #   translate-to "src: ethernet1/1 203.0.113.200 (dynamic-ip-and-port) (pool idx: 1)"
+        # Pull the egress interface, public address and mode out of it, but keep the raw string too so
+        # an unrecognised translation form is never silently dropped.
+        $translation = [regex]::Match($block.Body, '(?m)^\s*translate-to\s+"(?<value>[^"]*)"')
+        if ($translation.Success) {
+            $raw = $translation.Groups['value'].Value.Trim()
+            $rule.RawTranslation = $raw
+            if ($raw -match '^(?<dir>src|dst)\s*:') { $rule.TranslationType = $Matches['dir'] }
+            if ($raw -match '(?<iface>(?:ethernet|ae|tunnel|loopback|vlan)[\d/.]*)') { $rule.TranslatedInterface = $Matches['iface'] }
+            if ($raw -match '(?<ip>\d{1,3}(?:\.\d{1,3}){3})') { $rule.TranslatedAddress = $Matches['ip'] }
+            if ($raw -match '\((?<mode>[a-z0-9-]+)\)') { $rule.TranslationMode = $Matches['mode'] }
+        }
+        $rules.Add($rule)
+    }
+
+    # --- MERGE ---
+    $Device.NatPolicy = @($rules)
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "  -> Parsed $($rules.Count) NAT rules."
+}
+
+# 'show interface all' truncates zone names to a 16-character column (Corp-Executive-W), while the
+# policy capture carries them in full (Corp-Executive-WiFi-Zone). Where a truncated interface zone is
+# an unambiguous prefix of exactly one policy zone, replace it with the full name so the diagrams and
+# the zone matrix agree on what a zone is called. Ambiguous or unmatched values are left untouched -
+# a wrong full name would be worse than a short one.
+#
+# Not an Update-* reader: it consumes no capture, only data three readers have already produced, so
+# it is a reconcile step the orchestrator runs after them.
+function Resolve-PaloAltoInterfaceZoneNames {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)]$Device)
+
+    $policyZones = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($rule in @($Device.SecurityPolicy) + @($Device.NatPolicy)) {
+        foreach ($zone in (@($rule.FromZones) + @($rule.ToZones))) {
+            if ($zone -and $zone -ne 'any') { [void]$policyZones.Add($zone) }
+        }
+    }
+    if ($policyZones.Count -eq 0) { return }
+
+    $resolved = 0
+    foreach ($interface in @($Device.interfaces | Where-Object { $_.Zone })) {
+        $current = [string]$interface.Zone
+        if ($policyZones.Contains($current)) { continue }   # already the full name
+        $candidates = @($policyZones | Where-Object { $_.StartsWith($current, [StringComparison]::OrdinalIgnoreCase) })
+        if ($candidates.Count -eq 1) {
+            $interface.Zone = $candidates[0]
+            $resolved++
+        }
+    }
+    if ($resolved -gt 0) {
+        Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "  -> Restored $resolved truncated interface zone name(s) from policy data."
+    }
+}
+
+# Returns $true when a token is a valid Palo Alto route flag string (route-table flag characters like A/C/S/R/O/B/M/E etc.), else $false.
+function Test-PaloAltoRouteFlagToken {
+    param([AllowNull()][string]$Token)
+    return (-not [string]::IsNullOrWhiteSpace($Token) -and $Token -match '^[A?CHS~ROBEMio12]+$')
+}
+
+# Resolves a gateway IP to the interface on $TargetDevice that owns it (or a connected subnet), returning {Interface, Status} with Status 'NotApplicable' for non-IP/0.0.0.0 gateways.
+function Resolve-PaloAltoGatewayInterface {
+    param([string]$Gateway,$TargetDevice)
+
+    $parsedGateway = $null
+    if (-not [System.Net.IPAddress]::TryParse($Gateway, [ref]$parsedGateway) -or
+        $parsedGateway.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork -or
+        $Gateway -eq '0.0.0.0') {
+        return [pscustomobject]@{ Interface = $null; Status = 'NotApplicable' }
+    }
+
+    $candidates = foreach ($candidateInterface in @($TargetDevice.interfaces | Where-Object { -not $_.shutdown })) {
+        foreach ($address in @(Get-MTAutoDrawInterfaceIPv4Address -Interface $candidateInterface | Where-Object Cidr)) {
+            $prefix = [int](($address.Cidr -split '/')[1])
+            $gatewayNetwork = Get-NormalizedIPv4Cidr -IPAddress $Gateway -PrefixLength ([string]$prefix)
+            if ($gatewayNetwork -and $gatewayNetwork.Cidr -eq $address.Cidr) {
+                [pscustomobject]@{ Interface = [string]$candidateInterface.Interface; Prefix = $prefix }
+            }
+        }
+    }
+
+    if (@($candidates).Count -eq 0) {
+        return [pscustomobject]@{ Interface = $null; Status = 'Unmatched' }
+    }
+    $bestPrefix = @($candidates | Measure-Object Prefix -Maximum)[0].Maximum
+    $bestInterfaces = @($candidates | Where-Object Prefix -eq $bestPrefix | Select-Object -ExpandProperty Interface -Unique)
+    if ($bestInterfaces.Count -eq 1) {
+        return [pscustomobject]@{ Interface = $bestInterfaces[0]; Status = 'Inferred' }
+    }
+    return [pscustomobject]@{ Interface = $null; Status = "Ambiguous: $($bestInterfaces -join ', ')" }
+}
+
+# Parse the PAN-OS routing table without relying on blank, fixed-width columns.
+function Update-PaloAltoRoutes {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Device,
+        [AllowNull()][AllowEmptyString()][string]$Path
+    )
+
+    # --- GUARD ---
+    if (-not (Test-MTAutoDrawCaptureReadable -Device $Device -Path $Path -Capture 'ShowRouteAll')) { return }
+
+    # --- EXTRACT ---
+    $ShowRouteText = Get-MTAutoDrawCaptureText -Path $Path
 
     $AllRouteObjects = [System.Collections.Generic.List[object]]::new()
-    $currentVRF = "default" 
+    $currentVRF = "default"
+    $knownInterfaceNames = @{}
+    foreach ($interfaceObject in @($Device.interfaces)) {
+        if ($interfaceObject.Interface) {
+            $knownInterfaceNames[[string]$interfaceObject.Interface.ToLowerInvariant()] = [string]$interfaceObject.Interface
+        }
+    }
+    $inferredRoutes = @{}
+    $unresolvedRoutes = @{}
 
     $lines = $ShowRouteText -split '\r?\n'
 
@@ -254,77 +419,118 @@ function Get-PaloAltoRouteFromText {
             continue 
         }
 
-        # Basic check to see if it looks like a route line before splitting
-        if ($line -notmatch '^\s*(\d{1,3}\.|\S+/)') {
-            continue
-        }
+        if ($line -notmatch '^\s*\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\s+') { continue }
 
-        # --- CORRECTED LOGIC: Tokenize the line instead of using a single complex regex ---
         $tokens = $line.Trim() -split '\s+'
-        
-        # A valid route must have at least the destination, nexthop, metric, and one flag.
-        if ($tokens.Count -lt 4) {
-            continue
-        }
+        if ($tokens.Count -lt 3) { continue }
 
         $RouteObject = Create-RouteObject
         $RouteObject.VRF = $currentVRF
+        $RouteObject.Subnet = $tokens[0]
 
-        # Handle routes where the nexthop is another VR (e.g., "vr VR-vsys1")
         if ($tokens[1] -eq 'vr') {
-            $RouteObject.Subnet    = $tokens[0]
-            $RouteObject.gateway   = "$($tokens[1]) $($tokens[2])" # Combine "vr" and its name
-            $RouteObject.DISTANCE  = [int]$tokens[3]
-            $startIndexForFlags = 4 # Flags start at the 5th token
+            if ($tokens.Count -lt 4) { continue }
+            $RouteObject.gateway = "$($tokens[1]) $($tokens[2])"
+            $remainingTokens = @($tokens | Select-Object -Skip 3)
         } else {
-            # Handle standard routes with an IP nexthop
-            $RouteObject.Subnet    = $tokens[0]
-            $RouteObject.gateway   = $tokens[1]
-            $RouteObject.DISTANCE  = $tokens[2]
-            $startIndexForFlags = 3 # Flags start at the 4th token
+            $RouteObject.gateway = $tokens[1]
+            $remainingTokens = @($tokens | Select-Object -Skip 2)
         }
-        
+
         if ($RouteObject.Subnet -eq "0.0.0.0/0") {
             $RouteObject.defaultgateway = $true
         }
 
-        $interface = $null
-        $flagAndAgeTokens = @()
-
-        # Reliably determine if an interface exists by checking the last token's pattern.
-        if ($tokens[-1] -match '[\/\.]') {
-            $interface = $tokens[-1]
-            $flagAndAgeTokens = $tokens[$startIndexForFlags..($tokens.Count - 2)]
-        } else {
-            # NO interface exists (e.g., host route), so all remaining tokens are flags/age
-            $flagAndAgeTokens = $tokens[$startIndexForFlags..($tokens.Count - 1)]
-        }
-        
-        $RouteObject.interface = $interface
-        
-        $actualFlags = $flagAndAgeTokens | Where-Object { $_ -notmatch '^\d+$' }
-        
-        if ($actualFlags.Count -gt 0) {
-            $primaryFlag = $actualFlags[-1]
-            $RouteObject.RouteSubType = $primaryFlag
-
-            switch ($primaryFlag[0]) {
-                'S' { $RouteObject.RouteProtocol = "static" }
-                'O' { $RouteObject.RouteProtocol = "OSPF" }
-                'C' { $RouteObject.RouteProtocol = "connect" }
-                'B' { $RouteObject.RouteProtocol = "BGP" }
-                'R' { $RouteObject.RouteProtocol = "RIP" }
-                'H' { $RouteObject.RouteProtocol = "host" }
-                default { $RouteObject.RouteProtocol = "unknown" }
+        foreach ($token in $remainingTokens) {
+            $key = $token.ToLowerInvariant()
+            if ($knownInterfaceNames.ContainsKey($key)) {
+                $RouteObject.interface = $knownInterfaceNames[$key]
+                break
+            }
+            if ($token -match '^(?:ethernet\d+/\d+(?:\.\d+)?|ae\d+(?:\.\d+)?|loopback(?:\.\d+)?|tunnel(?:\.\d+)?|vlan(?:\.\d+)?)$') {
+                $RouteObject.interface = $token
+                break
             }
         }
-        
+
+        $flagTokens = @($remainingTokens | Where-Object { Test-PaloAltoRouteFlagToken $_ })
+        $flagText = ($flagTokens -join '')
+        $RouteObject.RouteSubType = $flagText
+        if ($flagText -match 'B') { $RouteObject.RouteProtocol = 'BGP' }
+        elseif ($flagText -match 'S') { $RouteObject.RouteProtocol = 'static' }
+        elseif ($flagText -match 'O') { $RouteObject.RouteProtocol = 'OSPF' }
+        elseif ($flagText -match 'R') { $RouteObject.RouteProtocol = 'RIP' }
+        elseif ($flagText -match 'C') { $RouteObject.RouteProtocol = 'connect' }
+        elseif ($flagText -match 'H') { $RouteObject.RouteProtocol = 'host' }
+        else { $RouteObject.RouteProtocol = 'unknown' }
+
+        $firstFlagIndex = -1
+        for ($index = 0; $index -lt $remainingTokens.Count; $index++) {
+            if (Test-PaloAltoRouteFlagToken $remainingTokens[$index]) { $firstFlagIndex = $index; break }
+        }
+        if ($firstFlagIndex -gt 0 -and $remainingTokens[0] -match '^\d+$') {
+            $RouteObject.DISTANCE = [int]$remainingTokens[0]
+        }
+
+        if (-not $RouteObject.interface) {
+            $resolution = Resolve-PaloAltoGatewayInterface -Gateway ([string]$RouteObject.gateway) -TargetDevice $Device
+            if ($resolution.Status -eq 'Inferred') {
+                $RouteObject.interface = $resolution.Interface
+                $key = "$($RouteObject.gateway)|$($resolution.Interface)"
+                $inferredRoutes[$key] = 1 + [int]$inferredRoutes[$key]
+            }
+            elseif ($resolution.Status -ne 'NotApplicable') {
+                $unresolvedRoutes[[string]$RouteObject.gateway] = $resolution.Status
+            }
+        }
+
         $AllRouteObjects.Add($RouteObject)
     }
 
-    Add-HostDebugText -HostObject $Device "Found $($AllRouteObjects.Count) Palo Alto routes."
-    $device.RoutingTable = $AllRouteObjects
-    return $device
+    foreach ($entry in $inferredRoutes.GetEnumerator() | Sort-Object Name) {
+        $parts = $entry.Name -split '\|', 2
+        Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Inferred Palo Alto egress interface '$($parts[1])' for gateway '$($parts[0])' on $($entry.Value) route(s)."
+    }
+    foreach ($entry in $unresolvedRoutes.GetEnumerator() | Sort-Object Name) {
+        Write-MTAutoDrawLog -Level Warn -Phase Parse -Device $Device -Message "Could not infer a Palo Alto egress interface for gateway '$($entry.Name)' ($($entry.Value))."
+    }
+    Write-MTAutoDrawLog -Level Debug -Phase Parse -Device $Device -Message "Found $($AllRouteObjects.Count) Palo Alto routes."
+
+    # --- MERGE ---
+    $Device.RoutingTable = $AllRouteObjects
+}
+
+
+# --- Orchestrator ---------------------------------------------------------------------------------
+
+function Process-PaloAltoHostFiles {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$HostID,
+        $ArrayOfObjects   # Kept for dispatcher signature compatibility; duplicate detection is sequential.
+    )
+
+    # 1. IDENTITY - 'show system info' is the only PAN-OS capture carrying a hostname.
+    $device = New-MTAutoDrawDevice -Platform 'PaloAlto' -HostID $HostID
+    Update-PaloAltoSystemInfo -Device $device -Path $HostID.ShowSystemInfo
+    if (-not $device.hostname) {
+        Write-MTAutoDrawDiagnostic -Device $device -Severity Error -Message "CRITICAL: Palo Alto '$($HostID.HOSTID)' has no usable 'show system info' capture; skipping host."
+        return $null
+    }
+    Write-MTAutoDrawLog -Level Info -Phase Parse -Device $device -Message "Processing Palo Alto Host: $($device.hostname)"
+
+    # 2. CAPTURES - one line per slot, in dependency order. Routes and ARP both resolve against the
+    # interface subnets, so interfaces come first.
+    Update-PaloAltoInterfaces     -Device $device -Path $HostID.ShowInterfaceAll
+    Update-PaloAltoRoutes         -Device $device -Path $HostID.ShowRouteAll
+    Update-PaloAltoArp            -Device $device -Path $HostID.ShowArp
+    Update-PaloAltoSecurityPolicy -Device $device -Path $HostID.ShowRunningSecurityPolicy
+    Update-PaloAltoNatPolicy      -Device $device -Path $HostID.ShowRunningNatPolicy
+
+    # 3. RECONCILE - zone names come from the policy captures and are needed by the interfaces the
+    # interface capture produced, so this can only run once both have been read.
+    Resolve-PaloAltoInterfaceZoneNames -Device $device
+    return (Complete-MTAutoDrawDevice -Device $device)
 }
 
 

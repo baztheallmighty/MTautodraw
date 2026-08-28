@@ -1,6 +1,10 @@
 # ===================================================================
 # ========= START: C# PERFORMANCE ACCELERATOR             =========
 # ===================================================================
+# Add-Type definitions live for the lifetime of the PowerShell process; Import-Module -Force cannot
+# unload them. AutoDraw can legitimately be invoked more than once from one console/session, so a
+# repeat import must reuse the already-compiled accelerator rather than trying to redefine it.
+if (-not ('NetworkAnalysisTools.PathTracer' -as [type])) {
 Add-Type @"
 using System;
 using System.Collections.Generic;
@@ -50,7 +54,7 @@ namespace NetworkAnalysisTools{
                     if (!pairs.ContainsKey(pairKey))
                     {
                         var pairObject = new PSObject();
-                        // CORRECTED: Using .Members.Add() instead of .Properties.Add()
+                        // PSObject note properties are added through the Members collection.
                         pairObject.Members.Add(new PSNoteProperty("DeviceA", interfaceA.Hostname));
                         pairObject.Members.Add(new PSNoteProperty("DeviceIdentifierA", interfaceA.DeviceIdentifier));
                         pairObject.Members.Add(new PSNoteProperty("IpA", interfaceA.IpAddress));
@@ -104,7 +108,7 @@ namespace NetworkAnalysisTools{
                     if (!pairs.ContainsKey(pairKey))
                     {
                         var pairObject = new PSObject();
-                        // CORRECTED: Using .Members.Add() instead of .Properties.Add()
+                        // PSObject note properties are added through the Members collection.
                         pairObject.Members.Add(new PSNoteProperty("DeviceA", internalInt.Hostname));
                         pairObject.Members.Add(new PSNoteProperty("DeviceIdentifierA", internalInt.DeviceIdentifier));
                         pairObject.Members.Add(new PSNoteProperty("IpA", internalInt.IpAddress));                        
@@ -513,6 +517,7 @@ namespace NetworkAnalysisTools{
         #endregion    
 }
 "@
+}
 
 
 
@@ -567,7 +572,10 @@ function Add-IpToDeviceLookup {
 
         if ($LogLevel -eq 'Debug') {
             $deviceAndInterfaceLog = $DeviceLookup[$Ip] | ForEach-Object { "$($_.Hostname)($($_.Interface))" } | Sort-Object -Unique
-            Write-Host "[WARN] Shared IP $Ip detected on devices: $($deviceAndInterfaceLog -join ', ')" -ForegroundColor Yellow
+            # The file's own -LogLevel/-LogLevel Specific gating (distinct from the run-wide
+            # $GLogLevel threshold Write-MTAutoDrawLog reads) is left exactly as it was - only the
+            # print statement itself is standardized.
+            Write-MTAutoDrawLog -Level Warn -Phase Draw -Message "Shared IP $Ip detected on devices: $($deviceAndInterfaceLog -join ', ')"
         }
     }
 }
@@ -580,7 +588,7 @@ function Add-ConnectedInterfaceRoutes {
         [array]$DeviceObjects
     )
 
-    Write-Host "[PRE-FLIGHT] Ensuring all active interfaces have a connected route..." -ForegroundColor Cyan
+    Write-MTAutoDrawPhase -Phase Draw -Message "Ensuring all active interfaces have a connected route..."
     $addedRoutesCount = 0
 
     foreach ($device in $DeviceObjects) {
@@ -604,7 +612,7 @@ function Add-ConnectedInterfaceRoutes {
             # We only care about active interfaces that have a valid CIDR subnet
             if ((-not $interface.shutdown) -and (-not [string]::IsNullOrEmpty($interface.Cidr))) {
 
-                # Now this check is safe because $existingSubnets is guaranteed to be a valid object
+                # $existingSubnets is always initialized, including for devices without a routing table.
                 if (-not $existingSubnets.Contains($interface.Cidr)) {
                     # Create a new route object that matches the existing schema
                     $newRoute = [PSCustomObject]@{
@@ -627,12 +635,13 @@ function Add-ConnectedInterfaceRoutes {
             $addedRoutesCount += $newRoutes.Count
         }
     }
-    Write-Host "[INFO] Added $addedRoutesCount missing connected routes to the data model." -ForegroundColor Green
+    Write-MTAutoDrawLog -Level Info -Phase Draw -Message "Added $addedRoutesCount missing connected routes to the data model."
     return $DeviceObjects
 }
 
 
 
+# Builds an IP-address -> device/interface lookup across all devices (mapping each interface IP/CIDR to its owning device). Used by the path analysis to resolve which device owns a given address.
 function Create-DeviceLookupTable {
     [CmdletBinding()]
     param(
@@ -644,7 +653,7 @@ function Create-DeviceLookupTable {
         [string]$LogLevel = "Normal"
     )
 
-    Write-Host "[INFO] Building IP-to-Device lookup table..." -ForegroundColor Green
+    Write-MTAutoDrawPhase -Phase Draw -Message "Building IP-to-Device lookup table..."
 
     $deviceLookup = @{}
 
@@ -668,7 +677,7 @@ function Create-DeviceLookupTable {
         }
     }
 
-    Write-Host "[INFO] IP lookup table created with $($deviceLookup.Count) unique IPs." -ForegroundColor Green
+    Write-MTAutoDrawLog -Level Info -Phase Draw -Message "IP lookup table created with $($deviceLookup.Count) unique IPs."
 
     return $deviceLookup
 }
@@ -680,11 +689,8 @@ function Create-DeviceLookupTable {
 
 
 
-# This function is refactored from Create-ExternalVirtualDevices.
-# Instead of creating fake devices, it identifies external routes and attaches
-# metadata about them directly to the real edge devices. It also flags the
-# routes themselves for easier lookup during tracing.
-# --- OPTIMIZED: Attach-ExternalSubnets ---
+# Identifies external routes, attaches their metadata to the real edge devices, and flags the route
+# objects for efficient lookup during tracing. It does not create placeholder devices.
 function Attach-ExternalSubnets {
     [CmdletBinding()]
     param(
@@ -697,7 +703,7 @@ function Attach-ExternalSubnets {
         [string]$LogLevel = "Normal"
     )
 
-    Write-Host "[INFO] Identifying external subnets and attaching to edge devices..." -ForegroundColor Green
+    Write-MTAutoDrawPhase -Phase Draw -Message "Identifying external subnets and attaching to edge devices..."
     $externalSubnetCount = 0
 
     foreach ($device in $AllDeviceObjects) {
@@ -723,17 +729,17 @@ function Attach-ExternalSubnets {
             }
         }
 
-        # Now, add the collected subnets to the device.
+        # Attach the collected external subnets to the device.
         $device | Add-Member -MemberType NoteProperty -Name ExternalSubnets -Value @($deviceExternalSubnets) -Force
         $externalSubnetCount += $deviceExternalSubnets.Count
 
-        # Deduplicate the list of external subnets on the device (this logic is unchanged)
+        # Deduplicate external subnets on the device.
         if ($device.ExternalSubnets.Count -gt 0) {
             $device.ExternalSubnets = $device.ExternalSubnets | Sort-Object -Property Subnet, Gateway -Unique
         }
     }
 
-    Write-Host "[INFO] Finished. Identified and attached $externalSubnetCount external subnet references." -ForegroundColor Green
+    Write-MTAutoDrawLog -Level Info -Phase Draw -Message "Finished. Identified and attached $externalSubnetCount external subnet references."
     return $AllDeviceObjects
 }
 
@@ -742,6 +748,7 @@ function Attach-ExternalSubnets {
 
 
 
+# Identifies the set of 'transit' subnets (shared L3 segments connecting multiple devices) from the up interfaces of all devices. Used to recognise when a path hops through a common subnet.
 function Create-TransitSubnetLookup {
     [CmdletBinding()]
     param(
@@ -749,7 +756,7 @@ function Create-TransitSubnetLookup {
         [array]$AllDeviceObjects
     )
 
-    Write-Host "[INFO] Identifying transit subnets..." -ForegroundColor Green
+    Write-MTAutoDrawPhase -Phase Draw -Message "Identifying transit subnets..."
 
     # Use a hashtable to count device members for each subnet
     $subnetMembership = @{}
@@ -778,7 +785,7 @@ function Create-TransitSubnetLookup {
         }
     }
 
-    Write-Host "[INFO] Found $($transitSubnets.Count) transit subnets." -ForegroundColor Green
+    Write-MTAutoDrawLog -Level Info -Phase Draw -Message "Found $($transitSubnets.Count) transit subnets."
     return $transitSubnets
 
 }
@@ -786,6 +793,18 @@ function Create-TransitSubnetLookup {
 
 
 
+# Compares a forward device path with the reversed return path.
+function Compare-MTAutoDrawDevicePaths {
+    [CmdletBinding()]
+    param($PathA, $PathB)
+
+    if (-not $PathA -or -not $PathB -or -not $PathA.DevicePath -or -not $PathB.DevicePath) { return $false }
+    $reversedDevicePathB = [string[]]$PathB.DevicePath
+    [array]::Reverse($reversedDevicePathB)
+    return (Compare-Object -ReferenceObject $PathA.DevicePath -DifferenceObject $reversedDevicePathB -SyncWindow 0) -eq $null
+}
+
+# Checks whether the network path between two endpoints is symmetric (the forward and reverse routes follow the same hops) using structured pair objects. Returns the comparison result for the pair.
 function Test-PathSymmetry { # V2 with structured objects
     [CmdletBinding()]
     param(
@@ -800,29 +819,17 @@ function Test-PathSymmetry { # V2 with structured objects
         [array]$DebugTargets = @()
     )
 
-    # Helper function to compare two path objects based on their device sequence.
-    function Compare-DevicePaths {
-        param($pathA, $pathB)
-        # Null-safe symmetry check
-        if (-not $pathA -or -not $pathB -or -not $pathA.DevicePath -or -not $pathB.DevicePath) {
-            return $false
-        }
-        $reversedDevicePathB = [string[]]$pathB.DevicePath
-        [array]::Reverse($reversedDevicePathB)
-        return (Compare-Object -ReferenceObject $pathA.DevicePath -DifferenceObject $reversedDevicePathB -SyncWindow 0) -eq $null
-    }
-
     $logThisCheck = ($LogLevel -eq 'Debug') -or `
                          ($LogLevel -eq 'Specific' -and ($DebugTargets -contains $PairObject.DeviceA -or $DebugTargets -contains $PairObject.DeviceB))
 
     if ($logThisCheck) {
-        Write-Host "[DEBUG] Checking symmetry for $($PairObject.DeviceA) <-> $($PairObject.DeviceB)" -ForegroundColor Gray
+        Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Checking symmetry for $($PairObject.DeviceA) <-> $($PairObject.DeviceB)"
     }
 
     # Simplified Same-Subnet Check
     if ($PairObject.SubnetA -eq $PairObject.SubnetB) {
         # If two devices are in the same subnet, communication is assumed to be symmetric.
-        if ($logThisCheck) { Write-Host "[DEBUG] Symmetric: Overridden due to same-subnet communication." -ForegroundColor Gray }
+        if ($logThisCheck) { Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Symmetric: Overridden due to same-subnet communication." }
         return $false # Not asymmetric
     }
 
@@ -832,7 +839,7 @@ function Test-PathSymmetry { # V2 with structured objects
 
     # Case: One path was traced, the other was not. Per the new rule, this is Symmetric.
     if (($null -eq $forwardPrimary) -ne ($null -eq $reversePrimary)) {
-        if ($logThisCheck) { Write-Host "[DEBUG] Symmetric: Overridden as one path was successful while the other was not traced." }
+        if ($logThisCheck) { Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Symmetric: Overridden as one path was successful while the other was not traced." }
         return $false # Not Asymmetric
     }
 
@@ -842,7 +849,7 @@ function Test-PathSymmetry { # V2 with structured objects
         $statusA = $forwardPrimary.Status -replace '\s*\(External\)', ''
         $statusB = $reversePrimary.Status -replace '\s*\(External\)', ''
         if ($statusA -ne $statusB) {
-            if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: Primary path statuses do not match ('$statusA' vs '$statusB')." }
+            if ($logThisCheck) { Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Asymmetric: Primary path statuses do not match ('$statusA' vs '$statusB')." }
             return $true # Asymmetric
         }
     }
@@ -851,7 +858,7 @@ function Test-PathSymmetry { # V2 with structured objects
     $forwardPaths = @($PairObject.PathsForward)
     $reversePaths = @($PairObject.PathsReverse)
     if ($forwardPaths.Count -ne $reversePaths.Count) {
-        if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: Path counts do not match ($($forwardPaths.Count) vs $($reversePaths.Count))." }
+        if ($logThisCheck) { Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Asymmetric: Path counts do not match ($($forwardPaths.Count) vs $($reversePaths.Count))." }
         return $true # Asymmetric
     }
 
@@ -864,10 +871,10 @@ function Test-PathSymmetry { # V2 with structured objects
 
         for ($i = 0; $i -lt $availableReversePaths.Count; $i++) {
             $revPath = $availableReversePaths[$i]
-            if (Compare-DevicePaths -pathA $fwdPath -pathB $revPath) {
+            if (Compare-MTAutoDrawDevicePaths -PathA $fwdPath -PathB $revPath) {
                 $foundMatch = $true
                 $matchIndex = $i
-                if ($logThisCheck) { Write-Host "[DEBUG] Found symmetric match for forward path ($($fwdPath.DevicePath -join '->'))" }
+                if ($logThisCheck) { Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Found symmetric match for forward path ($($fwdPath.DevicePath -join '->'))" }
                 break
             }
         }
@@ -878,13 +885,13 @@ function Test-PathSymmetry { # V2 with structured objects
         }
         else {
             # This forward path has no symmetric partner in the reverse set
-            if ($logThisCheck) { Write-Host "[DEBUG] Asymmetric: No symmetric partner found for forward path ($($fwdPath.DevicePath -join '->'))." }
+            if ($logThisCheck) { Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Asymmetric: No symmetric partner found for forward path ($($fwdPath.DevicePath -join '->'))." }
             return $true # Asymmetric
         }
     }
 
     # If all forward paths found a unique partner, the connection is symmetric
-    if ($logThisCheck) { Write-Host "[DEBUG] Symmetric: All path sets match." -ForegroundColor Gray }
+    if ($logThisCheck) { Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "Symmetric: All path sets match." }
     return $false # Symmetric
 }
 
@@ -894,6 +901,7 @@ function Test-PathSymmetry { # V2 with structured objects
 
 
 
+# Renders the network path / trace analysis into a self-contained HTML report at $OutputPath, embedding the device data, populated endpoint pairs, transit subnets, and an interactive JS viewer (filter, pagination, help).
 function Export-TraceAnalysisToHTML {
     [CmdletBinding()]
     param(
@@ -1228,12 +1236,14 @@ $htmlTemplate = @'
         let pinnedTooltip = false;
 
         allData.forEach(row => {
-            // Add raw device names to searchable string, since the display properties now contain HTML
+            // Add raw device names because the display properties contain HTML.
             row.searchableString = Object.values(row).join(' ').toLowerCase() + ` ${row.DeviceA_Raw} ${row.DeviceB_Raw}`;
         });
 
         const helpModal = document.getElementById('helpModal');
+        // Show the help modal by removing its 'hidden' class.
         function openHelpModal() { helpModal.classList.remove('hidden'); }
+        // Hide the help modal by adding its 'hidden' class.
         function closeHelpModal() { helpModal.classList.add('hidden'); }
 
         const searchText = document.getElementById('searchText');
@@ -1397,6 +1407,7 @@ $htmlTemplate = @'
             hideTooltipTimer = setTimeout(hideTooltip, 200);
         });
 
+        // Apply the active search + dropdown filters (path type, symmetry, transit, result, device A/B, subnet A/B) to allData, group rows by endpoint pair, and re-render the first page. Also attaches the column-resizer drag handles to the table headers.
         function applyFilters() {
             const search = searchText.value.toLowerCase();
             const invertSearch = document.getElementById('invertSearch').checked;
@@ -1485,9 +1496,11 @@ $htmlTemplate = @'
                         document.addEventListener('mousemove', resize);
                         document.addEventListener('mouseup', stopResize);
                     });
+                    // Nested in applyFilters' resizer setup: live-drag handler that sets a table column's width to its start width plus the mouse's horizontal delta.
                     function resize(e) {
                         th.style.width = (startWidth + (e.pageX - startX)) + 'px';
                     }
+                    // Nested in applyFilters' resizer setup: ends a column-resize drag by detaching the mousemove/mouseup listeners.
                     function stopResize() {
                         document.removeEventListener('mousemove', resize);
                         document.removeEventListener('mouseup', stopResize);
@@ -1503,6 +1516,7 @@ $htmlTemplate = @'
             renderPage();
         }
 
+        // Render the current page of filtered rows into the table body, computing per-pair row spans, applying symmetry/result/transit CSS classes, and building the device/subnet display cells.
         function renderPage() {
             const start = (currentPage - 1) * rowsPerPage;
             const end = start + rowsPerPage;
@@ -1570,6 +1584,7 @@ $htmlTemplate = @'
             updatePagination();
         }
 
+        // Update the pagination UI: 'Page X of Y' text and enable/disable the Prev/Next buttons based on the current page and total page count.
         function updatePagination() {
             const totalPages = Math.ceil(currentFilteredData.length / rowsPerPage);
             document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages || 1}`;
@@ -1577,6 +1592,7 @@ $htmlTemplate = @'
             document.getElementById('nextBtn').disabled = currentPage === totalPages || totalPages === 0;
         }
 
+        // Populate the filter dropdowns (path type, symmetry, transit, result, first device, all subnets) from allData, and leave the second-device/subnet dropdowns empty + disabled until a first selection is made.
         function populateFilters() {
             const populateSelect = (element, dataKey, label) => {
                 const uniqueValues = [...new Set(allData.map(r => r[dataKey]))].filter(Boolean).sort();
@@ -1627,6 +1643,7 @@ $htmlTemplate = @'
             applyFilters();
         });
 
+        // Recompute the second-device and second-subnet dropdown options based on the first device/subnet selections, so only valid opposite-side pair options are shown; enables/disables them accordingly.
         function updateDependentFilters() {
             const firstDevice = firstDeviceFilter.value;
             const firstSubnet = firstSubnetFilter.value;
@@ -1746,7 +1763,7 @@ $htmlTemplate = @'
 
     try {
         Set-Content -Path $OutputPath -Value $finalHtml -Encoding UTF8
-        Write-Host "[INFO] Successfully exported analysis to '$OutputPath'" -ForegroundColor Green
+        Write-MTAutoDrawLog -Level Info -Phase Export -Message "Successfully exported analysis to '$OutputPath'"
     }
     catch {
         Write-Error "[ERROR] Failed to write to '$OutputPath'. Error: $_"
@@ -1761,6 +1778,7 @@ $htmlTemplate = @'
 
 
 
+# Top-level entry for the network path analysis: takes the parsed device set (pipeline), resolves endpoint pairs, computes forward/reverse paths up to $MaxHops, and writes the HTML report to $ReportPath.
 function Invoke-NetworkPathAnalysis {
     [CmdletBinding()]
     param(
@@ -1779,7 +1797,6 @@ function Invoke-NetworkPathAnalysis {
         [Parameter(Mandatory = $false)]
         [array]$DebugTargets = @()
     )
-        write-Host "HERE3 : $($GNetworkTracePathAnalysis)"
     # 2. Construct a full, unique file path for the report
     $reportFileName = "$((Get-Date).ToString('yyyyMMdd-HHmmss'))-AnalysisTable.html"
     $AnalysisTablePath = Join-Path -Path $ReportPath -ChildPath $reportFileName
@@ -1818,7 +1835,7 @@ function Invoke-NetworkPathAnalysis {
     $deviceLookupLogLevel = & $getLogLevel "DeviceLookup"
     $DeviceLookupTable = Create-DeviceLookupTable -GArrayOfObjectsFilter $GArrayOfObjectsFilter -LogLevel $deviceLookupLogLevel
 
-    # The 'Attach-ExternalSubnets' function now handles external route discovery.
+    # Attach external-route metadata before path tracing.
     $externalSubnetLogLevel = & $getLogLevel "ExternalSubnet"
     $GArrayOfObjectsFilter = Attach-ExternalSubnets -AllDeviceObjects $GArrayOfObjectsFilter -DeviceLookupTable $DeviceLookupTable -LogLevel $externalSubnetLogLevel
 
@@ -1841,7 +1858,7 @@ function Invoke-NetworkPathAnalysis {
 
     Write-Verbose "[INFO] Data preparation complete. Processed $($GArrayOfObjectsFilter.Count) devices and their external routes."
     $phase1Stopwatch.Stop()
-    Write-Host "[BENCHMARK] Phase 1 (Data Preparation) took $($phase1Stopwatch.Elapsed.TotalSeconds) seconds." -ForegroundColor Magenta
+    Write-MTAutoDrawLog -Level Info -Phase Draw -Message "Path-analysis data preparation took $($phase1Stopwatch.Elapsed.TotalSeconds) seconds."
 
     # =================================================================
     # PHASE 2: Pair Generation
@@ -1896,7 +1913,7 @@ function Invoke-NetworkPathAnalysis {
 
     Write-Verbose "[INFO] Pair generation complete. Found $($allPairs.Count) total unique pairs to trace."
     $phase2Stopwatch.Stop()
-    Write-Host "[BENCHMARK] Phase 2 (Pair Generation) took $($phase2Stopwatch.Elapsed.TotalSeconds) seconds." -ForegroundColor Magenta
+    Write-MTAutoDrawLog -Level Info -Phase Draw -Message "Path-analysis pair generation took $($phase2Stopwatch.Elapsed.TotalSeconds) seconds."
 
 
     # =================================================================
@@ -1917,8 +1934,8 @@ function Invoke-NetworkPathAnalysis {
         $routeRadixDict[$k] = $RouteRadixTrees[$k]
     }
 
-    Write-Host "[DEBUG] DeviceLookup count = $($deviceLookupDict.Count)"
-    Write-Host "[DEBUG] RouteRadix count   = $($routeRadixDict.Count)"
+    Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "DeviceLookup count = $($deviceLookupDict.Count)"
+    Write-MTAutoDrawLog -Level Debug -Phase Draw -Message "RouteRadix count = $($routeRadixDict.Count)"
     $totalPairs = $allPairs.Count
     $currentPairIndex = 0
 
@@ -1955,7 +1972,7 @@ function Invoke-NetworkPathAnalysis {
     Write-Progress -Completed
     Write-Verbose "[INFO] Path tracing and analysis complete."
     $phase3Stopwatch.Stop()
-    Write-Host "[BENCHMARK] Phase 3 (Path Tracing) took $($phase3Stopwatch.Elapsed.TotalSeconds) seconds." -ForegroundColor Magenta
+    Write-MTAutoDrawLog -Level Info -Phase Draw -Message "Path tracing took $($phase3Stopwatch.Elapsed.TotalSeconds) seconds."
 
     # =================================================================
     # PHASE 4: Reporting
@@ -1967,10 +1984,10 @@ function Invoke-NetworkPathAnalysis {
 
     Write-Verbose "[INFO] Analysis complete."
     $phase4Stopwatch.Stop()
-    Write-Host "[BENCHMARK] Phase 4 (Reporting) took $($phase4Stopwatch.Elapsed.TotalSeconds) seconds." -ForegroundColor Magenta
+    Write-MTAutoDrawLog -Level Info -Phase Export -Message "Path-analysis reporting took $($phase4Stopwatch.Elapsed.TotalSeconds) seconds."
     
     $totalStopwatch.Stop()
-    Write-Host "[BENCHMARK] Total execution time took $($totalStopwatch.Elapsed.TotalSeconds) seconds." -ForegroundColor Green
+    Write-MTAutoDrawLog -Level Info -Phase Summary -Message "Network path analysis total execution time: $($totalStopwatch.Elapsed.TotalSeconds) seconds."
 
 }
 
